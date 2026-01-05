@@ -1,8 +1,26 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Base colors from designs */
+  --background: #1a1a1a;
+  --foreground: #ffffff;
+
+  /* Game mode colors */
+  --cricket-red: #8b1a1a;
+  --golf-green: #2d5016;
+  --extra-teal: #1a5a5a;
+  --tbd-yellow: #9d8b1a;
+  --league-purple: #6b1a8b;
+
+  /* UI colors */
+  --card-gray: #666666;
+  --card-gray-dark: #4a4a4a;
+  --card-gray-darker: #333333;
+  --black-overlay: #000000;
+
+  /* Team colors */
+  --team-blue: #1a7a9d;
+  --team-red: #9d1a1a;
 }
 
 @theme inline {
@@ -10,17 +28,33 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Game mode colors as Tailwind utilities */
+  --color-cricket-red: var(--cricket-red);
+  --color-golf-green: var(--golf-green);
+  --color-extra-teal: var(--extra-teal);
+  --color-tbd-yellow: var(--tbd-yellow);
+  --color-league-purple: var(--league-purple);
+
+  --color-card-gray: var(--card-gray);
+  --color-card-gray-dark: var(--card-gray-dark);
+  --color-card-gray-darker: var(--card-gray-darker);
+
+  --color-team-blue: var(--team-blue);
+  --color-team-red: var(--team-red);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
