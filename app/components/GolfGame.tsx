@@ -45,7 +45,7 @@ export default function GolfGame({ variant }: GolfGameProps) {
 
   // Initialize players and scores from selected players
   useEffect(() => {
-    const golfPlayers = selectedPlayers.golf['stroke-play']?.players || [];
+    const golfPlayers = selectedPlayers.golf['stroke-play'] || [];
 
     if (golfPlayers.length > 0) {
       setPlayers(golfPlayers);
