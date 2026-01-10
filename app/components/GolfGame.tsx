@@ -48,17 +48,26 @@ export default function GolfGame({ variant }: GolfGameProps) {
     const golfPlayers = selectedPlayers.golf['stroke-play'] || [];
 
     if (golfPlayers.length > 0) {
-      setPlayers(golfPlayers);
+      // Convert Player[] to StoredPlayer[] by looking up in localPlayers
+      const storedPlayers = golfPlayers.map(p => {
+        const localPlayer = localPlayers.find(lp => lp.id === p.id);
+        return localPlayer || {
+          ...p,
+          isGuest: true,
+          addedDate: new Date(),
+        };
+      });
+      setPlayers(storedPlayers);
       setScores(golfPlayers.map(p => ({
         playerId: p.id,
         holes: Array(TOTAL_HOLES).fill(null),
       })));
     } else {
       const mockPlayers: StoredPlayer[] = [
-        { id: '1', name: 'MAYOR', avatar: 'fox', isGuest: false },
-        { id: '2', name: 'PIPER ROSE', avatar: 'deer', isGuest: false },
-        { id: '3', name: 'PONCHO MAN', avatar: 'bear', isGuest: false },
-        { id: '4', name: 'KERRMISSIONER', avatar: 'rabbit', isGuest: false },
+        { id: '1', name: 'MAYOR', avatar: 'fox', isGuest: false, addedDate: new Date() },
+        { id: '2', name: 'PIPER ROSE', avatar: 'deer', isGuest: false, addedDate: new Date() },
+        { id: '3', name: 'PONCHO MAN', avatar: 'bear', isGuest: false, addedDate: new Date() },
+        { id: '4', name: 'KERRMISSIONER', avatar: 'rabbit', isGuest: false, addedDate: new Date() },
       ];
       setPlayers(mockPlayers);
       setScores(mockPlayers.map(p => ({
@@ -205,12 +214,12 @@ export default function GolfGame({ variant }: GolfGameProps) {
     const tieBreakerTotals = tiedPlayers.map(playerIdx => ({
       playerIndex: playerIdx,
       total: tieBreakerHoles[playerIdx]
-        ? tieBreakerHoles[playerIdx].slice(roundStart, roundEnd).reduce((sum, score) => sum + (score || 0), 0)
+        ? tieBreakerHoles[playerIdx].slice(roundStart, roundEnd).reduce((sum, score) => (sum ?? 0) + (score || 0), 0)
         : 0
     }));
 
     // Sort by total (ascending)
-    tieBreakerTotals.sort((a, b) => a.total - b.total);
+    tieBreakerTotals.sort((a, b) => (a.total ?? 0) - (b.total ?? 0));
 
     // Check if we have a unique winner
     const topScore = tieBreakerTotals[0].total;
@@ -486,7 +495,7 @@ export default function GolfGame({ variant }: GolfGameProps) {
   };
 
   const calculateTotal = (playerScores: (number | null)[], startHole: number, endHole: number): number => {
-    return playerScores.slice(startHole, endHole).reduce((sum, score) => sum + (score || 0), 0);
+    return playerScores.slice(startHole, endHole).reduce((sum, score) => (sum ?? 0) + (score || 0), 0) ?? 0;
   };
 
   const countPlayedHoles = (playerScores: (number | null)[], startHole: number, endHole: number): number => {
