@@ -26,6 +26,7 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
   const { setSelectedPlayers: setGlobalSelectedPlayers } = useAppContext();
   const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
   const [isAddPlayerModalOpen, setIsAddPlayerModalOpen] = useState(false);
+  const [draggedPlayerIndex, setDraggedPlayerIndex] = useState<number | null>(null);
 
   const handlePlayerClick = (playerId: string) => {
     if (selectedPlayers.includes(playerId)) {
@@ -37,6 +38,58 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
 
   const handleAddGuestPlayer = (name: string, avatar: string) => {
     addGuestPlayer(name, avatar);
+  };
+
+  const handleDragStart = (index: number) => {
+    setDraggedPlayerIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedPlayerIndex === null || draggedPlayerIndex === index) return;
+
+    const newSelectedPlayers = [...selectedPlayers];
+    const draggedPlayer = newSelectedPlayers[draggedPlayerIndex];
+    newSelectedPlayers.splice(draggedPlayerIndex, 1);
+    newSelectedPlayers.splice(index, 0, draggedPlayer);
+
+    setSelectedPlayers(newSelectedPlayers);
+    setDraggedPlayerIndex(index);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedPlayerIndex(null);
+  };
+
+  // Touch event handlers for mobile/iPad
+  const handleTouchStart = (index: number) => {
+    setDraggedPlayerIndex(index);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (draggedPlayerIndex === null) return;
+
+    const touch = e.touches[0];
+    const element = document.elementFromPoint(touch.clientX, touch.clientY);
+
+    // Find the player container element
+    const playerContainer = element?.closest('[data-player-index]');
+    if (playerContainer) {
+      const targetIndex = parseInt(playerContainer.getAttribute('data-player-index') || '0');
+      if (targetIndex !== draggedPlayerIndex) {
+        const newSelectedPlayers = [...selectedPlayers];
+        const draggedPlayer = newSelectedPlayers[draggedPlayerIndex];
+        newSelectedPlayers.splice(draggedPlayerIndex, 1);
+        newSelectedPlayers.splice(targetIndex, 0, draggedPlayer);
+
+        setSelectedPlayers(newSelectedPlayers);
+        setDraggedPlayerIndex(targetIndex);
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setDraggedPlayerIndex(null);
   };
 
   const getPlayerColor = (playerId: string): PlayerColor => {
@@ -76,7 +129,7 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
 
         {/* Selected Players Display - vertically centered */}
         <div className="flex justify-center gap-4">
-          {selectedPlayers.slice(0, 4).map((playerId) => {
+          {selectedPlayers.slice(0, 4).map((playerId, index) => {
             const player = localPlayers.find(p => p.id === playerId);
             if (!player) return null;
 
@@ -85,10 +138,21 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
             const borderColor = getPlayerBorderColor(playerColor);
 
             return (
-              <div key={playerId} className="flex flex-col items-center gap-2">
+              <div
+                key={playerId}
+                className="flex flex-col items-center gap-2"
+                data-player-index={index}
+                draggable
+                onDragStart={() => handleDragStart(index)}
+                onDragOver={(e) => handleDragOver(e, index)}
+                onDragEnd={handleDragEnd}
+                onTouchStart={() => handleTouchStart(index)}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+              >
                 <button
                   onClick={() => handlePlayerClick(playerId)}
-                  className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl cursor-pointer hover:opacity-80 transition-opacity"
+                  className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl cursor-move hover:opacity-80 transition-opacity"
                   style={{ backgroundColor: avatar.color, borderColor }}
                 >
                   {avatar.emoji}
@@ -123,8 +187,8 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
       </div>
 
       {/* Available Players - compact at bottom */}
-      <div className="bg-[#333333] rounded-lg p-4">
-        <div className="grid grid-cols-12 gap-3">
+      <div className="bg-[#333333]/50 rounded-lg p-4">
+        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-3">
           {localPlayers.map((player) => (
             <PlayerAvatar
               key={player.id}
@@ -146,6 +210,9 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
           </div>
         </div>
       </div>
+
+      {/* Bottom spacer for visual breathing room */}
+      <div className="h-8"></div>
 
       {/* Add Guest Player Modal */}
       <AddGuestPlayerModal

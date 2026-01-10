@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "The Mayor - Swamp Darts",
+  title: "Swamp Darts",
   description: "Professional dart scoring app with Cricket, Golf, and custom game modes",
   manifest: "/manifest.json",
   themeColor: "#1a1a1a",
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "The Mayor",
+    title: "Swamp Darts",
   },
 };
 

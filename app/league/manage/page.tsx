@@ -45,8 +45,8 @@ export default function ManageLeaguePage() {
       <Header title="MANAGE LEAGUE" />
 
       <PageWrapper>
-        <main className="px-6 pb-6">
-          <div className="max-w-6xl mx-auto bg-[#333333] rounded-lg p-8">
+        <main className="px-6 pb-6 flex items-center justify-center min-h-[calc(100vh-176px)]">
+          <div className="max-w-6xl w-full bg-[#333333] rounded-lg p-8">
             <h2 className="text-white text-2xl font-bold mb-6 text-center">
               LEAGUE PLAYERS ({leaguePlayers.length})
             </h2>

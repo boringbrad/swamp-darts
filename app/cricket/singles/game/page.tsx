@@ -8,34 +8,23 @@ import CricketGame from '@/app/components/CricketGame';
 import { useAppContext } from '@/app/contexts/AppContext';
 import { Player, CricketRules } from '@/app/types/game';
 
-export default function CricketTagTeamGamePage() {
+export default function CricketSinglesGamePage() {
   const router = useRouter();
   const { selectedPlayers, cricketRules } = useAppContext();
   const [players, setPlayers] = useState<Player[]>([]);
   const [rules, setRules] = useState<CricketRules>({ swampRules: true, noPoint: false, point: false });
 
   useEffect(() => {
-    // Get selected players for cricket tag team
-    const cricketData = selectedPlayers.cricket?.['tag-team'];
+    // Get selected players for cricket singles
+    const cricketData = selectedPlayers.cricket?.singles;
 
-    if (!cricketData || !cricketData.teams || cricketData.teams[0].length !== 2 || cricketData.teams[1].length !== 2) {
-      // Redirect back to player selection if no teams selected
-      router.push('/cricket/tag-team/players');
+    if (!cricketData || !cricketData.players || cricketData.players.length !== 2) {
+      // Redirect back to player selection if no players selected
+      router.push('/cricket/singles/players');
       return;
     }
 
-    // Create alternating turn order: Team A (p1), Team B (p3), Team A (p2), Team B (p4)
-    const team0 = cricketData.teams[0]; // Blue team
-    const team1 = cricketData.teams[1]; // Red team
-
-    const orderedPlayers = [
-      team0[0], // Team A player 1
-      team1[0], // Team B player 1
-      team0[1], // Team A player 2
-      team1[1], // Team B player 2
-    ];
-
-    setPlayers(orderedPlayers);
+    setPlayers(cricketData.players);
 
     // Get cricket rules
     if (cricketRules) {
@@ -49,9 +38,9 @@ export default function CricketTagTeamGamePage() {
 
   return (
     <div className="min-h-screen bg-[#8b1a1a]">
-      <Header title="CRICKET - TAG TEAM" />
+      <Header title="CRICKET - SINGLES" />
       <PageWrapper>
-        <CricketGame variant="tag-team" players={players} rules={rules} />
+        <CricketGame variant="singles" players={players} rules={rules} />
       </PageWrapper>
     </div>
   );

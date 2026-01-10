@@ -24,6 +24,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     point: false,
   });
   const [playMode, setPlayModeState] = useState<PlayMode>('practice');
+  const [tieBreakerEnabled, setTieBreakerEnabledState] = useState(true);
+  const [golfCourseName, setGolfCourseNameState] = useState('SWAMPY MEADOWS');
+  const [courseBannerImage, setCourseBannerImageState] = useState('');
+  const [courseBannerOpacity, setCourseBannerOpacityState] = useState(50);
+  const [cameraEnabled, setCameraEnabledState] = useState(false);
 
   // Load initial state from storage on mount
   useEffect(() => {
@@ -70,6 +75,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSelectedPlayersState(storage.getSelectedPlayers());
     setCricketRulesState(storage.getCricketRules());
     setPlayModeState(storage.getPlayMode());
+
+    // Load golf course name from localStorage
+    const savedCourseName = localStorage.getItem('golfCourseName');
+    if (savedCourseName) {
+      setGolfCourseNameState(savedCourseName);
+    }
+
+    // Load course banner settings from localStorage
+    const savedBannerImage = localStorage.getItem('courseBannerImage');
+    if (savedBannerImage) {
+      setCourseBannerImageState(savedBannerImage);
+    }
+
+    const savedBannerOpacity = localStorage.getItem('courseBannerOpacity');
+    if (savedBannerOpacity) {
+      setCourseBannerOpacityState(parseInt(savedBannerOpacity));
+    }
+
+    // Load camera enabled setting from localStorage
+    const savedCameraEnabled = localStorage.getItem('cameraEnabled');
+    if (savedCameraEnabled !== null) {
+      setCameraEnabledState(savedCameraEnabled === 'true');
+    }
   }, []);
 
   // Save header visibility to storage when it changes
@@ -151,6 +179,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPlayModeState(mode);
   };
 
+  const setTieBreakerEnabled = (enabled: boolean) => {
+    setTieBreakerEnabledState(enabled);
+  };
+
+  const setGolfCourseName = (name: string) => {
+    setGolfCourseNameState(name);
+    localStorage.setItem('golfCourseName', name);
+  };
+
+  const setCourseBannerImage = (imageUrl: string) => {
+    setCourseBannerImageState(imageUrl);
+    localStorage.setItem('courseBannerImage', imageUrl);
+  };
+
+  const setCourseBannerOpacity = (opacity: number) => {
+    setCourseBannerOpacityState(opacity);
+    localStorage.setItem('courseBannerOpacity', opacity.toString());
+  };
+
+  const setCameraEnabled = (enabled: boolean) => {
+    setCameraEnabledState(enabled);
+    localStorage.setItem('cameraEnabled', enabled.toString());
+  };
+
   const contextValue: AppContextValue = {
     userProfile,
     updateUserProfile,
@@ -166,6 +218,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCricketRules,
     playMode,
     setPlayMode,
+    tieBreakerEnabled,
+    setTieBreakerEnabled,
+    golfCourseName,
+    setGolfCourseName,
+    courseBannerImage,
+    setCourseBannerImage,
+    courseBannerOpacity,
+    setCourseBannerOpacity,
+    cameraEnabled,
+    setCameraEnabled,
   };
 
   return <AppContext.Provider value={contextValue}>{children}</AppContext.Provider>;

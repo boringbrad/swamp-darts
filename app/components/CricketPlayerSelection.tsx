@@ -58,8 +58,8 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
   // State for selected player IDs
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
   const [teamAssignments, setTeamAssignments] = useState<Record<string, number>>({}); // For tag-team
-  const [tornadoTag, setTornadoTag] = useState(true); // For tag-team variant
   const [isAddPlayerModalOpen, setIsAddPlayerModalOpen] = useState(false);
+  const [draggedPlayerIndex, setDraggedPlayerIndex] = useState<number | null>(null);
 
   // KO Numbers hook
   const { koNumbers, incrementKO, decrementKO, randomizeKONumbers, initializeKONumbers } = useKONumbers();
@@ -183,7 +183,6 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
       setSelectedPlayers('cricket', variant, {
         teams: [team0, team1],
         koNumbers,
-        tornadoTag,
       });
     } else {
       setSelectedPlayers('cricket', variant, {
@@ -197,6 +196,59 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
   };
 
   const isPlayDisabled = selectedPlayerIds.length !== config.playerCount;
+
+  // Drag and drop handlers
+  const handleDragStart = (index: number) => {
+    setDraggedPlayerIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedPlayerIndex === null || draggedPlayerIndex === index) return;
+
+    const newSelectedPlayerIds = [...selectedPlayerIds];
+    const draggedPlayer = newSelectedPlayerIds[draggedPlayerIndex];
+    newSelectedPlayerIds.splice(draggedPlayerIndex, 1);
+    newSelectedPlayerIds.splice(index, 0, draggedPlayer);
+
+    setSelectedPlayerIds(newSelectedPlayerIds);
+    setDraggedPlayerIndex(index);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedPlayerIndex(null);
+  };
+
+  // Touch event handlers for mobile/iPad
+  const handleTouchStart = (index: number) => {
+    setDraggedPlayerIndex(index);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (draggedPlayerIndex === null) return;
+
+    const touch = e.touches[0];
+    const element = document.elementFromPoint(touch.clientX, touch.clientY);
+
+    // Find the player container element
+    const playerContainer = element?.closest('[data-player-index]');
+    if (playerContainer) {
+      const targetIndex = parseInt(playerContainer.getAttribute('data-player-index') || '0');
+      if (targetIndex !== draggedPlayerIndex) {
+        const newSelectedPlayerIds = [...selectedPlayerIds];
+        const draggedPlayer = newSelectedPlayerIds[draggedPlayerIndex];
+        newSelectedPlayerIds.splice(draggedPlayerIndex, 1);
+        newSelectedPlayerIds.splice(targetIndex, 0, draggedPlayer);
+
+        setSelectedPlayerIds(newSelectedPlayerIds);
+        setDraggedPlayerIndex(targetIndex);
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setDraggedPlayerIndex(null);
+  };
 
   // Render selected players
   const renderSelectedPlayers = () => {
@@ -221,10 +273,21 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
           const borderStyle = { borderColor: borderColor === 'red' ? '#9d1a1a' : borderColor === 'blue' ? '#1a7a9d' : borderColor === 'purple' ? '#6b1a8b' : '#2d5016' };
 
           return (
-            <div key={playerId} className="flex flex-col items-center gap-2">
+            <div
+              key={playerId}
+              className="flex flex-col items-center gap-2"
+              data-player-index={index}
+              draggable
+              onDragStart={() => handleDragStart(index)}
+              onDragOver={(e) => handleDragOver(e, index)}
+              onDragEnd={handleDragEnd}
+              onTouchStart={() => handleTouchStart(index)}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+            >
               <button
                 onClick={() => handlePlayerClick(playerId)}
-                className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl cursor-pointer hover:opacity-80 transition-opacity"
+                className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl cursor-move hover:opacity-80 transition-opacity"
                 style={{ backgroundColor: avatar.color, ...borderStyle }}
               >
                 {avatar.emoji}
@@ -265,17 +328,29 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
       <div className="flex justify-center gap-16">
         {/* Team 0 (Blue) */}
         <div className="flex gap-4">
-          {team0Players.map((playerId) => {
+          {team0Players.map((playerId, teamIndex) => {
             const player = getPlayerById(playerId);
             if (!player) return null;
 
             const avatar = STOCK_AVATARS.find(a => a.id === player.avatar) || STOCK_AVATARS[0];
+            const globalIndex = selectedPlayerIds.indexOf(playerId);
 
             return (
-              <div key={playerId} className="flex flex-col items-center gap-2">
+              <div
+                key={playerId}
+                className="flex flex-col items-center gap-2"
+                data-player-index={globalIndex}
+                draggable
+                onDragStart={() => handleDragStart(globalIndex)}
+                onDragOver={(e) => handleDragOver(e, globalIndex)}
+                onDragEnd={handleDragEnd}
+                onTouchStart={() => handleTouchStart(globalIndex)}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+              >
                 <button
                   onClick={() => handlePlayerClick(playerId)}
-                  className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl cursor-pointer hover:opacity-80 transition-opacity"
+                  className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl cursor-move hover:opacity-80 transition-opacity"
                   style={{ backgroundColor: avatar.color, borderColor: getTeamBorderColor(0) }}
                 >
                   {avatar.emoji}
@@ -308,17 +383,29 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
 
         {/* Team 1 (Red) */}
         <div className="flex gap-4">
-          {team1Players.map((playerId) => {
+          {team1Players.map((playerId, teamIndex) => {
             const player = getPlayerById(playerId);
             if (!player) return null;
 
             const avatar = STOCK_AVATARS.find(a => a.id === player.avatar) || STOCK_AVATARS[0];
+            const globalIndex = selectedPlayerIds.indexOf(playerId);
 
             return (
-              <div key={playerId} className="flex flex-col items-center gap-2">
+              <div
+                key={playerId}
+                className="flex flex-col items-center gap-2"
+                data-player-index={globalIndex}
+                draggable
+                onDragStart={() => handleDragStart(globalIndex)}
+                onDragOver={(e) => handleDragOver(e, globalIndex)}
+                onDragEnd={handleDragEnd}
+                onTouchStart={() => handleTouchStart(globalIndex)}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+              >
                 <button
                   onClick={() => handlePlayerClick(playerId)}
-                  className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl cursor-pointer hover:opacity-80 transition-opacity"
+                  className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl cursor-move hover:opacity-80 transition-opacity"
                   style={{ backgroundColor: avatar.color, borderColor: getTeamBorderColor(1) }}
                 >
                   {avatar.emoji}
@@ -379,33 +466,14 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
               RANDOMIZE NUMBERS
             </button>
 
-            {/* Play Game Button and Tornado Tag */}
-            <div className="flex items-center gap-6">
-              <button
-                onClick={handlePlayGame}
-                disabled={isPlayDisabled}
-                className="px-18 py-6 bg-[#666666] text-white text-3xl font-bold rounded hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                PLAY GAME
-              </button>
-
-              {/* Tornado Tag Toggle (only for tag-team) */}
-              {variant === 'tag-team' && (
-                <button
-                  onClick={() => setTornadoTag(!tornadoTag)}
-                  className="flex items-center gap-3 px-6 py-4 bg-[#666666] text-white text-xl font-bold rounded hover:bg-[#777777] transition-colors"
-                >
-                  <div
-                    className={`w-6 h-6 border-4 border-white flex items-center justify-center ${
-                      tornadoTag ? 'bg-white' : ''
-                    }`}
-                  >
-                    {tornadoTag && <div className="w-3 h-3 bg-[#8b1a1a]"></div>}
-                  </div>
-                  TORNADO TAG
-                </button>
-              )}
-            </div>
+            {/* Play Game Button */}
+            <button
+              onClick={handlePlayGame}
+              disabled={isPlayDisabled}
+              className="px-18 py-6 bg-[#666666] text-white text-3xl font-bold rounded hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              PLAY GAME
+            </button>
           </div>
 
           {/* Bottom spacer */}
@@ -413,8 +481,8 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
         </div>
 
         {/* Available Players - compact at bottom */}
-        <div className="bg-[#333333] rounded-lg p-4">
-          <div className="grid grid-cols-12 gap-3">
+        <div className="bg-[#333333]/50 rounded-lg p-4">
+          <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-3">
             {localPlayers.map((player) => (
               <PlayerAvatar
                 key={player.id}
@@ -436,6 +504,9 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
             </div>
           </div>
         </div>
+
+        {/* Bottom spacer for visual breathing room */}
+        <div className="h-8"></div>
 
         {/* Add Guest Player Modal */}
         <AddGuestPlayerModal

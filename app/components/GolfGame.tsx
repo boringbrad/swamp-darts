@@ -6,6 +6,7 @@ import { GolfVariant } from '../types/game';
 import { StoredPlayer } from '../types/storage';
 import { usePlayerContext } from '../contexts/PlayerContext';
 import { useAppContext } from '../contexts/AppContext';
+import { getCourseRecord } from '../lib/golfStats';
 
 interface GolfGameProps {
   variant: GolfVariant;
@@ -22,14 +23,12 @@ const TOTAL_HOLES = 18;
 export default function GolfGame({ variant }: GolfGameProps) {
   const router = useRouter();
   const { localPlayers } = usePlayerContext();
-  const { selectedPlayers } = useAppContext();
+  const { selectedPlayers, tieBreakerEnabled, golfCourseName, playMode, courseBannerImage, courseBannerOpacity, cameraEnabled, setCameraEnabled } = useAppContext();
   const [players, setPlayers] = useState<StoredPlayer[]>([]);
   const [scores, setScores] = useState<PlayerScore[]>([]);
-  const [currentHole, setCurrentHole] = useState(0); // 0-17 for holes 1-18
+  const [currentHole, setCurrentHole] = useState(0); // 0-17 for holes 1-18, 18+ for tie breaker
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0);
-  const [cameraVisible, setCameraVisible] = useState(false);
-  const [courseName, setCourseName] = useState('SWAMPY MEADOWS');
-  const [courseRecord, setCourseRecord] = useState('PONCHO MAN (51)');
+  const [courseRecord, setCourseRecord] = useState(getCourseRecord(golfCourseName));
   const [dividerPosition, setDividerPosition] = useState(50); // Percentage
   const [isDragging, setIsDragging] = useState(false);
   const [gameComplete, setGameComplete] = useState(false);
@@ -40,6 +39,9 @@ export default function GolfGame({ variant }: GolfGameProps) {
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [inTieBreaker, setInTieBreaker] = useState(false);
+  const [tieBreakerHoles, setTieBreakerHoles] = useState<(number | null)[][]>([]); // [playerIndex][holeIndex]
+  const [tieBreakerRound, setTieBreakerRound] = useState(0); // 0 = first round (holes 19-20), 1 = second round, etc.
 
   // Initialize players and scores from selected players
   useEffect(() => {
@@ -91,7 +93,7 @@ export default function GolfGame({ variant }: GolfGameProps) {
 
   // Camera stream management
   useEffect(() => {
-    if (cameraVisible && !cameraStream) {
+    if (cameraEnabled && !cameraStream) {
       // Start camera
       navigator.mediaDevices.getUserMedia({
         video: {
@@ -109,12 +111,12 @@ export default function GolfGame({ variant }: GolfGameProps) {
         .catch(err => {
           console.error('Error accessing camera:', err);
         });
-    } else if (!cameraVisible && cameraStream) {
+    } else if (!cameraEnabled && cameraStream) {
       // Stop camera
       cameraStream.getTracks().forEach(track => track.stop());
       setCameraStream(null);
     }
-  }, [cameraVisible]);
+  }, [cameraEnabled]);
 
   // Update video source when stream changes
   useEffect(() => {
@@ -175,26 +177,216 @@ export default function GolfGame({ variant }: GolfGameProps) {
     }
   }, [isPanning, panStart]);
 
-  const handleScoreInput = (score: number) => {
-    const newScores = [...scores];
-    newScores[currentPlayerIndex].holes[currentHole] = score;
-    setScores(newScores);
+  // Check if there's a tie for first place
+  const checkForTie = (): number[] | null => {
+    const totals = scores.map((s, idx) => ({
+      playerIndex: idx,
+      total: calculateTotal(s.holes, 0, 18)
+    }));
 
-    if (currentPlayerIndex < players.length - 1) {
-      setCurrentPlayerIndex(currentPlayerIndex + 1);
-    } else {
-      if (currentHole < TOTAL_HOLES - 1) {
-        setCurrentHole(currentHole + 1);
-        setCurrentPlayerIndex(0);
+    // Sort by total score (ascending - lower is better in golf)
+    totals.sort((a, b) => a.total - b.total);
+
+    // Check if top score is tied
+    const topScore = totals[0].total;
+    const tiedPlayers = totals.filter(t => t.total === topScore).map(t => t.playerIndex);
+
+    return tiedPlayers.length > 1 ? tiedPlayers : null;
+  };
+
+  // Check if tie breaker has a winner
+  const checkTieBreakerWinner = (tiedPlayers: number[]): number | null => {
+    if (tieBreakerHoles.length === 0) return null;
+
+    // Calculate tie breaker totals for current round
+    const roundStart = tieBreakerRound * 2;
+    const roundEnd = roundStart + 2;
+
+    const tieBreakerTotals = tiedPlayers.map(playerIdx => ({
+      playerIndex: playerIdx,
+      total: tieBreakerHoles[playerIdx]
+        ? tieBreakerHoles[playerIdx].slice(roundStart, roundEnd).reduce((sum, score) => sum + (score || 0), 0)
+        : 0
+    }));
+
+    // Sort by total (ascending)
+    tieBreakerTotals.sort((a, b) => a.total - b.total);
+
+    // Check if we have a unique winner
+    const topScore = tieBreakerTotals[0].total;
+    const stillTied = tieBreakerTotals.filter(t => t.total === topScore);
+
+    return stillTied.length === 1 ? tieBreakerTotals[0].playerIndex : null;
+  };
+
+  const handleScoreInput = (score: number) => {
+    if (inTieBreaker) {
+      // Handle tie breaker scoring
+      const newTieBreakerHoles = [...tieBreakerHoles];
+
+      // Calculate absolute index in the tie breaker array based on round and hole
+      const holeInRound = (currentHole - TOTAL_HOLES) % 2; // 0 for hole 19, 1 for hole 20
+      const absoluteTieBreakerIndex = tieBreakerRound * 2 + holeInRound;
+
+      if (!newTieBreakerHoles[currentPlayerIndex]) {
+        newTieBreakerHoles[currentPlayerIndex] = [];
+      }
+      newTieBreakerHoles[currentPlayerIndex][absoluteTieBreakerIndex] = score;
+      setTieBreakerHoles(newTieBreakerHoles);
+
+      // Get tied players from the main game
+      const tiedPlayers = checkForTie()!;
+      const currentTiedIndex = tiedPlayers.indexOf(currentPlayerIndex);
+
+      // Determine next player based on alternating order
+      // Hole 19 (holeInRound 0): normal order
+      // Hole 20 (holeInRound 1): reverse order
+      if (holeInRound === 0) {
+        // Hole 19: normal order
+        if (currentTiedIndex < tiedPlayers.length - 1) {
+          setCurrentPlayerIndex(tiedPlayers[currentTiedIndex + 1]);
+        } else {
+          // Move to hole 20
+          setCurrentHole(currentHole + 1);
+          setCurrentPlayerIndex(tiedPlayers[tiedPlayers.length - 1]); // Start from last player
+        }
       } else {
-        handleGameComplete();
+        // Hole 20: reverse order
+        if (currentTiedIndex > 0) {
+          setCurrentPlayerIndex(tiedPlayers[currentTiedIndex - 1]);
+        } else {
+          // Round complete, check for winner
+          const winner = checkTieBreakerWinner(tiedPlayers);
+          if (winner !== null) {
+            // We have a winner!
+            handleGameComplete();
+          } else {
+            // Still tied, continue to next round
+            setTieBreakerRound(prev => prev + 1);
+            setCurrentHole(TOTAL_HOLES); // Reset to hole 19 (display-wise)
+            setCurrentPlayerIndex(tiedPlayers[0]); // Start from first tied player
+          }
+        }
+      }
+    } else {
+      // Handle regular game scoring
+      const newScores = [...scores];
+      newScores[currentPlayerIndex].holes[currentHole] = score;
+      setScores(newScores);
+
+      if (currentPlayerIndex < players.length - 1) {
+        setCurrentPlayerIndex(currentPlayerIndex + 1);
+      } else {
+        if (currentHole < TOTAL_HOLES - 1) {
+          setCurrentHole(currentHole + 1);
+          setCurrentPlayerIndex(0);
+        } else {
+          // Game complete, check for tie
+          if (tieBreakerEnabled) {
+            const tiedPlayers = checkForTie();
+            if (tiedPlayers && tiedPlayers.length > 1) {
+              // Start tie breaker
+              setInTieBreaker(true);
+              setTieBreakerHoles(players.map(() => []));
+              setCurrentHole(TOTAL_HOLES); // Hole 19
+              setCurrentPlayerIndex(tiedPlayers[0]);
+              setTieBreakerRound(0);
+              return;
+            }
+          }
+          handleGameComplete();
+        }
       }
     }
   };
 
   const handleUndo = () => {
-    // If game is complete, we need to undo the last player's last score
-    if (gameComplete) {
+    if (inTieBreaker) {
+      // Handle undo in tie breaker mode
+      const tiedPlayers = checkForTie()!;
+      const currentTiedIndex = tiedPlayers.indexOf(currentPlayerIndex);
+      const holeInRound = (currentHole - TOTAL_HOLES) % 2;
+      const absoluteTieBreakerIndex = tieBreakerRound * 2 + holeInRound;
+
+      // Search backwards through ALL tie breaker holes to find the last entered score
+      let lastScoredPlayerIdx = -1;
+      let lastScoredHoleIdx = -1;
+
+      // Start from current position and work backwards
+      if (holeInRound === 1) {
+        // Currently on hole 20, check players after current (they play in reverse order on hole 20)
+        for (let i = currentTiedIndex + 1; i < tiedPlayers.length; i++) {
+          const playerIdx = tiedPlayers[i];
+          if (tieBreakerHoles[playerIdx]?.[absoluteTieBreakerIndex] != null) {
+            lastScoredPlayerIdx = i;
+            lastScoredHoleIdx = absoluteTieBreakerIndex;
+            break;
+          }
+        }
+        // If not found on hole 20, check all players on hole 19 (previous hole)
+        if (lastScoredPlayerIdx === -1) {
+          for (let i = tiedPlayers.length - 1; i >= 0; i--) {
+            const playerIdx = tiedPlayers[i];
+            if (tieBreakerHoles[playerIdx]?.[absoluteTieBreakerIndex - 1] != null) {
+              lastScoredPlayerIdx = i;
+              lastScoredHoleIdx = absoluteTieBreakerIndex - 1;
+              break;
+            }
+          }
+        }
+      } else {
+        // Currently on hole 19, check previous players on same hole
+        for (let i = currentTiedIndex - 1; i >= 0; i--) {
+          const playerIdx = tiedPlayers[i];
+          if (tieBreakerHoles[playerIdx]?.[absoluteTieBreakerIndex] != null) {
+            lastScoredPlayerIdx = i;
+            lastScoredHoleIdx = absoluteTieBreakerIndex;
+            break;
+          }
+        }
+        // If not found and we're in a later round, check previous round
+        if (lastScoredPlayerIdx === -1 && tieBreakerRound > 0) {
+          for (let i = 0; i < tiedPlayers.length; i++) {
+            const playerIdx = tiedPlayers[i];
+            if (tieBreakerHoles[playerIdx]?.[absoluteTieBreakerIndex - 1] != null) {
+              lastScoredPlayerIdx = i;
+              lastScoredHoleIdx = absoluteTieBreakerIndex - 1;
+              break;
+            }
+          }
+        }
+      }
+
+      // If no score found anywhere in tie breaker, exit to regular game
+      if (lastScoredPlayerIdx === -1) {
+        // Clear the last player's score on hole 18
+        const newScores = [...scores];
+        newScores[players.length - 1].holes[TOTAL_HOLES - 1] = null;
+        setScores(newScores);
+
+        setInTieBreaker(false);
+        setTieBreakerHoles([]);
+        setTieBreakerRound(0);
+        setCurrentHole(TOTAL_HOLES - 1);
+        setCurrentPlayerIndex(players.length - 1);
+        return;
+      }
+
+      // Undo the last score
+      const newTieBreakerHoles = [...tieBreakerHoles];
+      newTieBreakerHoles[tiedPlayers[lastScoredPlayerIdx]][lastScoredHoleIdx] = null;
+      setTieBreakerHoles(newTieBreakerHoles);
+
+      // Set position to where that score was
+      const wasOnHole20 = lastScoredHoleIdx % 2 === 1;
+      if (wasOnHole20) {
+        setCurrentHole(TOTAL_HOLES + 1); // Hole 20
+      } else {
+        setCurrentHole(TOTAL_HOLES); // Hole 19
+      }
+      setCurrentPlayerIndex(tiedPlayers[lastScoredPlayerIdx]);
+    } else if (gameComplete) {
+      // If game is complete, we need to undo the last player's last score
       const newScores = [...scores];
       newScores[players.length - 1].holes[TOTAL_HOLES - 1] = null;
       setScores(newScores);
@@ -223,17 +415,49 @@ export default function GolfGame({ variant }: GolfGameProps) {
     // Generate unique match ID
     const matchId = `GOLF_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
+    // Determine winner
+    const totals = scores.map((s, idx) => ({
+      playerIndex: idx,
+      total: calculateTotal(s.holes, 0, 18) // Only count first 18 holes
+    }));
+    totals.sort((a, b) => a.total - b.total);
+
+    let winnerId = players[totals[0].playerIndex].id;
+    let wonByTieBreaker = false;
+
+    // Check if it was won by tie breaker
+    if (inTieBreaker) {
+      const tiedPlayers = checkForTie();
+      if (tiedPlayers && tiedPlayers.length > 1) {
+        const winner = checkTieBreakerWinner(tiedPlayers);
+        if (winner !== null) {
+          winnerId = players[winner].id;
+          wonByTieBreaker = true;
+        }
+      }
+    }
+
+    // Calculate variant-specific points
+    const matchPlayPoints = variant === 'match-play' ? calculateMatchPlayPoints(0, 18) : undefined;
+    const skinsPoints = variant === 'skins' ? calculateSkinsPoints(0, 18) : undefined;
+
     // Prepare match data
     const matchData = {
       matchId,
       variant,
-      courseName,
+      courseName: golfCourseName,
+      playMode, // Add play mode to match data
       date: new Date().toISOString(),
+      winnerId,
+      wonByTieBreaker,
       players: players.map((player, index) => ({
         playerId: player.id,
         playerName: player.name,
-        holeScores: scores[index].holes,
-        totalScore: calculateTotal(scores[index].holes, 0, 18),
+        holeScores: scores[index].holes, // Only first 18 holes (tie breaker excluded)
+        totalScore: calculateTotal(scores[index].holes, 0, 18), // Only count first 18 holes
+        tieBreakerScores: inTieBreaker ? tieBreakerHoles[index] : undefined,
+        matchPlayPoints: matchPlayPoints ? matchPlayPoints[index] : undefined,
+        skinsPoints: skinsPoints ? skinsPoints[index] : undefined,
       })),
     };
 
@@ -286,10 +510,84 @@ export default function GolfGame({ variant }: GolfGameProps) {
     return `${total} (${sign}${diff})`;
   };
 
+  // Match Play: Calculate points for each player (1 point for best score on each hole, 0 for tie)
+  const calculateMatchPlayPoints = (startHole: number, endHole: number): number[] => {
+    const points = Array(players.length).fill(0);
+
+    for (let hole = startHole; hole < endHole; hole++) {
+      const holeScores = scores.map(s => s.holes[hole]);
+
+      // Only award points if ALL players have completed the hole
+      if (holeScores.some(s => s === null)) continue;
+
+      const bestScore = Math.min(...(holeScores as number[]));
+      const winnersCount = holeScores.filter(s => s === bestScore).length;
+
+      // Only award point if there's a clear winner (no tie)
+      if (winnersCount === 1) {
+        holeScores.forEach((score, idx) => {
+          if (score === bestScore) {
+            points[idx]++;
+          }
+        });
+      }
+    }
+
+    return points;
+  };
+
+  // Skins: Calculate points with carryover for ties
+  const calculateSkinsPoints = (startHole: number, endHole: number): number[] => {
+    const points = Array(players.length).fill(0);
+    let carryover = 0;
+
+    for (let hole = startHole; hole < endHole; hole++) {
+      const holeScores = scores.map(s => s.holes[hole]);
+
+      // Only award points if ALL players have completed the hole
+      if (holeScores.some(s => s === null)) continue;
+
+      const bestScore = Math.min(...(holeScores as number[]));
+      const winnersCount = holeScores.filter(s => s === bestScore).length;
+
+      if (winnersCount === 1) {
+        // Clear winner - award current point + carryover
+        holeScores.forEach((score, idx) => {
+          if (score === bestScore) {
+            points[idx] += 1 + carryover;
+            carryover = 0;
+          }
+        });
+      } else {
+        // Tie - add to carryover
+        carryover++;
+      }
+    }
+
+    return points;
+  };
+
+  // Check if a player won a specific hole (for green highlighting)
+  const isHoleWinner = (playerIndex: number, hole: number): boolean => {
+    const holeScores = scores.map(s => s.holes[hole]);
+    const playerScore = holeScores[playerIndex];
+
+    if (playerScore === null) return false;
+
+    // Only award winner status if ALL players have completed the hole
+    if (holeScores.some(s => s === null)) return false;
+
+    const bestScore = Math.min(...(holeScores as number[]));
+    const winnersCount = holeScores.filter(s => s === bestScore).length;
+
+    // Winner if has best score and no tie
+    return playerScore === bestScore && winnersCount === 1;
+  };
+
   return (
     <div ref={containerRef} className="flex h-screen bg-[#000000] select-none">
       {/* Left Side - Camera Feed */}
-      {cameraVisible && (
+      {cameraEnabled && (
         <div className="bg-[#000000] flex items-center justify-center relative overflow-hidden" style={{ width: `${dividerPosition}%` }}>
           {/* Camera video container for pan/zoom */}
           <div
@@ -309,16 +607,6 @@ export default function GolfGame({ variant }: GolfGameProps) {
                 transformOrigin: 'center center'
               }}
             />
-          </div>
-
-          {/* Camera controls - Hide button at bottom left */}
-          <div className="absolute bottom-4 left-4 z-10">
-            <button
-              onClick={() => setCameraVisible(false)}
-              className="bg-[#2d5016] text-white px-3 py-1 text-sm rounded hover:bg-[#3d6026] transition-colors"
-            >
-              Hide Camera
-            </button>
           </div>
 
           {/* Zoom controls */}
@@ -356,31 +644,26 @@ export default function GolfGame({ variant }: GolfGameProps) {
       )}
 
       {/* Resizable Divider */}
-      {cameraVisible && (
+      {cameraEnabled && (
         <div onMouseDown={handleMouseDown} className="w-1 bg-[#2d5016] hover:bg-[#3d6026] cursor-col-resize relative">
           <div className="absolute inset-y-0 -left-1 -right-1"></div>
         </div>
       )}
 
       {/* Right Side - Scorecard */}
-      <div className="flex-1 bg-[#1a1a1a] flex flex-col overflow-hidden relative" style={{ width: cameraVisible ? `${100 - dividerPosition}%` : '100%' }}>
-        {!cameraVisible && (
-          <button
-            onClick={() => setCameraVisible(true)}
-            className="absolute top-24 left-4 bg-[#2d5016] text-white px-4 py-2 text-sm rounded hover:bg-[#3d6026] transition-colors z-20"
-          >
-            Show Camera
-          </button>
-        )}
+      <div className="flex-1 bg-[#1a1a1a] flex flex-col overflow-hidden relative" style={{ width: cameraEnabled ? `${100 - dividerPosition}%` : '100%' }}>
 
-        {/* Course Header - compact */}
-        <div className="bg-[#5a7a4a] text-center px-4 relative flex-shrink-0 flex flex-col items-center justify-center py-4">
+        {/* Course Header - fills available space with max limit */}
+        <div className="bg-[#5a7a4a] text-center px-4 relative flex-grow flex flex-col items-center justify-center py-4 min-h-[80px] max-h-[40vh]">
           {/* Background image with opacity */}
           <div
-            className="absolute inset-0 bg-cover bg-center opacity-30"
-            style={{ backgroundImage: 'url(https://images.unsplash.com/photo-1587174486073-ae5e5cff23aa?w=800)' }}
+            className="absolute inset-0 bg-cover bg-center"
+            style={{
+              backgroundImage: `url(${courseBannerImage || 'https://images.unsplash.com/photo-1587174486073-ae5e5cff23aa?w=800'})`,
+              opacity: courseBannerOpacity / 100
+            }}
           ></div>
-          <h1 className="text-white font-bold tracking-wider relative z-10" style={{ fontSize: 'clamp(1.5rem, 4vw, 4rem)' }}>{courseName}</h1>
+          <h1 className="text-white font-bold tracking-wider relative z-10" style={{ fontSize: 'clamp(1.5rem, 4vw, 4rem)' }}>{golfCourseName}</h1>
           <p className="text-white mt-1 opacity-90 relative z-10" style={{ fontSize: 'clamp(0.75rem, 1.5vw, 1.5rem)' }}>COURSE RECORD: {courseRecord}</p>
         </div>
 
@@ -416,13 +699,32 @@ export default function GolfGame({ variant }: GolfGameProps) {
                     {hole}
                   </th>
                 ))}
-                <th className="border border-[#1a1a1a] p-[0.1vw] text-white text-center font-bold" style={{ fontSize: 'clamp(0.5rem, 1.3vw, 1.8rem)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>FRONT 9</th>
-                <th className="border border-[#1a1a1a] p-[0.1vw] text-white text-center font-bold" style={{ fontSize: 'clamp(0.5rem, 1.3vw, 1.8rem)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>OVERALL</th>
+                <th className="border border-[#1a1a1a] p-[0.1vw] text-white text-center font-bold" style={{ fontSize: 'clamp(0.5rem, 1.3vw, 1.8rem)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {variant === 'match-play' || variant === 'skins' ? 'FRONT 9 PTS' : 'FRONT 9'}
+                </th>
+                <th className="border border-[#1a1a1a] p-[0.1vw] text-white text-center font-bold" style={{ fontSize: 'clamp(0.5rem, 1.3vw, 1.8rem)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {variant === 'match-play' || variant === 'skins' ? 'TOTAL PTS' : 'OVERALL'}
+                </th>
               </tr>
             </thead>
             <tbody>
               {players.map((player, playerIndex) => {
                 const playerScores = scores[playerIndex]?.holes || [];
+
+                // Calculate points for Match Play and Skins
+                const front9Points = variant === 'match-play'
+                  ? calculateMatchPlayPoints(0, 9)[playerIndex]
+                  : variant === 'skins'
+                  ? calculateSkinsPoints(0, 9)[playerIndex]
+                  : 0;
+
+                const totalPoints = variant === 'match-play'
+                  ? calculateMatchPlayPoints(0, 18)[playerIndex]
+                  : variant === 'skins'
+                  ? calculateSkinsPoints(0, 18)[playerIndex]
+                  : 0;
+
+                // Calculate stroke play totals
                 const front9Total = calculateTotal(playerScores, 0, 9);
                 const front9HolesPlayed = countPlayedHoles(playerScores, 0, 9);
                 const front9Diff = calculateParDiff(front9Total, front9HolesPlayed);
@@ -440,22 +742,37 @@ export default function GolfGame({ variant }: GolfGameProps) {
                     <td className="border border-[#1a1a1a] p-[0.1vw] text-white font-bold" style={{ height: 'clamp(2rem, 4vw, 6rem)' }}>
                       <span style={{ fontSize: 'clamp(0.8rem, 1.5vw, 2.5rem)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>{player.name.toUpperCase()}</span>
                     </td>
-                    {playerScores.slice(0, 9).map((score, holeIndex) => (
-                      <td key={holeIndex} className="border border-[#1a1a1a] p-[0.1vw] text-white text-center" style={{ fontSize: 'clamp(1.1rem, 2.4vw, 3.9rem)', height: 'clamp(2rem, 4vw, 6rem)' }}>
-                        {score !== null ? score : ''}
-                      </td>
-                    ))}
+                    {playerScores.slice(0, 9).map((score, holeIndex) => {
+                      const isWinner = (variant === 'match-play' || variant === 'skins') && isHoleWinner(playerIndex, holeIndex);
+                      return (
+                        <td
+                          key={holeIndex}
+                          className="border border-[#1a1a1a] p-[0.1vw] text-center"
+                          style={{
+                            fontSize: 'clamp(1.1rem, 2.4vw, 3.9rem)',
+                            height: 'clamp(2rem, 4vw, 6rem)',
+                            color: isWinner ? '#90EE90' : '#FFFFFF'
+                          }}
+                        >
+                          {score !== null ? score : ''}
+                        </td>
+                      );
+                    })}
                     <td
                       className="border border-[#1a1a1a] p-[0.1vw] text-center font-bold"
-                      style={{ color: front9Total > 0 ? getScoreColor(front9Diff) : '#FFFFFF', fontSize: 'clamp(0.8rem, 1.6vw, 2.8rem)', height: 'clamp(2rem, 4vw, 6rem)' }}
+                      style={{ color: variant === 'stroke-play' && front9Total > 0 ? getScoreColor(front9Diff) : '#FFFFFF', fontSize: 'clamp(0.8rem, 1.6vw, 2.8rem)', height: 'clamp(2rem, 4vw, 6rem)' }}
                     >
-                      {front9HolesPlayed > 0 ? formatScore(front9Total, front9HolesPlayed) : '-'}
+                      {variant === 'match-play' || variant === 'skins'
+                        ? front9Points
+                        : (front9HolesPlayed > 0 ? formatScore(front9Total, front9HolesPlayed) : '-')}
                     </td>
                     <td
                       className="border border-[#1a1a1a] p-[0.1vw] text-center font-bold"
-                      style={{ color: overallTotal > 0 ? getScoreColor(overallDiff) : '#FFFFFF', fontSize: 'clamp(0.8rem, 1.6vw, 2.8rem)', height: 'clamp(2rem, 4vw, 6rem)' }}
+                      style={{ color: variant === 'stroke-play' && overallTotal > 0 ? getScoreColor(overallDiff) : '#FFFFFF', fontSize: 'clamp(0.8rem, 1.6vw, 2.8rem)', height: 'clamp(2rem, 4vw, 6rem)' }}
                     >
-                      {overallHolesPlayed > 0 ? formatScore(overallTotal, overallHolesPlayed) : '-'}
+                      {variant === 'match-play' || variant === 'skins'
+                        ? totalPoints
+                        : (overallHolesPlayed > 0 ? formatScore(overallTotal, overallHolesPlayed) : '-')}
                     </td>
                   </tr>
                 );
@@ -493,13 +810,32 @@ export default function GolfGame({ variant }: GolfGameProps) {
                     {hole}
                   </th>
                 ))}
-                <th className="border border-[#1a1a1a] p-[0.1vw] text-white text-center font-bold" style={{ fontSize: 'clamp(0.5rem, 1.3vw, 1.8rem)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>BACK 9</th>
-                <th className="border border-[#1a1a1a] p-[0.1vw] text-white text-center font-bold" style={{ fontSize: 'clamp(0.5rem, 1.3vw, 1.8rem)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>OVERALL</th>
+                <th className="border border-[#1a1a1a] p-[0.1vw] text-white text-center font-bold" style={{ fontSize: 'clamp(0.5rem, 1.3vw, 1.8rem)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {variant === 'match-play' || variant === 'skins' ? 'BACK 9 PTS' : 'BACK 9'}
+                </th>
+                <th className="border border-[#1a1a1a] p-[0.1vw] text-white text-center font-bold" style={{ fontSize: 'clamp(0.5rem, 1.3vw, 1.8rem)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {variant === 'match-play' || variant === 'skins' ? 'TOTAL PTS' : 'OVERALL'}
+                </th>
               </tr>
             </thead>
             <tbody>
               {players.map((player, playerIndex) => {
                 const playerScores = scores[playerIndex]?.holes || [];
+
+                // Calculate points for Match Play and Skins
+                const back9Points = variant === 'match-play'
+                  ? calculateMatchPlayPoints(9, 18)[playerIndex]
+                  : variant === 'skins'
+                  ? calculateSkinsPoints(9, 18)[playerIndex]
+                  : 0;
+
+                const totalPoints = variant === 'match-play'
+                  ? calculateMatchPlayPoints(0, 18)[playerIndex]
+                  : variant === 'skins'
+                  ? calculateSkinsPoints(0, 18)[playerIndex]
+                  : 0;
+
+                // Calculate stroke play totals
                 const back9Total = calculateTotal(playerScores, 9, 18);
                 const back9HolesPlayed = countPlayedHoles(playerScores, 9, 18);
                 const back9Diff = calculateParDiff(back9Total, back9HolesPlayed);
@@ -517,32 +853,118 @@ export default function GolfGame({ variant }: GolfGameProps) {
                     <td className="border border-[#1a1a1a] p-[0.1vw] text-white font-bold" style={{ height: 'clamp(2rem, 4vw, 6rem)' }}>
                       <span style={{ fontSize: 'clamp(0.8rem, 1.5vw, 2.5rem)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>{player.name.toUpperCase()}</span>
                     </td>
-                    {playerScores.slice(9, 18).map((score, holeIndex) => (
-                      <td key={holeIndex} className="border border-[#1a1a1a] p-[0.1vw] text-white text-center" style={{ fontSize: 'clamp(1.1rem, 2.4vw, 3.9rem)', height: 'clamp(2rem, 4vw, 6rem)' }}>
-                        {score !== null ? score : ''}
-                      </td>
-                    ))}
+                    {playerScores.slice(9, 18).map((score, holeIndex) => {
+                      const actualHoleIndex = holeIndex + 9;
+                      const isWinner = (variant === 'match-play' || variant === 'skins') && isHoleWinner(playerIndex, actualHoleIndex);
+                      return (
+                        <td
+                          key={holeIndex}
+                          className="border border-[#1a1a1a] p-[0.1vw] text-center"
+                          style={{
+                            fontSize: 'clamp(1.1rem, 2.4vw, 3.9rem)',
+                            height: 'clamp(2rem, 4vw, 6rem)',
+                            color: isWinner ? '#90EE90' : '#FFFFFF'
+                          }}
+                        >
+                          {score !== null ? score : ''}
+                        </td>
+                      );
+                    })}
                     <td
                       className="border border-[#1a1a1a] p-[0.1vw] text-center font-bold"
-                      style={{ color: back9Total > 0 ? getScoreColor(back9Diff) : '#FFFFFF', fontSize: 'clamp(0.8rem, 1.6vw, 2.8rem)', height: 'clamp(2rem, 4vw, 6rem)' }}
+                      style={{ color: variant === 'stroke-play' && back9Total > 0 ? getScoreColor(back9Diff) : '#FFFFFF', fontSize: 'clamp(0.8rem, 1.6vw, 2.8rem)', height: 'clamp(2rem, 4vw, 6rem)' }}
                     >
-                      {back9HolesPlayed > 0 ? formatScore(back9Total, back9HolesPlayed) : '-'}
+                      {variant === 'match-play' || variant === 'skins'
+                        ? back9Points
+                        : (back9HolesPlayed > 0 ? formatScore(back9Total, back9HolesPlayed) : '-')}
                     </td>
                     <td
                       className="border border-[#1a1a1a] p-[0.1vw] text-center font-bold"
-                      style={{ color: overallTotal > 0 ? getScoreColor(overallDiff) : '#FFFFFF', fontSize: 'clamp(0.8rem, 1.6vw, 2.8rem)', height: 'clamp(2rem, 4vw, 6rem)' }}
+                      style={{ color: variant === 'stroke-play' && overallTotal > 0 ? getScoreColor(overallDiff) : '#FFFFFF', fontSize: 'clamp(0.8rem, 1.6vw, 2.8rem)', height: 'clamp(2rem, 4vw, 6rem)' }}
                     >
-                      {currentHole >= 9 && overallHolesPlayed > 0 ? formatScore(overallTotal, overallHolesPlayed) : ''}
+                      {variant === 'match-play' || variant === 'skins'
+                        ? (currentHole >= 9 ? totalPoints : '')
+                        : (currentHole >= 9 && overallHolesPlayed > 0 ? formatScore(overallTotal, overallHolesPlayed) : '')}
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+
+          {/* Tie Breaker Table */}
+          {inTieBreaker && (
+            <table className="w-full border-collapse mt-4 table-fixed">
+              <colgroup>
+                <col style={{ width: '15%' }} />
+                <col style={{ width: '42.5%' }} />
+                <col style={{ width: '42.5%' }} />
+              </colgroup>
+              <thead>
+                <tr className="bg-[#8B0000]">
+                  <th className="border border-[#1a1a1a] p-[0.1vw] text-white text-left font-bold" style={{ fontSize: 'clamp(0.6rem, 1.5vw, 2rem)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>PLAYER</th>
+                  <th
+                    className={`border border-[#1a1a1a] p-[0.1vw] text-white text-center font-bold ${
+                      currentHole === TOTAL_HOLES ? 'bg-[#A52A2A]' : ''
+                    }`}
+                    style={{ fontSize: 'clamp(1.1rem, 2.4vw, 3.9rem)', height: 'clamp(2rem, 4vw, 6rem)' }}
+                  >
+                    19
+                  </th>
+                  <th
+                    className={`border border-[#1a1a1a] p-[0.1vw] text-white text-center font-bold ${
+                      currentHole === TOTAL_HOLES + 1 ? 'bg-[#A52A2A]' : ''
+                    }`}
+                    style={{ fontSize: 'clamp(1.1rem, 2.4vw, 3.9rem)', height: 'clamp(2rem, 4vw, 6rem)' }}
+                  >
+                    20
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {players.map((player, playerIndex) => {
+                  const tiedPlayers = checkForTie();
+                  const isTiedPlayer = tiedPlayers?.includes(playerIndex);
+
+                  if (!isTiedPlayer) return null; // Only show tied players
+
+                  // Get all tie breaker scores for this player
+                  const playerTieBreakerScores = tieBreakerHoles[playerIndex] || [];
+
+                  // Always show the current round's holes (last 2 holes if we have them, or in progress)
+                  const currentRoundStart = tieBreakerRound * 2;
+                  const hole19Score = playerTieBreakerScores[currentRoundStart] ?? null;
+                  const hole20Score = playerTieBreakerScores[currentRoundStart + 1] ?? null;
+
+                  return (
+                    <tr
+                      key={player.id}
+                      className={`${
+                        currentPlayerIndex === playerIndex ? 'bg-[#3d3d00]' : 'bg-[#2a2a2a]'
+                      }`}
+                    >
+                      <td className="border border-[#1a1a1a] p-[0.1vw] text-white font-bold" style={{ height: 'clamp(2rem, 4vw, 6rem)' }}>
+                        <span style={{ fontSize: 'clamp(0.8rem, 1.5vw, 2.5rem)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>{player.name.toUpperCase()}</span>
+                      </td>
+                      <td className="border border-[#1a1a1a] p-[0.1vw] text-white text-center" style={{ fontSize: 'clamp(1.1rem, 2.4vw, 3.9rem)', height: 'clamp(2rem, 4vw, 6rem)' }}>
+                        {hole19Score !== null ? hole19Score : ''}
+                      </td>
+                      <td className="border border-[#1a1a1a] p-[0.1vw] text-white text-center" style={{ fontSize: 'clamp(1.1rem, 2.4vw, 3.9rem)', height: 'clamp(2rem, 4vw, 6rem)' }}>
+                        {hole20Score !== null ? hole20Score : ''}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
 
+        {/* Spacer above buttons */}
+        <div className="h-4 flex-shrink-0"></div>
+
         {/* Score Input Buttons - spacing from scorecard */}
-        <div className="px-6 pb-4 pt-4 flex-shrink-0">
+        <div className="px-6 pb-0 pt-0 flex-shrink-0">
           <div className="grid grid-cols-7 gap-4">
             {[1, 2, 3, 4, 5, 6].map(score => (
               <button
@@ -581,6 +1003,9 @@ export default function GolfGame({ variant }: GolfGameProps) {
             </div>
           )}
         </div>
+
+        {/* Spacer below buttons */}
+        <div className="h-4 flex-shrink-0"></div>
       </div>
     </div>
   );

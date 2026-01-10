@@ -21,7 +21,7 @@ export interface CricketRules {
 }
 
 // Cricket scoring
-export type CricketNumber = 15 | 16 | 17 | 18 | 19 | 20 | 'B'; // B for bullseye
+export type CricketNumber = 15 | 16 | 17 | 18 | 19 | 20 | 'B' | 'T' | 'D'; // B for bullseye, T for triples, D for doubles
 export type CricketMarks = 0 | 1 | 2 | 3; // Number of marks on a number
 
 export interface CricketPlayerScore {
@@ -130,5 +130,6 @@ export interface UserStats {
     gamesPlayed: number;
     gamesWon: number;
     averageScore?: number;
+    tieBreakerWins?: number;
   };
 }

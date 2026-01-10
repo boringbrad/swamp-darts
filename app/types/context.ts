@@ -35,6 +35,24 @@ export interface AppContextValue {
   // Play Mode
   playMode: PlayMode;
   setPlayMode: (mode: PlayMode) => void;
+
+  // Tie Breaker
+  tieBreakerEnabled: boolean;
+  setTieBreakerEnabled: (enabled: boolean) => void;
+
+  // Golf Course Name
+  golfCourseName: string;
+  setGolfCourseName: (name: string) => void;
+
+  // Course Banner Settings
+  courseBannerImage: string;
+  setCourseBannerImage: (imageUrl: string) => void;
+  courseBannerOpacity: number;
+  setCourseBannerOpacity: (opacity: number) => void;
+
+  // Camera Settings
+  cameraEnabled: boolean;
+  setCameraEnabled: (enabled: boolean) => void;
 }
 
 export interface PlayerContextValue {
