@@ -114,7 +114,7 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
       .map(id => localPlayers.find(p => p.id === id))
       .filter(Boolean) as StoredPlayer[];
 
-    setGlobalSelectedPlayers('golf', variant, { players });
+    setGlobalSelectedPlayers('golf', variant, players);
 
     // Navigate to game
     router.push(`/golf/${variant}/game`);
