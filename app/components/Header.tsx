@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAppContext } from '../contexts/AppContext';
 import SettingsModal from './SettingsModal';
+import GolfInfoModal from './GolfInfoModal';
 
 interface HeaderProps {
   title?: string;
@@ -16,6 +17,10 @@ export default function Header({ title, showBackButton, onBack }: HeaderProps) {
   const pathname = usePathname();
   const { userProfile, popRoute } = useAppContext();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isInfoOpen, setIsInfoOpen] = useState(false);
+
+  // Check if we're on a golf game page
+  const isGolfPage = pathname.includes('/golf/');
 
   // Determine if we should show the back button
   const shouldShowBack = showBackButton !== undefined ? showBackButton : pathname !== '/';
@@ -71,8 +76,12 @@ export default function Header({ title, showBackButton, onBack }: HeaderProps) {
 
         {/* Info Icon */}
         <button
-          className="w-6 h-6 rounded-full border-2 border-white flex items-center justify-center hover:opacity-80 transition-opacity"
+          onClick={() => isGolfPage && setIsInfoOpen(true)}
+          className={`w-6 h-6 rounded-full border-2 border-white flex items-center justify-center transition-opacity ${
+            isGolfPage ? 'hover:opacity-80 cursor-pointer' : 'opacity-30 cursor-not-allowed'
+          }`}
           aria-label="Information"
+          disabled={!isGolfPage}
         >
           <span className="text-white text-sm font-bold">i</span>
         </button>
@@ -92,6 +101,9 @@ export default function Header({ title, showBackButton, onBack }: HeaderProps) {
 
       {/* Settings Modal */}
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+
+      {/* Golf Info Modal */}
+      {isGolfPage && <GolfInfoModal isOpen={isInfoOpen} onClose={() => setIsInfoOpen(false)} />}
     </header>
   );
 }

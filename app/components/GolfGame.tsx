@@ -29,7 +29,14 @@ export default function GolfGame({ variant }: GolfGameProps) {
   const [currentHole, setCurrentHole] = useState(0); // 0-17 for holes 1-18, 18+ for tie breaker
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0);
   const [courseRecord, setCourseRecord] = useState(getCourseRecord(golfCourseName));
-  const [dividerPosition, setDividerPosition] = useState(50); // Percentage
+  const [dividerPosition, setDividerPosition] = useState(() => {
+    // Load saved divider position from localStorage
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('golfCameraDividerPosition');
+      return saved ? parseFloat(saved) : 50;
+    }
+    return 50;
+  }); // Percentage
   const [isDragging, setIsDragging] = useState(false);
   const [gameComplete, setGameComplete] = useState(false);
   const [cameraZoom, setCameraZoom] = useState(1); // 1 = 100%, 2 = 200%, etc.
@@ -45,7 +52,7 @@ export default function GolfGame({ variant }: GolfGameProps) {
 
   // Initialize players and scores from selected players
   useEffect(() => {
-    const golfPlayers = selectedPlayers.golf['stroke-play'] || [];
+    const golfPlayers = selectedPlayers.golf[variant] || [];
 
     if (golfPlayers.length > 0) {
       // Convert Player[] to StoredPlayer[] by looking up in localPlayers
@@ -75,7 +82,7 @@ export default function GolfGame({ variant }: GolfGameProps) {
         holes: Array(TOTAL_HOLES).fill(null),
       })));
     }
-  }, [selectedPlayers, localPlayers]);
+  }, [selectedPlayers, localPlayers, variant]);
 
   // Handle divider dragging
   const handleMouseDown = () => setIsDragging(true);
@@ -89,16 +96,40 @@ export default function GolfGame({ variant }: GolfGameProps) {
     }
   };
 
+  // Touch support for divider
+  const handleTouchStart = () => setIsDragging(true);
+  const handleTouchEnd = () => setIsDragging(false);
+
+  const handleTouchMove = (e: TouchEvent) => {
+    if (isDragging && containerRef.current && e.touches.length > 0) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const touch = e.touches[0];
+      const newPosition = ((touch.clientX - rect.left) / rect.width) * 100;
+      setDividerPosition(Math.min(Math.max(newPosition, 20), 80));
+    }
+  };
+
   useEffect(() => {
     if (isDragging) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
+      window.addEventListener('touchmove', handleTouchMove);
+      window.addEventListener('touchend', handleTouchEnd);
       return () => {
         window.removeEventListener('mousemove', handleMouseMove);
         window.removeEventListener('mouseup', handleMouseUp);
+        window.removeEventListener('touchmove', handleTouchMove);
+        window.removeEventListener('touchend', handleTouchEnd);
       };
     }
   }, [isDragging]);
+
+  // Save divider position to localStorage when it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('golfCameraDividerPosition', dividerPosition.toString());
+    }
+  }, [dividerPosition]);
 
   // Camera stream management
   useEffect(() => {
@@ -512,6 +543,37 @@ export default function GolfGame({ variant }: GolfGameProps) {
     return '#FFFFFF';
   };
 
+  // Calculate player standings and position relative to leader
+  const getPlayerStanding = (playerIndex: number): { position: number; leader: boolean; diff: number; diffToLeader: number } => {
+    const totals = scores.map((s, idx) => ({
+      playerIndex: idx,
+      total: calculateTotal(s.holes, 0, currentHole)
+    }));
+
+    // Sort by total score (ascending - lower is better in golf)
+    totals.sort((a, b) => a.total - b.total);
+
+    const currentPlayerData = totals.find(t => t.playerIndex === playerIndex);
+    if (!currentPlayerData || totals.length === 0) {
+      return { position: 1, leader: true, diff: 0, diffToLeader: 0 };
+    }
+
+    const currentPlayerTotal = currentPlayerData.total;
+    const leaderTotal = totals[0].total;
+    const position = totals.findIndex(t => t.playerIndex === playerIndex) + 1;
+    const isLeader = position === 1;
+
+    // Find the next best score (for leader to show advantage)
+    const nextBestTotal = totals.length > 1 ? totals[1].total : leaderTotal;
+
+    return {
+      position,
+      leader: isLeader,
+      diff: currentPlayerTotal - leaderTotal, // Strokes behind leader (0 if leader)
+      diffToLeader: isLeader ? nextBestTotal - leaderTotal : currentPlayerTotal - leaderTotal
+    };
+  };
+
   const formatScore = (total: number, holesPlayed: number): string => {
     if (total === 0 || holesPlayed === 0) return '-';
     const diff = calculateParDiff(total, holesPlayed);
@@ -654,7 +716,11 @@ export default function GolfGame({ variant }: GolfGameProps) {
 
       {/* Resizable Divider */}
       {cameraEnabled && (
-        <div onMouseDown={handleMouseDown} className="w-1 bg-[#2d5016] hover:bg-[#3d6026] cursor-col-resize relative">
+        <div
+          onMouseDown={handleMouseDown}
+          onTouchStart={handleTouchStart}
+          className="w-1 bg-[#2d5016] hover:bg-[#3d6026] cursor-col-resize relative"
+        >
           <div className="absolute inset-y-0 -left-1 -right-1"></div>
         </div>
       )}
@@ -674,6 +740,101 @@ export default function GolfGame({ variant }: GolfGameProps) {
           ></div>
           <h1 className="text-white font-bold tracking-wider relative z-10" style={{ fontSize: 'clamp(1.5rem, 4vw, 4rem)' }}>{golfCourseName}</h1>
           <p className="text-white mt-1 opacity-90 relative z-10" style={{ fontSize: 'clamp(0.75rem, 1.5vw, 1.5rem)' }}>COURSE RECORD: {courseRecord}</p>
+
+          {/* Current Player Game Status - Anchored to Bottom of Banner */}
+          {!gameComplete && currentHole < TOTAL_HOLES && (
+            <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white px-6 py-3 text-center z-10">
+              <div className="font-bold" style={{ fontSize: 'clamp(1rem, 2.5vw, 2.5rem)' }}>
+                {players[currentPlayerIndex]?.name.toUpperCase()} - HOLE {currentHole + 1}
+              </div>
+              <div className="mt-0.5 opacity-90" style={{ fontSize: 'clamp(0.7rem, 1.6vw, 1.6rem)' }}>
+                {(() => {
+                  const playerScores = scores[currentPlayerIndex]?.holes || [];
+                  const total = calculateTotal(playerScores, 0, currentHole);
+                  const holesPlayed = countPlayedHoles(playerScores, 0, currentHole);
+
+                  if (holesPlayed === 0) {
+                    return 'Starting Score: Even Par';
+                  }
+
+                  const diff = calculateParDiff(total, holesPlayed);
+                  const sign = diff > 0 ? '+' : '';
+                  const scoreText = `Score: ${total} (${sign}${diff})`;
+
+                  // For Match Play and Skins, show points-based standings
+                  if (variant === 'match-play' || variant === 'skins') {
+                    const points = variant === 'match-play'
+                      ? calculateMatchPlayPoints(0, currentHole)
+                      : calculateSkinsPoints(0, currentHole);
+
+                    const currentPlayerPoints = points[currentPlayerIndex];
+                    const maxPoints = Math.max(...points);
+                    const leadersCount = points.filter(p => p === maxPoints).length;
+                    const isLeader = currentPlayerPoints === maxPoints;
+
+                    if (isLeader) {
+                      if (leadersCount > 1) {
+                        return (
+                          <span>
+                            {scoreText} - <span style={{ color: '#4ade80' }}>TIED FOR LEAD ({currentPlayerPoints} POINT{currentPlayerPoints !== 1 ? 'S' : ''})</span>
+                          </span>
+                        );
+                      }
+                      // Find second place points
+                      const otherPoints = points.filter((_, idx) => idx !== currentPlayerIndex);
+                      const secondPlace = Math.max(...otherPoints);
+                      const advantage = currentPlayerPoints - secondPlace;
+                      if (advantage === 0 || otherPoints.length === 0) {
+                        return (
+                          <span>
+                            {scoreText} - <span style={{ color: '#4ade80' }}>LEADING ({currentPlayerPoints} POINT{currentPlayerPoints !== 1 ? 'S' : ''})</span>
+                          </span>
+                        );
+                      }
+                      return (
+                        <span>
+                          {scoreText} - <span style={{ color: '#4ade80' }}>LEADING BY {advantage} POINT{advantage !== 1 ? 'S' : ''} ({currentPlayerPoints} TOTAL)</span>
+                        </span>
+                      );
+                    } else {
+                      const behind = maxPoints - currentPlayerPoints;
+                      return (
+                        <span>
+                          {scoreText} - <span style={{ color: '#ef4444' }}>{behind} POINT{behind !== 1 ? 'S' : ''} BEHIND ({currentPlayerPoints} TOTAL)</span>
+                        </span>
+                      );
+                    }
+                  }
+
+                  // For Stroke Play, show stroke-based standings
+                  const standing = getPlayerStanding(currentPlayerIndex);
+
+                  if (standing.leader) {
+                    const advantage = standing.diffToLeader;
+                    if (advantage === 0) {
+                      return (
+                        <span>
+                          {scoreText} - <span style={{ color: '#4ade80' }}>TIED FOR LEAD</span>
+                        </span>
+                      );
+                    }
+                    return (
+                      <span>
+                        {scoreText} - <span style={{ color: '#4ade80' }}>LEADING BY {advantage} STROKE{advantage !== 1 ? 'S' : ''}</span>
+                      </span>
+                    );
+                  } else {
+                    const behind = standing.diffToLeader;
+                    return (
+                      <span>
+                        {scoreText} - <span style={{ color: '#ef4444' }}>{behind} STROKE{behind !== 1 ? 'S' : ''} BEHIND</span>
+                      </span>
+                    );
+                  }
+                })()}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Scorecard Tables - scrollable if needed */}

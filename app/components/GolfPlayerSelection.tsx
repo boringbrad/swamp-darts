@@ -27,6 +27,8 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
   const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
   const [isAddPlayerModalOpen, setIsAddPlayerModalOpen] = useState(false);
   const [draggedPlayerIndex, setDraggedPlayerIndex] = useState<number | null>(null);
+  const [playerFilter, setPlayerFilter] = useState<'all' | 'league' | 'guests'>('all');
+  const [playerSort, setPlayerSort] = useState<'alphabetical' | 'recent'>('recent');
 
   const handlePlayerClick = (playerId: string) => {
     if (selectedPlayers.includes(playerId)) {
@@ -39,6 +41,33 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
   const handleAddGuestPlayer = (name: string, avatar: string) => {
     addGuestPlayer(name, avatar);
   };
+
+  const getFilteredAndSortedPlayers = () => {
+    let filtered = localPlayers;
+
+    // Apply filter
+    if (playerFilter === 'league') {
+      filtered = localPlayers.filter(p => !p.isGuest);
+    } else if (playerFilter === 'guests') {
+      filtered = localPlayers.filter(p => p.isGuest);
+    }
+
+    // Apply sort
+    if (playerSort === 'alphabetical') {
+      filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+    } else {
+      // Sort by recently played (most recent first)
+      filtered = [...filtered].sort((a, b) => {
+        const aDate = a.lastUsed || a.addedDate;
+        const bDate = b.lastUsed || b.addedDate;
+        return new Date(bDate).getTime() - new Date(aDate).getTime();
+      });
+    }
+
+    return filtered;
+  };
+
+  const filteredPlayers = getFilteredAndSortedPlayers();
 
   const handleDragStart = (index: number) => {
     setDraggedPlayerIndex(index);
@@ -186,10 +215,73 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
         <div className="flex-[0.5]"></div>
       </div>
 
+      {/* Filter and Sort Controls */}
+      <div className="px-8 mb-3">
+        <div className="flex justify-between items-center gap-4">
+          {/* Filter buttons */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPlayerFilter('all')}
+              className={`px-4 py-2 font-bold rounded transition-colors ${
+                playerFilter === 'all'
+                  ? 'bg-[#6b1a8b] text-white'
+                  : 'bg-[#666666] text-white hover:bg-[#777777]'
+              }`}
+            >
+              ALL
+            </button>
+            <button
+              onClick={() => setPlayerFilter('league')}
+              className={`px-4 py-2 font-bold rounded transition-colors ${
+                playerFilter === 'league'
+                  ? 'bg-[#6b1a8b] text-white'
+                  : 'bg-[#666666] text-white hover:bg-[#777777]'
+              }`}
+            >
+              LEAGUE
+            </button>
+            <button
+              onClick={() => setPlayerFilter('guests')}
+              className={`px-4 py-2 font-bold rounded transition-colors ${
+                playerFilter === 'guests'
+                  ? 'bg-[#6b1a8b] text-white'
+                  : 'bg-[#666666] text-white hover:bg-[#777777]'
+              }`}
+            >
+              GUESTS
+            </button>
+          </div>
+
+          {/* Sort buttons */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPlayerSort('recent')}
+              className={`px-4 py-2 font-bold rounded transition-colors ${
+                playerSort === 'recent'
+                  ? 'bg-[#6b1a8b] text-white'
+                  : 'bg-[#666666] text-white hover:bg-[#777777]'
+              }`}
+            >
+              RECENT
+            </button>
+            <button
+              onClick={() => setPlayerSort('alphabetical')}
+              className={`px-4 py-2 font-bold rounded transition-colors ${
+                playerSort === 'alphabetical'
+                  ? 'bg-[#6b1a8b] text-white'
+                  : 'bg-[#666666] text-white hover:bg-[#777777]'
+              }`}
+            >
+              A-Z
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Available Players - compact at bottom */}
       <div className="bg-[#333333]/50 rounded-lg p-4">
         <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-3">
-          {localPlayers.map((player) => (
+          {filteredPlayers.map((player) => (
             <PlayerAvatar
               key={player.id}
               name={player.name}

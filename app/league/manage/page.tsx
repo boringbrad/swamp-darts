@@ -8,12 +8,14 @@ import { usePlayerContext } from '@/app/contexts/PlayerContext';
 import { STOCK_AVATARS } from '@/app/lib/avatars';
 
 export default function ManageLeaguePage() {
-  const { localPlayers, addLocalPlayer, updateLocalPlayer, deleteLocalPlayer } = usePlayerContext();
+  const { localPlayers, addLocalPlayer, updateLocalPlayer, deleteLocalPlayer, addGuestPlayer } = usePlayerContext();
   const [isAddPlayerModalOpen, setIsAddPlayerModalOpen] = useState(false);
+  const [isAddGuestModalOpen, setIsAddGuestModalOpen] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<{ id: string; name: string; avatar: string } | null>(null);
 
   // Filter out guest players - only show persistent league players
   const leaguePlayers = localPlayers.filter(p => !p.isGuest);
+  const guestPlayers = localPlayers.filter(p => p.isGuest);
 
   const handleAddPlayer = (name: string, avatar: string) => {
     addLocalPlayer(name, avatar, false); // false = not a guest
@@ -36,6 +38,17 @@ export default function ManageLeaguePage() {
 
   const handleDeletePlayer = (id: string) => {
     if (confirm('Are you sure you want to remove this player from your league? This will permanently delete their profile.')) {
+      deleteLocalPlayer(id);
+    }
+  };
+
+  const handleAddGuest = (name: string, avatar: string) => {
+    addGuestPlayer(name, avatar);
+    setIsAddGuestModalOpen(false);
+  };
+
+  const handleDeleteGuest = (id: string) => {
+    if (confirm('Are you sure you want to remove this guest player?')) {
       deleteLocalPlayer(id);
     }
   };
@@ -96,7 +109,7 @@ export default function ManageLeaguePage() {
             </div>
 
             {/* Add Player Button */}
-            <div className="flex justify-center">
+            <div className="flex justify-center mb-12">
               <button
                 onClick={() => setIsAddPlayerModalOpen(true)}
                 className="flex flex-col items-center gap-2 hover:opacity-80 transition-opacity"
@@ -105,6 +118,69 @@ export default function ManageLeaguePage() {
                   <span className="text-white text-4xl font-bold">+</span>
                 </div>
                 <span className="text-white text-lg font-bold">ADD PLAYER</span>
+              </button>
+            </div>
+
+            {/* Divider */}
+            <div className="border-t border-white/20 my-8"></div>
+
+            {/* Guest Players Section */}
+            <h2 className="text-white text-2xl font-bold mb-6 text-center">
+              GUEST PLAYERS ({guestPlayers.length})
+            </h2>
+
+            <p className="text-white text-center mb-8 opacity-75">
+              Temporary guest players added during games. These can be removed when no longer needed.
+            </p>
+
+            {guestPlayers.length > 0 ? (
+              <div className="grid grid-cols-6 gap-6 mb-8">
+                {guestPlayers.map((player) => {
+                  const avatar = STOCK_AVATARS.find(a => a.id === player.avatar) || STOCK_AVATARS[0];
+                  return (
+                    <div key={player.id} className="flex flex-col items-center gap-2 relative">
+                      {/* Avatar */}
+                      <div
+                        className="w-24 h-24 rounded-full flex items-center justify-center text-4xl"
+                        style={{ backgroundColor: avatar.color }}
+                      >
+                        {avatar.emoji}
+                      </div>
+
+                      {/* Name */}
+                      <span className="text-white text-sm font-bold text-center max-w-24 truncate">
+                        {player.name}
+                      </span>
+
+                      {/* Delete Button */}
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          onClick={() => handleDeleteGuest(player.id)}
+                          className="px-3 py-1 bg-[#9d1a1a] text-white text-xs font-bold rounded hover:opacity-90 transition-opacity"
+                        >
+                          DELETE
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-white text-center mb-8 opacity-50 italic">
+                No guest players. Add guests from the player selection screen during games.
+              </p>
+            )}
+
+            {/* Add Guest Button */}
+            <div className="flex justify-center">
+              <button
+                onClick={() => setIsAddGuestModalOpen(true)}
+                className="flex flex-col items-center gap-2 hover:opacity-80 transition-opacity"
+              >
+                <div className="w-16 h-16 rounded-full bg-[#666666] flex items-center justify-center">
+                  <span className="text-white text-4xl font-bold">+</span>
+                </div>
+                <span className="text-white text-lg font-bold">ADD GUEST</span>
               </button>
             </div>
           </div>
@@ -121,6 +197,14 @@ export default function ManageLeaguePage() {
           initialName={editingPlayer?.name}
           initialAvatar={editingPlayer?.avatar}
           title={editingPlayer ? 'EDIT PLAYER' : 'ADD PLAYER'}
+        />
+
+        {/* Add Guest Modal */}
+        <AddGuestPlayerModal
+          isOpen={isAddGuestModalOpen}
+          onClose={() => setIsAddGuestModalOpen(false)}
+          onAdd={handleAddGuest}
+          title="ADD GUEST"
         />
       </PageWrapper>
     </div>

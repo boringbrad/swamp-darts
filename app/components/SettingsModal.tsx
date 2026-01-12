@@ -192,17 +192,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           {/* System Tab */}
           {activeTab === 'system' && (
             <div>
-              {/* Guest Players Section */}
-              <div className="mb-6">
-                <h3 className="text-xl font-bold text-white mb-4">GUEST PLAYERS</h3>
-                <button
-                  onClick={handleRemoveAllGuests}
-                  className="w-full px-6 py-3 bg-[#9d1a1a] text-white text-xl font-bold rounded hover:bg-[#b51f1f] transition-colors"
-                >
-                  REMOVE ALL GUESTS
-                </button>
-              </div>
-
               {/* Show Camera Setting */}
               <div className="mb-6">
                 <h3 className="text-xl font-bold text-white mb-4">CAMERA</h3>

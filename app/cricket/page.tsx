@@ -28,17 +28,21 @@ export default function CricketModePage() {
               <span className="text-white text-5xl font-bold">TAG TEAM</span>
             </Link>
 
-            {/* Triple Threat - Disabled */}
-            <div className="bg-[#666666]/40 rounded-lg h-64 flex flex-col items-center justify-center cursor-not-allowed">
-              <span className="text-white/40 text-5xl font-bold">TRIPLE THREAT</span>
-              <span className="text-white/40 text-2xl font-bold mt-2">COMING SOON</span>
-            </div>
+            {/* Triple Threat */}
+            <Link
+              href="/cricket/triple-threat/players"
+              className="bg-[#666666] rounded-lg h-64 flex items-center justify-center hover:bg-[#777777] transition-colors"
+            >
+              <span className="text-white text-5xl font-bold">TRIPLE THREAT</span>
+            </Link>
 
-            {/* Fatal 4 Way - Disabled */}
-            <div className="bg-[#666666]/40 rounded-lg h-64 flex flex-col items-center justify-center cursor-not-allowed">
-              <span className="text-white/40 text-5xl font-bold">FATAL 4 WAY</span>
-              <span className="text-white/40 text-2xl font-bold mt-2">COMING SOON</span>
-            </div>
+            {/* Fatal 4 Way */}
+            <Link
+              href="/cricket/fatal-4-way/players"
+              className="bg-[#666666] rounded-lg h-64 flex items-center justify-center hover:bg-[#777777] transition-colors"
+            >
+              <span className="text-white text-5xl font-bold">FATAL 4 WAY</span>
+            </Link>
           </div>
         </div>
       </main>

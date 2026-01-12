@@ -60,34 +60,19 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
   const [teamAssignments, setTeamAssignments] = useState<Record<string, number>>({}); // For tag-team
   const [isAddPlayerModalOpen, setIsAddPlayerModalOpen] = useState(false);
   const [draggedPlayerIndex, setDraggedPlayerIndex] = useState<number | null>(null);
+  const [playerFilter, setPlayerFilter] = useState<'all' | 'league' | 'guests'>('all');
+  const [playerSort, setPlayerSort] = useState<'alphabetical' | 'recent'>('recent');
 
   // KO Numbers hook
   const { koNumbers, incrementKO, decrementKO, randomizeKONumbers, initializeKONumbers } = useKONumbers();
 
-  // Load persisted selections from AppContext on mount
+  // Clear selections when component mounts or variant changes
   useEffect(() => {
-    const saved = selectedPlayers.cricket[variant];
-    if (saved) {
-      if (variant === 'tag-team' && 'teams' in saved) {
-        // Tag team has different structure
-        const allPlayers = [...(saved.teams[0] || []), ...(saved.teams[1] || [])];
-        const playerIds = allPlayers.map(p => p.id);
-        setSelectedPlayerIds(playerIds);
-
-        // Set team assignments
-        const assignments: Record<string, number> = {};
-        saved.teams[0]?.forEach(p => { assignments[p.id] = 0; });
-        saved.teams[1]?.forEach(p => { assignments[p.id] = 1; });
-        setTeamAssignments(assignments);
-
-        initializeKONumbers(playerIds, saved.koNumbers);
-      } else if ('players' in saved) {
-        const playerIds = saved.players.map(p => p.id);
-        setSelectedPlayerIds(playerIds);
-        initializeKONumbers(playerIds, saved.koNumbers);
-      }
-    }
-  }, [variant, selectedPlayers, initializeKONumbers]);
+    // Start with empty selections
+    setSelectedPlayerIds([]);
+    setTeamAssignments({});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [variant]);
 
   // Handle player selection from the grid
   const handlePlayerClick = (playerId: string) => {
@@ -264,9 +249,32 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
 
     return (
       <div className="flex justify-center gap-8">
-        {selectedPlayerIds.map((playerId, index) => {
-          const player = getPlayerById(playerId);
-          if (!player) return null;
+        {Array.from({ length: config.playerCount }).map((_, index) => {
+          const playerId = selectedPlayerIds[index];
+          const player = playerId ? getPlayerById(playerId) : null;
+
+          if (!player) {
+            // Render empty slot
+            const borderColor = colors[index] || 'red';
+            const borderStyle = { borderColor: borderColor === 'red' ? '#9d1a1a' : borderColor === 'blue' ? '#1a7a9d' : borderColor === 'purple' ? '#6b1a8b' : '#2d5016' };
+
+            return (
+              <div key={`slot-${index}`} className="flex flex-col items-center gap-2">
+                <div
+                  className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl border-dashed opacity-30"
+                  style={borderStyle}
+                >
+                  <span className="text-white text-4xl">?</span>
+                </div>
+                <div className="text-white text-base font-bold opacity-30">PLAYER {index + 1}</div>
+                <div className="text-white text-6xl font-bold opacity-30">-</div>
+                <div className="flex gap-2 opacity-0">
+                  <button className="w-8 h-8 bg-[#333333] text-white rounded">-</button>
+                  <button className="w-8 h-8 bg-[#333333] text-white rounded">+</button>
+                </div>
+              </div>
+            );
+          }
 
           const avatar = STOCK_AVATARS.find(a => a.id === player.avatar) || STOCK_AVATARS[0];
           const borderColor = colors[index] || 'red';
@@ -321,19 +329,38 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
   };
 
   const renderTagTeamPlayers = () => {
-    const team0Players = selectedPlayerIds.filter(id => teamAssignments[id] === 0);
-    const team1Players = selectedPlayerIds.filter(id => teamAssignments[id] === 1);
+    const playersPerTeam = config.playerCount / 2;
 
     return (
       <div className="flex justify-center gap-16">
         {/* Team 0 (Blue) */}
         <div className="flex gap-4">
-          {team0Players.map((playerId, teamIndex) => {
-            const player = getPlayerById(playerId);
-            if (!player) return null;
+          {Array.from({ length: playersPerTeam }).map((_, teamIndex) => {
+            const globalIndex = teamIndex;
+            const playerId = selectedPlayerIds[globalIndex];
+            const player = playerId ? getPlayerById(playerId) : null;
+
+            if (!player) {
+              // Render empty slot
+              return (
+                <div key={`team0-slot-${teamIndex}`} className="flex flex-col items-center gap-2">
+                  <div
+                    className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl border-dashed opacity-30"
+                    style={{ borderColor: getTeamBorderColor(0) }}
+                  >
+                    <span className="text-white text-4xl">?</span>
+                  </div>
+                  <div className="text-white text-base font-bold opacity-30">TEAM 1 - P{teamIndex + 1}</div>
+                  <div className="text-white text-6xl font-bold opacity-30">-</div>
+                  <div className="flex gap-2 opacity-0">
+                    <button className="w-8 h-8 bg-[#333333] text-white rounded">-</button>
+                    <button className="w-8 h-8 bg-[#333333] text-white rounded">+</button>
+                  </div>
+                </div>
+              );
+            }
 
             const avatar = STOCK_AVATARS.find(a => a.id === player.avatar) || STOCK_AVATARS[0];
-            const globalIndex = selectedPlayerIds.indexOf(playerId);
 
             return (
               <div
@@ -383,12 +410,32 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
 
         {/* Team 1 (Red) */}
         <div className="flex gap-4">
-          {team1Players.map((playerId, teamIndex) => {
-            const player = getPlayerById(playerId);
-            if (!player) return null;
+          {Array.from({ length: playersPerTeam }).map((_, teamIndex) => {
+            const globalIndex = playersPerTeam + teamIndex;
+            const playerId = selectedPlayerIds[globalIndex];
+            const player = playerId ? getPlayerById(playerId) : null;
+
+            if (!player) {
+              // Render empty slot
+              return (
+                <div key={`team1-slot-${teamIndex}`} className="flex flex-col items-center gap-2">
+                  <div
+                    className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl border-dashed opacity-30"
+                    style={{ borderColor: getTeamBorderColor(1) }}
+                  >
+                    <span className="text-white text-4xl">?</span>
+                  </div>
+                  <div className="text-white text-base font-bold opacity-30">TEAM 2 - P{teamIndex + 1}</div>
+                  <div className="text-white text-6xl font-bold opacity-30">-</div>
+                  <div className="flex gap-2 opacity-0">
+                    <button className="w-8 h-8 bg-[#333333] text-white rounded">-</button>
+                    <button className="w-8 h-8 bg-[#333333] text-white rounded">+</button>
+                  </div>
+                </div>
+              );
+            }
 
             const avatar = STOCK_AVATARS.find(a => a.id === player.avatar) || STOCK_AVATARS[0];
-            const globalIndex = selectedPlayerIds.indexOf(playerId);
 
             return (
               <div
@@ -439,6 +486,34 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
     );
   };
 
+  // Filter and sort players for the player pool
+  const getFilteredAndSortedPlayers = () => {
+    let filtered = localPlayers;
+
+    // Apply filter
+    if (playerFilter === 'league') {
+      filtered = localPlayers.filter(p => !p.isGuest);
+    } else if (playerFilter === 'guests') {
+      filtered = localPlayers.filter(p => p.isGuest);
+    }
+
+    // Apply sort
+    if (playerSort === 'alphabetical') {
+      filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+    } else {
+      // Sort by lastUsed (most recent first), then by addedDate for ties
+      filtered = [...filtered].sort((a, b) => {
+        const aDate = a.lastUsed || a.addedDate;
+        const bDate = b.lastUsed || b.addedDate;
+        return new Date(bDate).getTime() - new Date(aDate).getTime();
+      });
+    }
+
+    return filtered;
+  };
+
+  const filteredPlayers = getFilteredAndSortedPlayers();
+
   return (
     <>
       <main className="px-6 pb-16 flex flex-col min-h-screen">
@@ -480,10 +555,73 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
           <div className="flex-[0.5]"></div>
         </div>
 
+        {/* Filter and Sort Controls */}
+        <div className="px-8 mb-3">
+          <div className="flex justify-between items-center gap-4">
+            {/* Filter */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPlayerFilter('all')}
+                className={`px-3 py-1 text-xs font-bold rounded transition-colors ${
+                  playerFilter === 'all'
+                    ? 'bg-white text-[#8b1a1a]'
+                    : 'bg-[#666666] text-white hover:bg-[#777777]'
+                }`}
+              >
+                ALL
+              </button>
+              <button
+                onClick={() => setPlayerFilter('league')}
+                className={`px-3 py-1 text-xs font-bold rounded transition-colors ${
+                  playerFilter === 'league'
+                    ? 'bg-white text-[#8b1a1a]'
+                    : 'bg-[#666666] text-white hover:bg-[#777777]'
+                }`}
+              >
+                LEAGUE
+              </button>
+              <button
+                onClick={() => setPlayerFilter('guests')}
+                className={`px-3 py-1 text-xs font-bold rounded transition-colors ${
+                  playerFilter === 'guests'
+                    ? 'bg-white text-[#8b1a1a]'
+                    : 'bg-[#666666] text-white hover:bg-[#777777]'
+                }`}
+              >
+                GUESTS
+              </button>
+            </div>
+
+            {/* Sort */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPlayerSort('recent')}
+                className={`px-3 py-1 text-xs font-bold rounded transition-colors ${
+                  playerSort === 'recent'
+                    ? 'bg-white text-[#8b1a1a]'
+                    : 'bg-[#666666] text-white hover:bg-[#777777]'
+                }`}
+              >
+                RECENT
+              </button>
+              <button
+                onClick={() => setPlayerSort('alphabetical')}
+                className={`px-3 py-1 text-xs font-bold rounded transition-colors ${
+                  playerSort === 'alphabetical'
+                    ? 'bg-white text-[#8b1a1a]'
+                    : 'bg-[#666666] text-white hover:bg-[#777777]'
+                }`}
+              >
+                A-Z
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* Available Players - compact at bottom */}
         <div className="bg-[#333333]/50 rounded-lg p-4">
           <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-3">
-            {localPlayers.map((player) => (
+            {filteredPlayers.map((player) => (
               <PlayerAvatar
                 key={player.id}
                 name={player.name}
