@@ -41,6 +41,6 @@ export interface SelectedPlayersStorage {
   golf: {
     'stroke-play'?: Player[];
     'match-play'?: Player[];
-    'tournament'?: Player[];
+    'skins'?: Player[];
   };
 }
