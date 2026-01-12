@@ -163,20 +163,27 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
     // KO phase starts when at least one player has completed their board
     // and there are still more than 2 players remaining
     const remaining = countRemainingPlayers();
-    const anyBoardComplete = playerScores.some((_, index) => isBoardComplete(index) && !playerScores[index].isEliminated);
+    // Check if any non-eliminated player has completed their board
+    const anyBoardComplete = playerScores.some((score) => {
+      if (score.isEliminated) return false;
+      return CRICKET_TARGETS.every(target => score.marks[target] >= 3);
+    });
     return remaining > 2 && anyBoardComplete;
   };
 
   // Helper function to check if we're in PIN phase (for all variants)
   const isInPinPhase = (): boolean => {
     if (variant === 'singles' || variant === 'tag-team') {
-      // Singles and tag-team go straight to PIN phase
-      return variant === 'tag-team'
-        ? playerScores.some(score => CRICKET_TARGETS.every(target => score.marks[target] >= 3))
-        : playerScores.some((_, index) => isBoardComplete(index));
+      // Singles and tag-team go straight to PIN phase when any player/team completes their board
+      return playerScores.some(score => CRICKET_TARGETS.every(target => score.marks[target] >= 3));
     } else {
       // For 3+ player games, PIN phase only when exactly 2 players remain
-      return countRemainingPlayers() === 2 && playerScores.some((_, index) => isBoardComplete(index) && !playerScores[index].isEliminated);
+      const remaining = countRemainingPlayers();
+      const anyBoardComplete = playerScores.some((score) => {
+        if (score.isEliminated) return false;
+        return CRICKET_TARGETS.every(target => score.marks[target] >= 3);
+      });
+      return remaining === 2 && anyBoardComplete;
     }
   };
 
@@ -369,9 +376,13 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
     const scoreIndex = getTeamIndex(currentPlayerIndex);
     const currentPlayerScore = playerScores[scoreIndex];
 
-    // For 3+ player games in KO phase: Check if hitting opponent's number for KO
-    if ((variant === 'triple-threat' || variant === 'fatal-4-way') && isInKOPhase()) {
+      // For 3+ player games in KO phase: Check if hitting opponent's number for KO
+    const inKOPhase = isInKOPhase();
+    console.log('KO Phase Check:', { inKOPhase, variant, remaining: countRemainingPlayers(), playerScores });
+
+    if ((variant === 'triple-threat' || variant === 'fatal-4-way') && inKOPhase) {
       const currentBoardComplete = isBoardComplete(currentPlayerIndex);
+      console.log('In KO Phase - Current player board complete:', currentBoardComplete);
 
       // Check if this target belongs to an opponent (is their KO number)
       const targetOwnerId = players.find((p) => {
@@ -592,6 +603,93 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
 
     setCurrentDartIndex(currentDartIndex + 1);
     setMultiplier(1);
+  };
+
+  // Handle KO button click
+  const handleKOClick = (targetPlayerIndex: number) => {
+    if (currentDartIndex >= 3) return;
+
+    const currentPlayer = players[currentPlayerIndex];
+    const currentBoardComplete = isBoardComplete(currentPlayerIndex);
+
+    // Can't KO if current player hasn't completed their board
+    if (!currentBoardComplete) return;
+
+    const targetPlayer = players[targetPlayerIndex];
+    const targetPlayerScore = playerScores[targetPlayerIndex];
+
+    // Can't KO eliminated players
+    if (targetPlayerScore.isEliminated) return;
+
+    // Check if clicking own KO button to remove KO points
+    if (targetPlayerIndex === currentPlayerIndex) {
+      // Remove KO point from self
+      if (targetPlayerScore.koPoints > 0) {
+        const playerScoresSnapshot = JSON.parse(JSON.stringify(playerScores)) as PlayerScore[];
+
+        const newPlayerScores = [...playerScores];
+        newPlayerScores[targetPlayerIndex].koPoints = Math.max(0, newPlayerScores[targetPlayerIndex].koPoints - multiplier);
+
+        setPlayerScores(newPlayerScores);
+
+        // Add to history
+        const historyEntry: HistoryEntry = {
+          playerIndex: currentPlayerIndex,
+          dartIndex: currentDartIndex,
+          action: 'ko',
+          koPointsRemoved: multiplier,
+          playerScoresSnapshot,
+          dartScoresSnapshot: [...dartScores],
+          dartMultipliersSnapshot: [...dartMultipliers],
+          dartPinHitsSnapshot: [...dartPinHits],
+          dartSkipsSnapshot: [...dartSkips],
+          skippedPlayersSnapshot: Array.from(skippedPlayers),
+          wasSkippedPlayersSnapshot: Array.from(wasSkippedPlayers),
+          lastSkippedPlayerSnapshot: lastSkippedPlayer,
+        };
+        setHistory([...history, historyEntry]);
+
+        setCurrentDartIndex(currentDartIndex + 1);
+        setMultiplier(1);
+      }
+    } else {
+      // Add KO point to opponent
+      const playerScoresSnapshot = JSON.parse(JSON.stringify(playerScores)) as PlayerScore[];
+
+      const newPlayerScores = [...playerScores];
+      newPlayerScores[targetPlayerIndex].koPoints += multiplier;
+
+      // Check if opponent should be eliminated (3+ KO points)
+      let eliminatedPlayerId: string | undefined = undefined;
+      if (newPlayerScores[targetPlayerIndex].koPoints >= 3) {
+        newPlayerScores[targetPlayerIndex].isEliminated = true;
+        eliminatedPlayerId = targetPlayer.id;
+      }
+
+      setPlayerScores(newPlayerScores);
+
+      // Add to history
+      const historyEntry: HistoryEntry = {
+        playerIndex: currentPlayerIndex,
+        dartIndex: currentDartIndex,
+        action: 'ko',
+        koTargetPlayerId: targetPlayer.id,
+        koPointsAdded: multiplier,
+        playerEliminatedId: eliminatedPlayerId,
+        playerScoresSnapshot,
+        dartScoresSnapshot: [...dartScores],
+        dartMultipliersSnapshot: [...dartMultipliers],
+        dartPinHitsSnapshot: [...dartPinHits],
+        dartSkipsSnapshot: [...dartSkips],
+        skippedPlayersSnapshot: Array.from(skippedPlayers),
+        wasSkippedPlayersSnapshot: Array.from(wasSkippedPlayers),
+        lastSkippedPlayerSnapshot: lastSkippedPlayer,
+      };
+      setHistory([...history, historyEntry]);
+
+      setCurrentDartIndex(currentDartIndex + 1);
+      setMultiplier(1);
+    }
   };
 
   const handleSkipPlayer = (playerId: string) => {
@@ -1130,10 +1228,17 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
         <div className={`${cameraEnabled ? 'flex-1' : 'flex-1'} bg-[#333333] p-6 flex flex-col`}>
           {/* Player/Team Headers */}
           {(variant === 'triple-threat' || variant === 'fatal-4-way') ? (
-            // New layout: Empty cell for numbers column, then all players in order
-            <div className="grid gap-2 mb-4" style={{ gridTemplateColumns: `120px repeat(${players.length}, 1fr)` }}>
-              {/* Empty cell above numbers column */}
-              <div></div>
+            <>
+              {/* New layout: Empty cell for numbers column, then all players in order */}
+              <div className="grid gap-2 mb-4" style={{ gridTemplateColumns: `120px repeat(${players.length}, 1fr)` }}>
+              {/* KO Phase indicator or empty cell above numbers column */}
+              <div className="flex items-center justify-center">
+                {isInKOPhase() && (
+                  <div className="text-red-500 text-2xl font-bold animate-pulse">
+                    KO
+                  </div>
+                )}
+              </div>
 
               {/* All players in order */}
               {players.map((player, index) => {
@@ -1170,14 +1275,6 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
                         <span className={isEliminated || willBeSkipped ? 'line-through' : ''}>{player.name}</span>
                         {isCurrent && <span className="text-white text-2xl">◀</span>}
                       </div>
-                      {/* KO Points Display */}
-                      {koPoints > 0 && !isEliminated && (
-                        <div className="flex gap-1 text-3xl">
-                          {Array.from({ length: koPoints }).map((_, i) => (
-                            <span key={i}>💀</span>
-                          ))}
-                        </div>
-                      )}
                       {/* Status text */}
                       {isEliminated && <span className="text-white text-2xl">ELIMINATED</span>}
                       {!isEliminated && isGreyedOut && <span className="text-white text-2xl">{wasSkipped ? 'Skip Served' : 'Skipped'}</span>}
@@ -1186,6 +1283,53 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
                 );
               })}
             </div>
+
+            {/* KO Button Row - Only show during KO phase */}
+            {isInKOPhase() && (
+              <div className="grid gap-2 mb-4" style={{ gridTemplateColumns: `120px repeat(${players.length}, 1fr)` }}>
+                {/* Empty cell for alignment */}
+                <div></div>
+
+                {/* KO Buttons */}
+                {players.map((player, index) => {
+                  const playerIndex = index;
+                  const koPoints = playerScores[playerIndex]?.koPoints || 0;
+                  const isEliminated = playerScores[playerIndex]?.isEliminated || false;
+                  const isCurrent = playerIndex === currentPlayerIndex;
+                  const currentBoardComplete = isBoardComplete(currentPlayerIndex);
+
+                  // KO button is enabled if:
+                  // - Current player has completed board
+                  // - Target is not eliminated
+                  // - There are darts remaining
+                  const canKO = currentBoardComplete && !isEliminated && currentDartIndex < 3;
+
+                  return (
+                    <button
+                      key={`ko-${player.id}`}
+                      onClick={() => handleKOClick(playerIndex)}
+                      disabled={!canKO}
+                      className="p-3 rounded flex items-center justify-center transition-all hover:brightness-110 disabled:cursor-not-allowed bg-red-900"
+                      style={{
+                        filter: canKO ? 'none' : 'brightness(0.3)',
+                        minHeight: '60px'
+                      }}
+                    >
+                      {koPoints > 0 ? (
+                        <div className="flex gap-1 text-3xl">
+                          {Array.from({ length: koPoints }).map((_, i) => (
+                            <span key={i}>💀</span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-white text-2xl font-bold">KO</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            </>
           ) : (
             // Original layout: Split players with numbers/PIN counter in center
             <div className="grid gap-2 mb-4" style={{ gridTemplateColumns: `repeat(${Math.ceil(players.length / 2)}, 1fr) 120px repeat(${Math.floor(players.length / 2)}, 1fr)` }}>
