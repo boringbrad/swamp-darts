@@ -17,6 +17,8 @@ interface PlayerScore {
   color: 'blue' | 'red' | 'purple' | 'green';
   marks: Record<CricketNumber, number>; // Can exceed 3 for points
   points: number;
+  koPoints: number; // KO points for 3+ player games
+  isEliminated: boolean; // For KO phase elimination
 }
 
 const CRICKET_TARGETS: CricketNumber[] = [20, 19, 18, 17, 16, 15, 'B', 'T', 'D'];
@@ -25,7 +27,7 @@ const CRICKET_TARGETS: CricketNumber[] = [20, 19, 18, 17, 16, 15, 'B', 'T', 'D']
 interface HistoryEntry {
   playerIndex: number;
   dartIndex: number;
-  action: 'score' | 'miss' | 'pin' | 'skip' | 'turn_advance';
+  action: 'score' | 'miss' | 'pin' | 'skip' | 'turn_advance' | 'ko';
   // For score actions
   target?: CricketNumber;
   multiplier?: 1 | 2 | 3;
@@ -38,6 +40,11 @@ interface HistoryEntry {
   // For skip actions
   skippedPlayerId?: string;
   skippedPlayerName?: string;
+  // For KO actions
+  koTargetPlayerId?: string;
+  koPointsAdded?: number;
+  koPointsRemoved?: number;
+  playerEliminatedId?: string;
   // For turn advance
   previousPlayerIndex?: number;
   skippedPlayerRemoved?: string;
@@ -72,7 +79,14 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
   const [cameraPan, setCameraPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
-  const [dividerPosition, setDividerPosition] = useState(33); // Percentage for camera width
+  const [dividerPosition, setDividerPosition] = useState(() => {
+    // Load saved divider position from localStorage
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('cricketCameraDividerPosition');
+      return saved ? parseFloat(saved) : 33;
+    }
+    return 33;
+  }); // Percentage for camera width
   const [isDragging, setIsDragging] = useState(false);
   const [skippedPlayers, setSkippedPlayers] = useState<Set<string>>(new Set()); // Track players who will be skipped next turn (crossed out)
   const [wasSkippedPlayers, setWasSkippedPlayers] = useState<Set<string>>(new Set()); // Track players who were skipped and waiting to play (greyed, not crossed)
@@ -99,6 +113,8 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
           color: 'blue',
           marks: { 20: 0, 19: 0, 18: 0, 17: 0, 16: 0, 15: 0, B: 0, T: 0, D: 0 },
           points: 0,
+          koPoints: 0,
+          isEliminated: false,
         },
         {
           playerId: 'team-1',
@@ -106,6 +122,8 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
           color: 'red',
           marks: { 20: 0, 19: 0, 18: 0, 17: 0, 16: 0, 15: 0, B: 0, T: 0, D: 0 },
           points: 0,
+          koPoints: 0,
+          isEliminated: false,
         },
       ];
     } else {
@@ -117,6 +135,8 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
         color: colors[index % 4],
         marks: { 20: 0, 19: 0, 18: 0, 17: 0, 16: 0, 15: 0, B: 0, T: 0, D: 0 },
         points: 0,
+        koPoints: 0,
+        isEliminated: false,
       }));
     }
   });
@@ -132,10 +152,36 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
     return CRICKET_TARGETS.every(target => score.marks[target] >= 3);
   };
 
+  // Helper function to count remaining (non-eliminated) players
+  const countRemainingPlayers = (): number => {
+    return playerScores.filter(score => !score.isEliminated).length;
+  };
+
+  // Helper function to check if we're in KO phase (for 3+ player games)
+  const isInKOPhase = (): boolean => {
+    if (variant === 'singles' || variant === 'tag-team') return false;
+    // KO phase starts when at least one player has completed their board
+    // and there are still more than 2 players remaining
+    const remaining = countRemainingPlayers();
+    const anyBoardComplete = playerScores.some((_, index) => isBoardComplete(index) && !playerScores[index].isEliminated);
+    return remaining > 2 && anyBoardComplete;
+  };
+
+  // Helper function to check if we're in PIN phase (for all variants)
+  const isInPinPhase = (): boolean => {
+    if (variant === 'singles' || variant === 'tag-team') {
+      // Singles and tag-team go straight to PIN phase
+      return variant === 'tag-team'
+        ? playerScores.some(score => CRICKET_TARGETS.every(target => score.marks[target] >= 3))
+        : playerScores.some((_, index) => isBoardComplete(index));
+    } else {
+      // For 3+ player games, PIN phase only when exactly 2 players remain
+      return countRemainingPlayers() === 2 && playerScores.some((_, index) => isBoardComplete(index) && !playerScores[index].isEliminated);
+    }
+  };
+
   // Check if PIN button should be enabled
-  const isPinEnabled = variant === 'tag-team'
-    ? playerScores.some(score => CRICKET_TARGETS.every(target => score.marks[target] >= 3))
-    : playerScores.some((_, index) => isBoardComplete(index));
+  const isPinEnabled = isInPinPhase();
 
   // Camera stream management
   useEffect(() => {
@@ -225,6 +271,24 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
     setIsDragging(false);
   };
 
+  // Touch support for divider
+  const handleTouchStart = () => {
+    setIsDragging(true);
+  };
+
+  const handleTouchMove = (e: TouchEvent) => {
+    if (!isDragging || !containerRef.current || e.touches.length === 0) return;
+
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const touch = e.touches[0];
+    const newPosition = ((touch.clientX - containerRect.left) / containerRect.width) * 100;
+    setDividerPosition(Math.min(Math.max(newPosition, 20), 60));
+  };
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+  };
+
   // Pan event listeners
   useEffect(() => {
     if (isPanning) {
@@ -247,13 +311,24 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
     if (isDragging) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
+      window.addEventListener('touchmove', handleTouchMove);
+      window.addEventListener('touchend', handleTouchEnd);
 
       return () => {
         window.removeEventListener('mousemove', handleMouseMove);
         window.removeEventListener('mouseup', handleMouseUp);
+        window.removeEventListener('touchmove', handleTouchMove);
+        window.removeEventListener('touchend', handleTouchEnd);
       };
     }
   }, [isDragging]);
+
+  // Save divider position to localStorage when it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('cricketCameraDividerPosition', dividerPosition.toString());
+    }
+  }, [dividerPosition]);
 
   // Auto-advance to next player when 3 darts are thrown (or give bonus turn)
   useEffect(() => {
@@ -283,10 +358,135 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
   const handleTargetClick = (target: CricketNumber) => {
     if (currentDartIndex >= 3) return;
 
+    // Safety check: Don't allow skipped or eliminated players to score
+    const currentPlayer = players[currentPlayerIndex];
+    if (skippedPlayers.has(currentPlayer.id) || playerScores[currentPlayerIndex]?.isEliminated) {
+      console.warn('Attempted to score with skipped/eliminated player', currentPlayer.name);
+      return;
+    }
+
     // Get the score index (team index for tag-team, player index for others)
     const scoreIndex = getTeamIndex(currentPlayerIndex);
     const currentPlayerScore = playerScores[scoreIndex];
 
+    // For 3+ player games in KO phase: Check if hitting opponent's number for KO
+    if ((variant === 'triple-threat' || variant === 'fatal-4-way') && isInKOPhase()) {
+      const currentBoardComplete = isBoardComplete(currentPlayerIndex);
+
+      // Check if this target belongs to an opponent (is their KO number)
+      const targetOwnerId = players.find((p) => {
+        const variantKey = variant === 'triple-threat' ? 'triple-threat' : 'fatal-4-way';
+        const koNumber = selectedPlayers.cricket?.[variantKey]?.koNumbers?.[p.id];
+        return koNumber === target;
+      });
+
+      if (targetOwnerId) {
+        const targetOwnerIndex = players.findIndex(p => p.id === targetOwnerId.id);
+        const targetOwnerScore = playerScores[targetOwnerIndex];
+
+        // If current player has completed board, they can KO opponents
+        if (currentBoardComplete && !targetOwnerScore.isEliminated) {
+          // Add KO point to opponent
+          const playerScoresSnapshot = JSON.parse(JSON.stringify(playerScores)) as PlayerScore[];
+
+          const newPlayerScores = [...playerScores];
+          newPlayerScores[targetOwnerIndex].koPoints += multiplier;
+
+          // Check if opponent should be eliminated (3+ KO points)
+          let eliminatedPlayerId: string | undefined = undefined;
+          if (newPlayerScores[targetOwnerIndex].koPoints >= 3) {
+            newPlayerScores[targetOwnerIndex].isEliminated = true;
+            eliminatedPlayerId = targetOwnerId.id;
+          }
+
+          setPlayerScores(newPlayerScores);
+
+          // Record in dart scores
+          const newDartScores = [...dartScores];
+          newDartScores[currentDartIndex] = target;
+          setDartScores(newDartScores);
+
+          const newDartMultipliers = [...dartMultipliers];
+          newDartMultipliers[currentDartIndex] = multiplier;
+          setDartMultipliers(newDartMultipliers);
+
+          // Add to history
+          const historyEntry: HistoryEntry = {
+            playerIndex: currentPlayerIndex,
+            dartIndex: currentDartIndex,
+            action: 'ko',
+            target,
+            multiplier,
+            koTargetPlayerId: targetOwnerId.id,
+            koPointsAdded: multiplier,
+            playerEliminatedId: eliminatedPlayerId,
+            playerScoresSnapshot,
+            dartScoresSnapshot: [...dartScores],
+            dartMultipliersSnapshot: [...dartMultipliers],
+            dartPinHitsSnapshot: [...dartPinHits],
+            dartSkipsSnapshot: [...dartSkips],
+            skippedPlayersSnapshot: Array.from(skippedPlayers),
+            wasSkippedPlayersSnapshot: Array.from(wasSkippedPlayers),
+            lastSkippedPlayerSnapshot: lastSkippedPlayer,
+          };
+          setHistory([...history, historyEntry]);
+
+          setCurrentDartIndex(currentDartIndex + 1);
+          setMultiplier(1);
+          return;
+        }
+      }
+
+      // Check if hitting own number to remove KO points
+      const currentPlayerKONumber = (() => {
+        const variantKey = variant === 'triple-threat' ? 'triple-threat' : 'fatal-4-way';
+        return selectedPlayers.cricket?.[variantKey]?.koNumbers?.[currentPlayer.id];
+      })();
+
+      if (target === currentPlayerKONumber && currentPlayerScore.koPoints > 0) {
+        // Remove KO point from self
+        const playerScoresSnapshot = JSON.parse(JSON.stringify(playerScores)) as PlayerScore[];
+
+        const newPlayerScores = [...playerScores];
+        newPlayerScores[scoreIndex].koPoints = Math.max(0, newPlayerScores[scoreIndex].koPoints - multiplier);
+
+        setPlayerScores(newPlayerScores);
+
+        // Record in dart scores
+        const newDartScores = [...dartScores];
+        newDartScores[currentDartIndex] = target;
+        setDartScores(newDartScores);
+
+        const newDartMultipliers = [...dartMultipliers];
+        newDartMultipliers[currentDartIndex] = multiplier;
+        setDartMultipliers(newDartMultipliers);
+
+        // Add to history
+        const historyEntry: HistoryEntry = {
+          playerIndex: currentPlayerIndex,
+          dartIndex: currentDartIndex,
+          action: 'ko',
+          target,
+          multiplier,
+          koPointsRemoved: multiplier,
+          playerScoresSnapshot,
+          dartScoresSnapshot: [...dartScores],
+          dartMultipliersSnapshot: [...dartMultipliers],
+          dartPinHitsSnapshot: [...dartPinHits],
+          dartSkipsSnapshot: [...dartSkips],
+          skippedPlayersSnapshot: Array.from(skippedPlayers),
+          wasSkippedPlayersSnapshot: Array.from(wasSkippedPlayers),
+          lastSkippedPlayerSnapshot: lastSkippedPlayer,
+        };
+        setHistory([...history, historyEntry]);
+
+        setCurrentDartIndex(currentDartIndex + 1);
+        setMultiplier(1);
+        return;
+      }
+    }
+
+    // Normal scoring logic (for all variants and non-KO situations)
     // Check if current player/team already has 3 marks on this target
     if (currentPlayerScore.marks[target] >= 3) {
       // Target is already closed for this player/team, don't allow scoring
@@ -527,38 +727,50 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
   const handleNextPlayer = () => {
     // Move to next player
     let nextIndex = (currentPlayerIndex + 1) % players.length;
-    const nextPlayerId = players[nextIndex].id;
+
+    // Create new sets for state updates
+    let newSkippedPlayers = new Set(skippedPlayers);
+    let newWasSkippedPlayers = new Set(wasSkippedPlayers);
 
     let skippedPlayerRemoved: string | undefined = undefined;
     let wasSkippedPlayerAdded: string | undefined = undefined;
     let wasSkippedPlayerRemoved: string | undefined = undefined;
 
-    // Check if next player is skipped
-    if (skippedPlayers.has(nextPlayerId)) {
-      skippedPlayerRemoved = nextPlayerId;
-      wasSkippedPlayerAdded = nextPlayerId;
+    // Skip both eliminated and skipped players together
+    let attempts = 0;
+    while (attempts < players.length) {
+      const nextPlayerId = players[nextIndex].id;
+      const isEliminated = playerScores[nextIndex]?.isEliminated;
+      const isSkipped = skippedPlayers.has(nextPlayerId);
 
-      // Remove from skipped set (no longer crossed out)
-      const newSkippedPlayers = new Set(skippedPlayers);
-      newSkippedPlayers.delete(nextPlayerId);
-      setSkippedPlayers(newSkippedPlayers);
+      // If eliminated, just skip to next
+      if (isEliminated) {
+        nextIndex = (nextIndex + 1) % players.length;
+        attempts++;
+        continue;
+      }
 
-      // Add to wasSkipped set (greyed out but not crossed)
-      const newWasSkippedPlayers = new Set(wasSkippedPlayers);
-      newWasSkippedPlayers.add(nextPlayerId);
-      setWasSkippedPlayers(newWasSkippedPlayers);
+      // If skipped, process the skip and move to next
+      if (isSkipped) {
+        skippedPlayerRemoved = nextPlayerId;
+        wasSkippedPlayerAdded = nextPlayerId;
+        newSkippedPlayers.delete(nextPlayerId);
+        newWasSkippedPlayers.add(nextPlayerId);
+        nextIndex = (nextIndex + 1) % players.length;
+        attempts++;
+        continue;
+      }
 
-      // Move to player after the skipped one
-      nextIndex = (nextIndex + 1) % players.length;
+      // Found a valid player
+      break;
     }
 
+    const nextPlayerId = players[nextIndex].id;
+
     // If the new current player was previously skipped, clear their wasSkipped status
-    const newCurrentPlayerId = players[nextIndex].id;
-    if (wasSkippedPlayers.has(newCurrentPlayerId)) {
-      wasSkippedPlayerRemoved = newCurrentPlayerId;
-      const newWasSkippedPlayers = new Set(wasSkippedPlayers);
-      newWasSkippedPlayers.delete(newCurrentPlayerId);
-      setWasSkippedPlayers(newWasSkippedPlayers);
+    if (wasSkippedPlayers.has(nextPlayerId)) {
+      wasSkippedPlayerRemoved = nextPlayerId;
+      newWasSkippedPlayers.delete(nextPlayerId);
     }
 
     // Add to history before changing player
@@ -581,6 +793,9 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
     };
     setHistory([...history, historyEntry]);
 
+    // Update all state together
+    setSkippedPlayers(newSkippedPlayers);
+    setWasSkippedPlayers(newWasSkippedPlayers);
     setCurrentPlayerIndex(nextIndex);
     setDartScores([null, null, null]);
     setDartMultipliers([1, 1, 1]);
@@ -713,7 +928,7 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
     setMultiplier(1);
   };
 
-  const renderMarks = (count: number) => {
+  const renderMarks = (count: number, isEliminated: boolean = false) => {
     if (count === 0) return null;
 
     const displayCount = Math.min(count, 3);
@@ -729,7 +944,16 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
 
     return (
       <div className="flex items-center justify-center w-full h-full">
-        <span className="text-white font-bold" style={{ fontSize: 'clamp(1.12rem, 4.48vw, 5.6rem)', lineHeight: 1 }}>{symbol}</span>
+        <span
+          className="text-white font-bold"
+          style={{
+            fontSize: 'clamp(1.12rem, 4.48vw, 5.6rem)',
+            lineHeight: 1,
+            opacity: isEliminated ? 0.3 : 1
+          }}
+        >
+          {symbol}
+        </span>
       </div>
     );
   };
@@ -804,7 +1028,11 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
 
         {/* Resizable Divider */}
         {cameraEnabled && (
-          <div onMouseDown={handleMouseDown} className="w-1 bg-[#8b1a1a] hover:bg-[#9b2a2a] cursor-col-resize relative">
+          <div
+            onMouseDown={handleMouseDown}
+            onTouchStart={handleTouchStart}
+            className="w-1 bg-[#8b1a1a] hover:bg-[#9b2a2a] cursor-col-resize relative"
+          >
             <div className="absolute inset-y-0 -left-1 -right-1"></div>
           </div>
         )}
@@ -819,28 +1047,30 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
             <div className="text-white text-4xl font-bold mb-6 text-center">TURN ORDER</div>
             <div className="space-y-3">
               {players.map((player, index) => {
-                const isCurrent = index === currentPlayerIndex;
+                const willBeSkipped = skippedPlayers.has(player.id);
+                const wasSkipped = wasSkippedPlayers.has(player.id);
+                const isEliminated = playerScores[index]?.isEliminated || false;
+                // A player is current only if they match currentPlayerIndex AND they're not skipped/eliminated
+                const isCurrent = index === currentPlayerIndex && !willBeSkipped && !isEliminated;
                 // For tag-team, use team colors; for others, use player scores
                 const playerColor = variant === 'tag-team'
                   ? (getTeamIndex(index) === 0 ? 'blue' : 'red')
                   : (playerScores[index]?.color || 'blue');
-                const willBeSkipped = skippedPlayers.has(player.id);
-                const wasSkipped = wasSkippedPlayers.has(player.id);
-                const isGreyedOut = willBeSkipped || wasSkipped;
+                const isGreyedOut = willBeSkipped || wasSkipped || isEliminated;
 
                 return (
                   <div
                     key={player.id}
                     className={`flex items-center justify-center gap-3 px-4 py-3 rounded ${
                       isCurrent ? 'bg-yellow-500/25' : ''
-                    } ${isGreyedOut ? 'opacity-25' : ''}`}
+                    }`}
                   >
                     {isCurrent && <span className="text-white text-4xl flex-shrink-0">▶</span>}
                     <div
-                      className="w-12 h-12 rounded-full flex-shrink-0 border-2 border-white"
-                      style={{ backgroundColor: isGreyedOut ? '#666666' : getPlayerColor(playerColor) }}
+                      className={`w-12 h-12 rounded-full flex-shrink-0 border-2 border-white ${willBeSkipped ? 'opacity-25' : ''}`}
+                      style={{ backgroundColor: getPlayerColor(playerColor) }}
                     />
-                    <span className={`text-white font-bold whitespace-nowrap overflow-hidden text-ellipsis ${willBeSkipped ? 'line-through' : ''}`} style={{ fontSize: 'clamp(1.5rem, 4vw, 4.8rem)' }}>
+                    <span className={`text-white font-bold whitespace-nowrap overflow-hidden text-ellipsis ${willBeSkipped ? 'line-through' : ''} ${isGreyedOut ? 'opacity-25' : ''}`} style={{ fontSize: 'clamp(0.875rem, 2vw, 2.5rem)' }}>
                       {player.name}
                     </span>
                   </div>
@@ -899,9 +1129,68 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
         {/* Right Side - Scoreboard */}
         <div className={`${cameraEnabled ? 'flex-1' : 'flex-1'} bg-[#333333] p-6 flex flex-col`}>
           {/* Player/Team Headers */}
-          <div className="grid gap-2 mb-4" style={{ gridTemplateColumns: `repeat(${Math.ceil(players.length / 2)}, 1fr) 120px repeat(${Math.floor(players.length / 2)}, 1fr)` }}>
-            {/* First half of players - Team 0 for tag-team, or left side for others */}
-            {(variant === 'tag-team' ? [players[0], players[2]] : players.slice(0, Math.ceil(players.length / 2))).map((player) => {
+          {(variant === 'triple-threat' || variant === 'fatal-4-way') ? (
+            // New layout: Empty cell for numbers column, then all players in order
+            <div className="grid gap-2 mb-4" style={{ gridTemplateColumns: `120px repeat(${players.length}, 1fr)` }}>
+              {/* Empty cell above numbers column */}
+              <div></div>
+
+              {/* All players in order */}
+              {players.map((player, index) => {
+                const playerIndex = index;
+                const koNumber = selectedPlayers.cricket?.[variant]?.koNumbers?.[player.id] || null;
+                const willBeSkipped = skippedPlayers.has(player.id);
+                const wasSkipped = wasSkippedPlayers.has(player.id);
+                const isEliminated = playerScores[playerIndex]?.isEliminated || false;
+                // A player is current only if they match currentPlayerIndex AND they're not skipped/eliminated
+                const isCurrent = playerIndex === currentPlayerIndex && !willBeSkipped && !isEliminated;
+                const koPoints = playerScores[playerIndex]?.koPoints || 0;
+                const isGreyedOut = willBeSkipped || wasSkipped || isEliminated;
+                // Can't skip if: currently playing, was last skipped, already served skip penalty, or eliminated
+                const canSkip = !isCurrent && lastSkippedPlayer !== player.id && !wasSkipped && !isEliminated;
+                const teamColor = playerScores[playerIndex]?.color || 'blue';
+
+                return (
+                  <button
+                    key={player.id}
+                    onClick={() => handleSkipPlayer(player.id)}
+                    disabled={!canSkip}
+                    className="p-6 rounded flex flex-col items-center justify-center min-h-[140px] transition-all hover:brightness-110 disabled:cursor-not-allowed"
+                    style={{
+                      backgroundColor: getPlayerColor(teamColor),
+                      filter: isCurrent ? 'none' : (isGreyedOut ? 'brightness(0.4)' : 'brightness(0.6)')
+                    }}
+                  >
+                    <div className="text-white text-7xl font-bold mb-2 leading-none">
+                      {koNumber || '00'}
+                    </div>
+                    <div className="text-white text-6xl font-bold text-center flex flex-col items-center gap-1">
+                      <div className="flex items-center gap-2">
+                        {isCurrent && <span className="text-white text-2xl">▶</span>}
+                        <span className={isEliminated || willBeSkipped ? 'line-through' : ''}>{player.name}</span>
+                        {isCurrent && <span className="text-white text-2xl">◀</span>}
+                      </div>
+                      {/* KO Points Display */}
+                      {koPoints > 0 && !isEliminated && (
+                        <div className="flex gap-1 text-3xl">
+                          {Array.from({ length: koPoints }).map((_, i) => (
+                            <span key={i}>💀</span>
+                          ))}
+                        </div>
+                      )}
+                      {/* Status text */}
+                      {isEliminated && <span className="text-white text-2xl">ELIMINATED</span>}
+                      {!isEliminated && isGreyedOut && <span className="text-white text-2xl">{wasSkipped ? 'Skip Served' : 'Skipped'}</span>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            // Original layout: Split players with numbers/PIN counter in center
+            <div className="grid gap-2 mb-4" style={{ gridTemplateColumns: `repeat(${Math.ceil(players.length / 2)}, 1fr) 120px repeat(${Math.floor(players.length / 2)}, 1fr)` }}>
+              {/* First half of players - Team 0 for tag-team, or left side for others */}
+              {(variant === 'tag-team' ? [players[0], players[2]] : players.slice(0, Math.ceil(players.length / 2))).map((player) => {
               const playerIndex = players.indexOf(player);
               const koNumber = variant === 'tag-team'
                 ? selectedPlayers.cricket?.['tag-team']?.koNumbers?.[player.id] || null
@@ -910,11 +1199,15 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
               const willBeSkipped = skippedPlayers.has(player.id);
               const wasSkipped = wasSkippedPlayers.has(player.id);
               const isGreyedOut = willBeSkipped || wasSkipped;
-              const canSkip = !isCurrent && lastSkippedPlayer !== player.id;
 
               // Get team color for this player
               const teamIndex = getTeamIndex(playerIndex);
               const teamColor = playerScores[teamIndex]?.color || 'blue';
+
+              // For tag-team: can't skip current player, last skipped player, teammate, or already served penalty
+              const canSkip = variant === 'tag-team'
+                ? !isCurrent && lastSkippedPlayer !== player.id && getTeamIndex(currentPlayerIndex) !== teamIndex && !wasSkipped
+                : !isCurrent && lastSkippedPlayer !== player.id && !wasSkipped;
 
               return (
                 <button
@@ -936,7 +1229,7 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
                       <span className={willBeSkipped ? 'line-through' : ''}>{player.name}</span>
                       {isCurrent && <span className="text-white text-2xl">◀</span>}
                     </div>
-                    {isGreyedOut && <span className="text-white text-2xl">Skipped</span>}
+                    {isGreyedOut && <span className="text-white text-2xl">{wasSkipped ? 'Skip Served' : 'Skipped'}</span>}
                   </div>
                 </button>
               );
@@ -964,11 +1257,15 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
               const willBeSkipped = skippedPlayers.has(player.id);
               const wasSkipped = wasSkippedPlayers.has(player.id);
               const isGreyedOut = willBeSkipped || wasSkipped;
-              const canSkip = !isCurrent && lastSkippedPlayer !== player.id;
 
               // Get team color for this player
               const teamIndex = getTeamIndex(playerIndex);
               const teamColor = playerScores[teamIndex]?.color || 'blue';
+
+              // For tag-team: can't skip current player, last skipped player, teammate, or already served penalty
+              const canSkip = variant === 'tag-team'
+                ? !isCurrent && lastSkippedPlayer !== player.id && getTeamIndex(currentPlayerIndex) !== teamIndex && !wasSkipped
+                : !isCurrent && lastSkippedPlayer !== player.id && !wasSkipped;
 
               return (
                 <button
@@ -990,19 +1287,56 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
                       <span className={willBeSkipped ? 'line-through' : ''}>{player.name}</span>
                       {isCurrent && <span className="text-white text-2xl">◀</span>}
                     </div>
-                    {isGreyedOut && <span className="text-white text-2xl">Skipped</span>}
+                    {isGreyedOut && <span className="text-white text-2xl">{wasSkipped ? 'Skip Served' : 'Skipped'}</span>}
                   </div>
                 </button>
               );
             })}
-          </div>
+            </div>
+          )}
 
           {/* Scoreboard Grid */}
           <div className="flex-1 flex flex-col mb-4">
             {CRICKET_TARGETS.map((target, rowIndex) => (
-              <div key={target} className="grid flex-1" style={{ gridTemplateColumns: variant === 'tag-team' ? '1fr 120px 1fr' : `repeat(${Math.ceil(players.length / 2)}, 1fr) 120px repeat(${Math.floor(players.length / 2)}, 1fr)` }}>
-                {/* Team 0 / First half of players */}
-                {(variant === 'tag-team' ? playerScores.slice(0, 1) : playerScores.slice(0, Math.ceil(players.length / 2))).map((score, scoreIndex) => {
+              <div key={target} className="grid flex-1" style={{
+                gridTemplateColumns: (variant === 'triple-threat' || variant === 'fatal-4-way')
+                  ? `120px repeat(${players.length}, 1fr)`
+                  : variant === 'tag-team'
+                    ? '1fr 120px 1fr'
+                    : `repeat(${Math.ceil(players.length / 2)}, 1fr) 120px repeat(${Math.floor(players.length / 2)}, 1fr)`
+              }}>
+                {/* For triple-threat and fatal-4-way: Number button first */}
+                {(variant === 'triple-threat' || variant === 'fatal-4-way') && (
+                  <button
+                    onClick={() => handleTargetClick(target)}
+                    disabled={currentDartIndex >= 3}
+                    className="flex items-center justify-center hover:opacity-80 transition-opacity disabled:cursor-not-allowed"
+                    style={{ backgroundColor: rowIndex % 2 === 0 ? '#333333' : '#555555' }}
+                  >
+                    <span className="text-white text-7xl font-bold">{target}</span>
+                  </button>
+                )}
+
+                {/* For triple-threat and fatal-4-way: All players in order */}
+                {(variant === 'triple-threat' || variant === 'fatal-4-way') && playerScores.map((score, scoreIndex) => {
+                  const isDisabled = currentDartIndex >= 3 || scoreIndex !== currentPlayerIndex;
+                  const isEliminated = score.isEliminated || false;
+
+                  return (
+                    <button
+                      key={score.playerId}
+                      onClick={() => handleTargetClick(target)}
+                      disabled={isDisabled}
+                      className="flex items-center justify-center hover:opacity-80 transition-opacity disabled:cursor-not-allowed"
+                      style={{ backgroundColor: rowIndex % 2 === 0 ? '#333333' : '#555555' }}
+                    >
+                      {renderMarks(score.marks[target], isEliminated)}
+                    </button>
+                  );
+                })}
+
+                {/* For singles and tag-team: Original layout - Team 0 / First half of players */}
+                {!(variant === 'triple-threat' || variant === 'fatal-4-way') && (variant === 'tag-team' ? playerScores.slice(0, 1) : playerScores.slice(0, Math.ceil(players.length / 2))).map((score, scoreIndex) => {
                   // For tag-team, always enabled (any team member can click)
                   const isDisabled = variant === 'tag-team'
                     ? currentDartIndex >= 3 || getTeamIndex(currentPlayerIndex) !== 0
@@ -1021,18 +1355,20 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
                   );
                 })}
 
-                {/* Target Number Button - centered */}
-                <button
-                  onClick={() => handleTargetClick(target)}
-                  disabled={currentDartIndex >= 3}
-                  className="flex items-center justify-center hover:opacity-80 transition-opacity disabled:cursor-not-allowed"
-                  style={{ backgroundColor: rowIndex % 2 === 0 ? '#333333' : '#555555' }}
-                >
-                  <span className="text-white text-7xl font-bold">{target}</span>
-                </button>
+                {/* For singles and tag-team: Target Number Button - centered */}
+                {!(variant === 'triple-threat' || variant === 'fatal-4-way') && (
+                  <button
+                    onClick={() => handleTargetClick(target)}
+                    disabled={currentDartIndex >= 3}
+                    className="flex items-center justify-center hover:opacity-80 transition-opacity disabled:cursor-not-allowed"
+                    style={{ backgroundColor: rowIndex % 2 === 0 ? '#333333' : '#555555' }}
+                  >
+                    <span className="text-white text-7xl font-bold">{target}</span>
+                  </button>
+                )}
 
-                {/* Team 1 / Second half of players */}
-                {(variant === 'tag-team' ? playerScores.slice(1, 2) : playerScores.slice(Math.ceil(players.length / 2))).map((score, scoreIndex) => {
+                {/* For singles and tag-team: Team 1 / Second half of players */}
+                {!(variant === 'triple-threat' || variant === 'fatal-4-way') && (variant === 'tag-team' ? playerScores.slice(1, 2) : playerScores.slice(Math.ceil(players.length / 2))).map((score, scoreIndex) => {
                   // For tag-team, check if current team, for regular check player index
                   const isDisabled = variant === 'tag-team'
                     ? currentDartIndex >= 3 || getTeamIndex(currentPlayerIndex) !== 1
