@@ -56,6 +56,7 @@ interface HistoryEntry {
   dartMultipliersSnapshot?: (1 | 2 | 3)[];
   dartPinHitsSnapshot?: (number | null)[];
   dartSkipsSnapshot?: (string | null)[];
+  dartKOsSnapshot?: (string | null)[];
   skippedPlayersSnapshot?: string[];
   wasSkippedPlayersSnapshot?: string[];
   lastSkippedPlayerSnapshot?: string | null;
@@ -72,6 +73,7 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
   const [dartMultipliers, setDartMultipliers] = useState<(1 | 2 | 3)[]>([1, 1, 1]);
   const [dartPinHits, setDartPinHits] = useState<(number | null)[]>([null, null, null]); // Track PIN hits with new count value
   const [dartSkips, setDartSkips] = useState<(string | null)[]>([null, null, null]); // Track skipped player names
+  const [dartKOs, setDartKOs] = useState<(string | null)[]>([null, null, null]); // Track KO actions with target player name
   const [currentDartIndex, setCurrentDartIndex] = useState(0);
   const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
@@ -436,6 +438,7 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
             dartMultipliersSnapshot: [...dartMultipliers],
             dartPinHitsSnapshot: [...dartPinHits],
             dartSkipsSnapshot: [...dartSkips],
+            dartKOsSnapshot: [...dartKOs],
             skippedPlayersSnapshot: Array.from(skippedPlayers),
             wasSkippedPlayersSnapshot: Array.from(wasSkippedPlayers),
             lastSkippedPlayerSnapshot: lastSkippedPlayer,
@@ -612,9 +615,6 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
     const currentPlayer = players[currentPlayerIndex];
     const currentBoardComplete = isBoardComplete(currentPlayerIndex);
 
-    // Can't KO if current player hasn't completed their board
-    if (!currentBoardComplete) return;
-
     const targetPlayer = players[targetPlayerIndex];
     const targetPlayerScore = playerScores[targetPlayerIndex];
 
@@ -623,7 +623,7 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
 
     // Check if clicking own KO button to remove KO points
     if (targetPlayerIndex === currentPlayerIndex) {
-      // Remove KO point from self
+      // Remove KO point from self (allowed even without completed board)
       if (targetPlayerScore.koPoints > 0) {
         const playerScoresSnapshot = JSON.parse(JSON.stringify(playerScores)) as PlayerScore[];
 
@@ -631,6 +631,11 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
         newPlayerScores[targetPlayerIndex].koPoints = Math.max(0, newPlayerScores[targetPlayerIndex].koPoints - multiplier);
 
         setPlayerScores(newPlayerScores);
+
+        // Record KO action in dartKOs
+        const newDartKOs = [...dartKOs];
+        newDartKOs[currentDartIndex] = `-${multiplier} ${targetPlayer.name}`;
+        setDartKOs(newDartKOs);
 
         // Add to history
         const historyEntry: HistoryEntry = {
@@ -643,6 +648,7 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
           dartMultipliersSnapshot: [...dartMultipliers],
           dartPinHitsSnapshot: [...dartPinHits],
           dartSkipsSnapshot: [...dartSkips],
+          dartKOsSnapshot: [...dartKOs],
           skippedPlayersSnapshot: Array.from(skippedPlayers),
           wasSkippedPlayersSnapshot: Array.from(wasSkippedPlayers),
           lastSkippedPlayerSnapshot: lastSkippedPlayer,
@@ -653,7 +659,9 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
         setMultiplier(1);
       }
     } else {
-      // Add KO point to opponent
+      // Add KO point to opponent (requires completed board)
+      if (!currentBoardComplete) return;
+
       const playerScoresSnapshot = JSON.parse(JSON.stringify(playerScores)) as PlayerScore[];
 
       const newPlayerScores = [...playerScores];
@@ -668,6 +676,11 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
 
       setPlayerScores(newPlayerScores);
 
+      // Record KO action in dartKOs
+      const newDartKOs = [...dartKOs];
+      newDartKOs[currentDartIndex] = `+${multiplier} ${targetPlayer.name}`;
+      setDartKOs(newDartKOs);
+
       // Add to history
       const historyEntry: HistoryEntry = {
         playerIndex: currentPlayerIndex,
@@ -681,6 +694,7 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
         dartMultipliersSnapshot: [...dartMultipliers],
         dartPinHitsSnapshot: [...dartPinHits],
         dartSkipsSnapshot: [...dartSkips],
+        dartKOsSnapshot: [...dartKOs],
         skippedPlayersSnapshot: Array.from(skippedPlayers),
         wasSkippedPlayersSnapshot: Array.from(wasSkippedPlayers),
         lastSkippedPlayerSnapshot: lastSkippedPlayer,
@@ -721,6 +735,7 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
         dartMultipliersSnapshot: [...dartMultipliers],
         dartPinHitsSnapshot: [...dartPinHits],
         dartSkipsSnapshot: [...dartSkips],
+        dartKOsSnapshot: [...dartKOs],
         skippedPlayersSnapshot: Array.from(skippedPlayers),
         wasSkippedPlayersSnapshot: Array.from(wasSkippedPlayers),
         lastSkippedPlayerSnapshot: lastSkippedPlayer,
@@ -811,6 +826,7 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
         dartMultipliersSnapshot: [...dartMultipliers],
         dartPinHitsSnapshot: [...dartPinHits],
         dartSkipsSnapshot: [...dartSkips],
+        dartKOsSnapshot: [...dartKOs],
         skippedPlayersSnapshot: Array.from(skippedPlayers),
         wasSkippedPlayersSnapshot: Array.from(wasSkippedPlayers),
         lastSkippedPlayerSnapshot: lastSkippedPlayer,
@@ -885,6 +901,7 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
       dartMultipliersSnapshot: [...dartMultipliers],
       dartPinHitsSnapshot: [...dartPinHits],
       dartSkipsSnapshot: [...dartSkips],
+      dartKOsSnapshot: [...dartKOs],
       skippedPlayersSnapshot: Array.from(skippedPlayers),
       wasSkippedPlayersSnapshot: Array.from(wasSkippedPlayers),
       lastSkippedPlayerSnapshot: lastSkippedPlayer,
@@ -899,6 +916,7 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
     setDartMultipliers([1, 1, 1]);
     setDartPinHits([null, null, null]);
     setDartSkips([null, null, null]);
+    setDartKOs([null, null, null]);
     setCurrentDartIndex(0);
     setMultiplier(1);
   };
@@ -944,6 +962,10 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
 
       if (beforeTurnAdvance.dartSkipsSnapshot) {
         setDartSkips([...beforeTurnAdvance.dartSkipsSnapshot]);
+      }
+
+      if (beforeTurnAdvance.dartKOsSnapshot) {
+        setDartKOs([...beforeTurnAdvance.dartKOsSnapshot]);
       }
 
       if (beforeTurnAdvance.skippedPlayersSnapshot) {
@@ -1005,6 +1027,10 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
 
     if (lastEntry.dartSkipsSnapshot) {
       setDartSkips([...lastEntry.dartSkipsSnapshot]);
+    }
+
+    if (lastEntry.dartKOsSnapshot) {
+      setDartKOs([...lastEntry.dartKOsSnapshot]);
     }
 
     if (lastEntry.skippedPlayersSnapshot) {
@@ -1188,6 +1214,7 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
                 const mult = dartMultipliers[index];
                 const pinHit = dartPinHits[index];
                 const skipName = dartSkips[index];
+                const koAction = dartKOs[index];
 
                 let displayText = '';
                 if (pinHit !== null) {
@@ -1196,6 +1223,9 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
                 } else if (skipName !== null) {
                   // Player skip - show skipped player name
                   displayText = skipName;
+                } else if (koAction !== null) {
+                  // KO action - show KO+1 NAME or KO-1 NAME
+                  displayText = `KO${koAction}`;
                 } else if (score) {
                   // Regular dart score
                   displayText = mult > 1 ? `${score}(${mult})` : `${score}`;
@@ -1221,6 +1251,32 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
                 );
               })}
             </div>
+
+            {/* PIN Counter Display */}
+            {isPinEnabled && pinCount !== 0 && (
+              <div className="mt-6 bg-[#1a1a1a] rounded-lg p-6 flex flex-col items-center justify-center">
+                <div className="text-white text-3xl font-bold mb-3">PIN</div>
+                {(() => {
+                  // Find the remaining non-eliminated players for color
+                  const remainingPlayers = playerScores
+                    .map((score, idx) => ({ score, idx }))
+                    .filter(p => !p.score.isEliminated);
+
+                  // For PIN phase, pinCount > 0 favors first remaining player, < 0 favors second
+                  const favoredPlayerIndex = pinCount > 0 ? 0 : 1;
+                  const favoredColor = remainingPlayers[favoredPlayerIndex]?.score.color || (pinCount > 0 ? 'blue' : 'red');
+
+                  return (
+                    <span
+                      className="text-9xl font-bold"
+                      style={{ color: getPlayerColor(favoredColor) }}
+                    >
+                      {Math.abs(pinCount)}
+                    </span>
+                  );
+                })()}
+              </div>
+            )}
           </div>
         </div>
 
@@ -1231,13 +1287,32 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
             <>
               {/* New layout: Empty cell for numbers column, then all players in order */}
               <div className="grid gap-2 mb-4" style={{ gridTemplateColumns: `120px repeat(${players.length}, 1fr)` }}>
-              {/* KO Phase indicator or empty cell above numbers column */}
-              <div className="flex items-center justify-center">
+              {/* KO Phase indicator and PIN counter above numbers column */}
+              <div className="flex flex-col items-center justify-center gap-2">
                 {isInKOPhase() && (
                   <div className="text-red-500 text-2xl font-bold animate-pulse">
                     KO
                   </div>
                 )}
+                {isPinEnabled && pinCount !== 0 && (() => {
+                  // Find the remaining non-eliminated players
+                  const remainingPlayers = playerScores
+                    .map((score, idx) => ({ score, idx }))
+                    .filter(p => !p.score.isEliminated);
+
+                  // For PIN phase, pinCount > 0 favors first remaining player, < 0 favors second
+                  const favoredPlayerIndex = pinCount > 0 ? 0 : 1;
+                  const favoredColor = remainingPlayers[favoredPlayerIndex]?.score.color || (pinCount > 0 ? 'blue' : 'red');
+
+                  return (
+                    <span
+                      className="text-6xl font-bold"
+                      style={{ color: getPlayerColor(favoredColor) }}
+                    >
+                      {Math.abs(pinCount)}
+                    </span>
+                  );
+                })()}
               </div>
 
               {/* All players in order */}
@@ -1299,19 +1374,20 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
                   const currentBoardComplete = isBoardComplete(currentPlayerIndex);
 
                   // KO button is enabled if:
-                  // - Current player has completed board
-                  // - Target is not eliminated
-                  // - There are darts remaining
-                  const canKO = currentBoardComplete && !isEliminated && currentDartIndex < 3;
+                  // - Clicking own button to remove KO points (always allowed if you have KO points)
+                  // - OR current player has completed board and target is not eliminated
+                  // - AND there are darts remaining
+                  const canKO = (isCurrent && koPoints > 0) || (currentBoardComplete && !isEliminated && !isCurrent);
+                  const canClick = canKO && currentDartIndex < 3;
 
                   return (
                     <button
                       key={`ko-${player.id}`}
                       onClick={() => handleKOClick(playerIndex)}
-                      disabled={!canKO}
+                      disabled={!canClick}
                       className="p-3 rounded flex items-center justify-center transition-all hover:brightness-110 disabled:cursor-not-allowed bg-red-900"
                       style={{
-                        filter: canKO ? 'none' : 'brightness(0.3)',
+                        filter: canClick ? 'none' : 'brightness(0.3)',
                         minHeight: '60px'
                       }}
                     >

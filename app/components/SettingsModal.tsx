@@ -21,6 +21,10 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setCourseBannerOpacity,
     cameraEnabled,
     setCameraEnabled,
+    showCourseRecord,
+    setShowCourseRecord,
+    showCourseName,
+    setShowCourseName,
   } = useAppContext();
   const [courseNameInput, setCourseNameInput] = useState(golfCourseName);
   const [bannerImageInput, setBannerImageInput] = useState(courseBannerImage);
@@ -350,6 +354,39 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 >
                   SAVE BANNER SETTINGS
                 </button>
+              </div>
+
+              {/* Display Options Section */}
+              <div className="mb-6">
+                <h3 className="text-xl font-bold text-white mb-4">BANNER DISPLAY OPTIONS</h3>
+
+                {/* Course Name Toggle */}
+                <div className="flex items-center gap-3 mb-4">
+                  <input
+                    type="checkbox"
+                    id="showCourseName"
+                    checked={showCourseName}
+                    onChange={(e) => setShowCourseName(e.target.checked)}
+                    className="w-6 h-6 cursor-pointer"
+                  />
+                  <label htmlFor="showCourseName" className="text-white text-lg cursor-pointer">
+                    Display Course Name on Banner
+                  </label>
+                </div>
+
+                {/* Course Record Toggle */}
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="showCourseRecord"
+                    checked={showCourseRecord}
+                    onChange={(e) => setShowCourseRecord(e.target.checked)}
+                    className="w-6 h-6 cursor-pointer"
+                  />
+                  <label htmlFor="showCourseRecord" className="text-white text-lg cursor-pointer">
+                    Display Course Record on Banner
+                  </label>
+                </div>
               </div>
             </div>
           )}

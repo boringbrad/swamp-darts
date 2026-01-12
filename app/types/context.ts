@@ -53,6 +53,14 @@ export interface AppContextValue {
   // Camera Settings
   cameraEnabled: boolean;
   setCameraEnabled: (enabled: boolean) => void;
+
+  // Course Record Display
+  showCourseRecord: boolean;
+  setShowCourseRecord: (show: boolean) => void;
+
+  // Course Name Display
+  showCourseName: boolean;
+  setShowCourseName: (show: boolean) => void;
 }
 
 export interface PlayerContextValue {

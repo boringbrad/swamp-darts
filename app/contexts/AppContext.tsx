@@ -29,6 +29,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [courseBannerImage, setCourseBannerImageState] = useState('');
   const [courseBannerOpacity, setCourseBannerOpacityState] = useState(50);
   const [cameraEnabled, setCameraEnabledState] = useState(false);
+  const [showCourseRecord, setShowCourseRecordState] = useState(true);
+  const [showCourseName, setShowCourseNameState] = useState(true);
 
   // Load initial state from storage on mount
   useEffect(() => {
@@ -97,6 +99,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const savedCameraEnabled = localStorage.getItem('cameraEnabled');
     if (savedCameraEnabled !== null) {
       setCameraEnabledState(savedCameraEnabled === 'true');
+    }
+
+    // Load show course record setting from localStorage
+    const savedShowCourseRecord = localStorage.getItem('showCourseRecord');
+    if (savedShowCourseRecord !== null) {
+      setShowCourseRecordState(savedShowCourseRecord === 'true');
+    }
+
+    // Load show course name setting from localStorage
+    const savedShowCourseName = localStorage.getItem('showCourseName');
+    if (savedShowCourseName !== null) {
+      setShowCourseNameState(savedShowCourseName === 'true');
     }
   }, []);
 
@@ -203,6 +217,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('cameraEnabled', enabled.toString());
   };
 
+  const setShowCourseRecord = (show: boolean) => {
+    setShowCourseRecordState(show);
+    localStorage.setItem('showCourseRecord', show.toString());
+  };
+
+  const setShowCourseName = (show: boolean) => {
+    setShowCourseNameState(show);
+    localStorage.setItem('showCourseName', show.toString());
+  };
+
   const contextValue: AppContextValue = {
     userProfile,
     updateUserProfile,
@@ -228,6 +252,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCourseBannerOpacity,
     cameraEnabled,
     setCameraEnabled,
+    showCourseRecord,
+    setShowCourseRecord,
+    showCourseName,
+    setShowCourseName,
   };
 
   return <AppContext.Provider value={contextValue}>{children}</AppContext.Provider>;

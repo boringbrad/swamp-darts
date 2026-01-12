@@ -23,7 +23,7 @@ const TOTAL_HOLES = 18;
 export default function GolfGame({ variant }: GolfGameProps) {
   const router = useRouter();
   const { localPlayers } = usePlayerContext();
-  const { selectedPlayers, tieBreakerEnabled, golfCourseName, playMode, courseBannerImage, courseBannerOpacity, cameraEnabled, setCameraEnabled } = useAppContext();
+  const { selectedPlayers, tieBreakerEnabled, golfCourseName, playMode, courseBannerImage, courseBannerOpacity, cameraEnabled, setCameraEnabled, showCourseRecord, showCourseName } = useAppContext();
   const [players, setPlayers] = useState<StoredPlayer[]>([]);
   const [scores, setScores] = useState<PlayerScore[]>([]);
   const [currentHole, setCurrentHole] = useState(0); // 0-17 for holes 1-18, 18+ for tie breaker
@@ -729,7 +729,7 @@ export default function GolfGame({ variant }: GolfGameProps) {
       <div className="flex-1 bg-[#1a1a1a] flex flex-col overflow-hidden relative" style={{ width: cameraEnabled ? `${100 - dividerPosition}%` : '100%' }}>
 
         {/* Course Header - fills available space with max limit */}
-        <div className="bg-[#5a7a4a] text-center px-4 relative flex-grow flex flex-col items-center justify-center py-4 min-h-[80px] max-h-[40vh]">
+        <div className="bg-[#5a7a4a] text-center px-4 relative flex-grow py-4 min-h-[80px] max-h-[40vh] flex flex-col">
           {/* Background image with opacity */}
           <div
             className="absolute inset-0 bg-cover bg-center"
@@ -738,8 +738,16 @@ export default function GolfGame({ variant }: GolfGameProps) {
               opacity: courseBannerOpacity / 100
             }}
           ></div>
-          <h1 className="text-white font-bold tracking-wider relative z-10" style={{ fontSize: 'clamp(1.5rem, 4vw, 4rem)' }}>{golfCourseName}</h1>
-          <p className="text-white mt-1 opacity-90 relative z-10" style={{ fontSize: 'clamp(0.75rem, 1.5vw, 1.5rem)' }}>COURSE RECORD: {courseRecord}</p>
+
+          {/* Center content container - always centered */}
+          <div className="flex-grow flex flex-col items-center justify-center relative z-10">
+            {showCourseName && (
+              <h1 className="text-white font-bold tracking-wider" style={{ fontSize: 'clamp(1.5rem, 4vw, 4rem)' }}>{golfCourseName}</h1>
+            )}
+            {showCourseRecord && (
+              <p className="text-white mt-1 opacity-90" style={{ fontSize: 'clamp(0.75rem, 1.5vw, 1.5rem)' }}>COURSE RECORD: {courseRecord}</p>
+            )}
+          </div>
 
           {/* Current Player Game Status - Anchored to Bottom of Banner */}
           {!gameComplete && currentHole < TOTAL_HOLES && (
