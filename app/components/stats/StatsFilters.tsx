@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { loadGolfMatches, getUniqueCourseNames, getUniquePlayers } from '@/app/lib/golfStats';
+import { loadCricketMatches, getUniquePlayers as getCricketPlayers } from '@/app/lib/cricketStats';
 import StatsFilterDropdown, { FilterOption } from '../StatsFilterDropdown';
 
 interface StatsFiltersProps {
@@ -64,8 +65,17 @@ export default function StatsFilters({
         ...courses.map(c => ({ value: c, label: c })),
       ];
       setCourseOptions(courseOpts);
+    } else if (gameType === 'cricket') {
+      const matches = loadCricketMatches();
+
+      // Get unique players
+      const players = getCricketPlayers(matches);
+      const playerOpts: FilterOption[] = [
+        { value: 'all', label: 'All Players' },
+        ...players.map(p => ({ value: p.id, label: p.name })),
+      ];
+      setPlayerOptions(playerOpts);
     }
-    // TODO: Cricket loading will be added later
   }, [gameType]);
 
   return (

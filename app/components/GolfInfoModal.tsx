@@ -149,7 +149,6 @@ export default function GolfInfoModal({ isOpen, onClose }: GolfInfoModalProps) {
             </p>
             <ul className="text-white opacity-90 space-y-2 list-disc pl-5 mt-2">
               <li>In this game every hole is <strong>Par 4.</strong></li>
-              <li><strong>Par 5</strong> holes: 5 strokes is expected</li>
               <li>Scoring under par is good (birdie, eagle)</li>
               <li>Scoring over par is less favorable (bogey, double bogey)</li>
             </ul>

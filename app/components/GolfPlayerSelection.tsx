@@ -149,6 +149,19 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
     router.push(`/golf/${variant}/game`);
   };
 
+  const handleRandomizeOrder = () => {
+    if (selectedPlayers.length === 0) return;
+
+    // Shuffle the selected player IDs using Fisher-Yates algorithm
+    const shuffled = [...selectedPlayers];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    setSelectedPlayers(shuffled);
+  };
+
   return (
     <main className="px-6 pb-16 flex flex-col min-h-screen">
       {/* Content container - takes available space above player pool */}
@@ -200,8 +213,16 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
         {/* Middle spacer */}
         <div className="flex-1"></div>
 
-        {/* Play Game Button - positioned below selected players */}
-        <div className="flex justify-center">
+        {/* Action Buttons - positioned below selected players */}
+        <div className="flex flex-col items-center justify-center gap-4">
+          <button
+            onClick={handleRandomizeOrder}
+            disabled={selectedPlayers.length === 0}
+            className="px-18 py-6 bg-[#666666] text-white text-3xl font-bold rounded hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            RANDOMIZE ORDER
+          </button>
+
           <button
             onClick={handlePlayGame}
             disabled={selectedPlayers.length === 0}

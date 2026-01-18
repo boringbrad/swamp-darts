@@ -39,9 +39,21 @@ export default function GolfGame({ variant }: GolfGameProps) {
   }); // Percentage
   const [isDragging, setIsDragging] = useState(false);
   const [gameComplete, setGameComplete] = useState(false);
-  const [cameraZoom, setCameraZoom] = useState(1); // 1 = 100%, 2 = 200%, etc.
+  const [cameraZoom, setCameraZoom] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('golfCameraZoom');
+      return saved ? parseFloat(saved) : 1;
+    }
+    return 1;
+  }); // 1 = 100%, 2 = 200%, etc.
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
-  const [cameraPan, setCameraPan] = useState({ x: 0, y: 0 }); // Pan position in pixels
+  const [cameraPan, setCameraPan] = useState<{ x: number; y: number }>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('golfCameraPan');
+      return saved ? JSON.parse(saved) : { x: 0, y: 0 };
+    }
+    return { x: 0, y: 0 };
+  }); // Pan position in pixels
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
@@ -124,12 +136,24 @@ export default function GolfGame({ variant }: GolfGameProps) {
     }
   }, [isDragging]);
 
-  // Save divider position to localStorage when it changes
+  // Save camera settings to localStorage when they change
   useEffect(() => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('golfCameraDividerPosition', dividerPosition.toString());
     }
   }, [dividerPosition]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('golfCameraZoom', cameraZoom.toString());
+    }
+  }, [cameraZoom]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('golfCameraPan', JSON.stringify(cameraPan));
+    }
+  }, [cameraPan]);
 
   // Camera stream management
   useEffect(() => {
@@ -755,7 +779,7 @@ export default function GolfGame({ variant }: GolfGameProps) {
               <div className="font-bold" style={{ fontSize: 'clamp(1rem, 2.5vw, 2.5rem)' }}>
                 {players[currentPlayerIndex]?.name.toUpperCase()} - HOLE {currentHole + 1}
               </div>
-              <div className="mt-0.5 opacity-90" style={{ fontSize: 'clamp(0.7rem, 1.6vw, 1.6rem)' }}>
+              <div className="mt-0.5 opacity-90 font-bold" style={{ fontSize: 'clamp(0.7rem, 1.6vw, 1.6rem)' }}>
                 {(() => {
                   const playerScores = scores[currentPlayerIndex]?.holes || [];
                   const total = calculateTotal(playerScores, 0, currentHole);

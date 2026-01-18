@@ -1,11 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { GolfPlayerStats } from '@/app/types/stats';
+import { GolfPlayerStats, GolfMatch } from '@/app/types/stats';
 import { loadGolfMatches, calculateGolfStats } from '@/app/lib/golfStats';
 import StatsSummaryCards from './StatsSummaryCards';
 import HoleAverageChart from './HoleAverageChart';
 import ScoreProbabilityHeatmap from './ScoreProbabilityHeatmap';
+import LastVsBestGameChart from './LastVsBestGameChart';
+import ScoresOverGamesChart from './ScoresOverGamesChart';
+import ShotAccuracyPieChart from './ShotAccuracyPieChart';
+import DualRangeSlider from './DualRangeSlider';
 
 interface GolfStatsDisplayProps {
   playerFilter: string; // 'all' or playerId
@@ -16,23 +20,32 @@ interface GolfStatsDisplayProps {
 export default function GolfStatsDisplay({ playerFilter, courseFilter, playModeFilter }: GolfStatsDisplayProps) {
   const [stats, setStats] = useState<GolfPlayerStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [gameRange, setGameRange] = useState<{ start: number; end: number } | null>(null);
+  const [allMatches, setAllMatches] = useState<GolfMatch[]>([]);
 
   useEffect(() => {
     setLoading(true);
 
-    // Load and calculate stats
+    // Load matches
     const matches = loadGolfMatches();
+    setAllMatches(matches);
+
+    // Initialize game range to all games
+    if (gameRange === null && matches.length > 0) {
+      setGameRange({ start: 0, end: matches.length - 1 });
+    }
 
     const filters = {
       playerId: playerFilter !== 'all' ? playerFilter : undefined,
       courseName: courseFilter !== 'all' ? courseFilter : undefined,
       playMode: playModeFilter !== 'all' ? playModeFilter : undefined,
+      gameRange: gameRange || undefined,
     };
 
     const calculatedStats = calculateGolfStats(matches, filters);
     setStats(calculatedStats);
     setLoading(false);
-  }, [playerFilter, courseFilter, playModeFilter]);
+  }, [playerFilter, courseFilter, playModeFilter, gameRange]);
 
   if (loading) {
     return (
@@ -57,6 +70,22 @@ export default function GolfStatsDisplay({ playerFilter, courseFilter, playModeF
   if (playerFilter !== 'all' && stats.length === 1) {
     const playerStats = stats[0];
 
+    // Get player-specific matches for new charts
+    const playerMatches = allMatches.filter(match =>
+      match.players.some(p => p.playerId === playerFilter)
+    );
+
+    // Get last game and best game
+    const lastGame = playerMatches.length > 0 ? playerMatches[playerMatches.length - 1] : null;
+    const bestGame = playerMatches.length > 0
+      ? playerMatches.reduce((best, match) => {
+          const playerData = match.players.find(p => p.playerId === playerFilter);
+          const bestPlayerData = best.players.find(p => p.playerId === playerFilter);
+          if (!playerData || !bestPlayerData) return best;
+          return playerData.totalScore < bestPlayerData.totalScore ? match : best;
+        })
+      : null;
+
     return (
       <div>
         {/* Player name header */}
@@ -66,8 +95,44 @@ export default function GolfStatsDisplay({ playerFilter, courseFilter, playModeF
           </h2>
         </div>
 
+        {/* Game Range Filter */}
+        {allMatches.length > 1 && (
+          <div className="bg-[#333333] rounded-lg p-6 mb-8">
+            <h3 className="text-white text-xl font-bold mb-4">GAME RANGE FILTER</h3>
+            <div className="flex items-center gap-6">
+              <div className="flex-1">
+                <DualRangeSlider
+                  min={0}
+                  max={allMatches.length - 1}
+                  minValue={gameRange?.start || 0}
+                  maxValue={gameRange?.end || allMatches.length - 1}
+                  onChange={(start, end) => setGameRange({ start, end })}
+                />
+              </div>
+              <button
+                onClick={() => setGameRange({ start: 0, end: allMatches.length - 1 })}
+                className="px-4 py-2 bg-[#90EE90] text-black font-bold rounded hover:bg-[#7ACC7A] transition-colors flex-shrink-0"
+              >
+                Reset
+              </button>
+            </div>
+            <div className="text-gray-400 text-sm mt-6 text-center">
+              Showing games {(gameRange?.start || 0) + 1} to {(gameRange?.end || allMatches.length - 1) + 1} of {allMatches.length}
+            </div>
+          </div>
+        )}
+
         {/* Summary cards */}
         <StatsSummaryCards stats={playerStats} />
+
+        {/* Last vs Best Game */}
+        <LastVsBestGameChart lastGame={lastGame} bestGame={bestGame} playerId={playerFilter} />
+
+        {/* Scores Over Games */}
+        <ScoresOverGamesChart matches={playerMatches} playerId={playerFilter} />
+
+        {/* Shot Accuracy Pie Chart */}
+        <ShotAccuracyPieChart matches={playerMatches} playerId={playerFilter} />
 
         {/* Hole averages */}
         <HoleAverageChart stats={playerStats} />

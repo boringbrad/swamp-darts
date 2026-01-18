@@ -19,7 +19,7 @@ export default function Home() {
           <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-4">
             <GameModeCard title="CRICKET" href="/cricket" color="cricket" />
             <GameModeCard title="GOLF" href="/golf" color="golf" />
-            <GameModeCard title="EXTRA" href="/extra" color="extra" disabled={true} subtitle="Coming Soon" />
+            <GameModeCard title="ROYAL RUMBLE" href="/extra/royal-rumble/setup" color="extra" />
             <GameModeCard title="PLAY ONLINE" href="/tbd" color="tbd" disabled={true} subtitle="Coming Soon" />
           </div>
 

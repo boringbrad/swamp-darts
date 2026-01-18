@@ -28,7 +28,7 @@ export default function ExtraGamesPage() {
 
           {/* Royal Rumble */}
           <Link
-            href="/extra/royal-rumble"
+            href="/extra/royal-rumble/setup"
             className="bg-[#666666] rounded-lg h-64 flex items-center justify-center hover:bg-[#777777] transition-colors"
           >
             <span className="text-white text-4xl font-bold text-center">ROYAL RUMBLE</span>

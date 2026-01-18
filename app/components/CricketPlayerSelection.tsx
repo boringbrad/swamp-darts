@@ -180,6 +180,28 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
     router.push(`/cricket/${variant}/game`);
   };
 
+  const handleRandomizeOrder = () => {
+    if (selectedPlayerIds.length === 0) return;
+
+    // Shuffle the selected player IDs using Fisher-Yates algorithm
+    const shuffled = [...selectedPlayerIds];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    setSelectedPlayerIds(shuffled);
+
+    // For tag-team, reassign teams based on new order
+    if (variant === 'tag-team') {
+      const newTeamAssignments: Record<string, number> = {};
+      shuffled.forEach((playerId, index) => {
+        newTeamAssignments[playerId] = index % 2; // Alternate teams: 0, 1, 0, 1
+      });
+      setTeamAssignments(newTeamAssignments);
+    }
+  };
+
   const isPlayDisabled = selectedPlayerIds.length !== config.playerCount;
 
   // Drag and drop handlers
@@ -539,6 +561,15 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
               className="px-18 py-6 bg-[#666666] text-white text-3xl font-bold rounded hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               RANDOMIZE NUMBERS
+            </button>
+
+            {/* Randomize Order Button */}
+            <button
+              onClick={handleRandomizeOrder}
+              disabled={selectedPlayerIds.length === 0}
+              className="px-18 py-6 bg-[#666666] text-white text-3xl font-bold rounded hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              RANDOMIZE ORDER
             </button>
 
             {/* Play Game Button */}

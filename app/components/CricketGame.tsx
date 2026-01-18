@@ -77,8 +77,20 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
   const [currentDartIndex, setCurrentDartIndex] = useState(0);
   const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
-  const [cameraZoom, setCameraZoom] = useState(1);
-  const [cameraPan, setCameraPan] = useState({ x: 0, y: 0 });
+  const [cameraZoom, setCameraZoom] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('cricketCameraZoom');
+      return saved ? parseFloat(saved) : 1;
+    }
+    return 1;
+  });
+  const [cameraPan, setCameraPan] = useState<{ x: number; y: number }>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('cricketCameraPan');
+      return saved ? JSON.parse(saved) : { x: 0, y: 0 };
+    }
+    return { x: 0, y: 0 };
+  });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [dividerPosition, setDividerPosition] = useState(() => {
@@ -173,6 +185,171 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
     return remaining > 2 && anyBoardComplete;
   };
 
+  // Helper functions for calculating detailed stats from history
+  const calculateTotalDarts = (playerHistory: HistoryEntry[]): number => {
+    return playerHistory.filter(h => h.action === 'score' || h.action === 'miss').length;
+  };
+
+  const calculateTotalMarks = (playerHistory: HistoryEntry[]): number => {
+    return playerHistory
+      .filter(h => h.action === 'score' && h.marksAdded)
+      .reduce((sum, h) => sum + (h.marksAdded || 0), 0);
+  };
+
+  const calculateMPR = (playerHistory: HistoryEntry[]): number => {
+    const totalMarks = calculateTotalMarks(playerHistory);
+    const totalDarts = calculateTotalDarts(playerHistory);
+    const rounds = Math.ceil(totalDarts / 3);
+    return rounds > 0 ? totalMarks / rounds : 0;
+  };
+
+  const calculateAccuracy = (playerHistory: HistoryEntry[]): number => {
+    const totalDarts = calculateTotalDarts(playerHistory);
+    const scoringDarts = playerHistory.filter(h => h.action === 'score').length;
+    return totalDarts > 0 ? (scoringDarts / totalDarts) * 100 : 0;
+  };
+
+  const calculatePlayersSkipped = (playerHistory: HistoryEntry[]): number => {
+    return playerHistory.filter(h => h.action === 'skip').length;
+  };
+
+  const calculateTimesSkipped = (playerId: string, allHistory: HistoryEntry[]): number => {
+    return allHistory.filter(h =>
+      h.action === 'skip' && h.skippedPlayerId === playerId
+    ).length;
+  };
+
+  const calculatePinAttempts = (playerHistory: HistoryEntry[]): number => {
+    // Count PIN hits where the count increased but didn't reach 3
+    return playerHistory.filter(h =>
+      h.action === 'pin' && h.pinCountAfter !== undefined && h.pinCountBefore !== undefined &&
+      Math.abs(h.pinCountAfter) < 3 && Math.abs(h.pinCountAfter) > Math.abs(h.pinCountBefore)
+    ).length;
+  };
+
+  const calculatePinKickouts = (playerHistory: HistoryEntry[]): number => {
+    // Count PIN hits that reversed opponent's count toward 0
+    return playerHistory.filter(h =>
+      h.action === 'pin' && h.pinCountAfter !== undefined && h.pinCountBefore !== undefined &&
+      Math.abs(h.pinCountAfter) < Math.abs(h.pinCountBefore)
+    ).length;
+  };
+
+  const calculatePinCloseouts = (playerHistory: HistoryEntry[]): number => {
+    // Count PIN hits that reached 3 (winning the game)
+    return playerHistory.filter(h =>
+      h.action === 'pin' && h.pinCountAfter !== undefined &&
+      Math.abs(h.pinCountAfter) >= 3
+    ).length;
+  };
+
+  const calculateKOPointsGiven = (playerHistory: HistoryEntry[]): number => {
+    return playerHistory.filter(h => h.action === 'ko' && h.koPointsAdded)
+      .reduce((sum, h) => sum + (h.koPointsAdded || 0), 0);
+  };
+
+  const calculateKOEliminations = (playerHistory: HistoryEntry[]): number => {
+    return playerHistory.filter(h =>
+      h.action === 'ko' && h.playerEliminatedId
+    ).length;
+  };
+
+  const calculateTargetStats = (playerHistory: HistoryEntry[]): Record<string, any> => {
+    const targets: CricketNumber[] = [20, 19, 18, 17, 16, 15, 'B'];
+    const stats: any = {};
+
+    targets.forEach(target => {
+      const targetHistory = playerHistory.filter(h => h.target === target);
+      const dartsThrown = targetHistory.length;
+      const marksScored = targetHistory
+        .filter(h => h.action === 'score')
+        .reduce((sum, h) => sum + (h.marksAdded || 0), 0);
+
+      stats[target] = {
+        dartsThrown,
+        marksScored,
+        accuracy: dartsThrown > 0 ? (marksScored / dartsThrown) * 100 : 0,
+      };
+    });
+
+    return stats;
+  };
+
+  const calculateLongestStreak = (playerHistory: HistoryEntry[]): number => {
+    let currentStreak = 0;
+    let longestStreak = 0;
+
+    for (const entry of playerHistory) {
+      if (entry.action === 'score' && entry.marksAdded && entry.marksAdded > 0) {
+        currentStreak++;
+        longestStreak = Math.max(longestStreak, currentStreak);
+      } else if (entry.action === 'miss' || entry.action === 'turn_advance') {
+        currentStreak = 0;
+      }
+    }
+
+    return longestStreak;
+  };
+
+  // Save game to database (localStorage)
+  const saveGameToDatabase = () => {
+    try {
+      // Calculate detailed stats from history and playerScores
+      const matchData = {
+        matchId: `CRICKET_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        variant: variant,
+        rules: rules,
+        date: new Date().toISOString(),
+        winnerId: gameWinner,
+        players: playerScores.map(player => {
+          const playerHistory = history.filter(h =>
+            playerScores[h.playerIndex]?.playerId === player.playerId
+          );
+
+          return {
+            playerId: player.playerId,
+            playerName: player.playerName,
+            teamId: variant === 'tag-team' ? player.playerId : undefined,
+            finalMarks: player.marks,
+            finalPoints: player.points,
+            koPoints: player.koPoints,
+            isEliminated: player.isEliminated,
+
+            // Calculate from history
+            totalDarts: calculateTotalDarts(playerHistory),
+            totalMarks: calculateTotalMarks(playerHistory),
+            mpr: calculateMPR(playerHistory),
+            accuracy: calculateAccuracy(playerHistory),
+
+            playersSkipped: calculatePlayersSkipped(playerHistory),
+            timesSkipped: calculateTimesSkipped(player.playerId, history),
+
+            pinAttempts: calculatePinAttempts(playerHistory),
+            pinKickouts: calculatePinKickouts(playerHistory),
+            pinCloseouts: calculatePinCloseouts(playerHistory),
+
+            koPointsGiven: calculateKOPointsGiven(playerHistory),
+            koEliminationsCaused: calculateKOEliminations(playerHistory),
+
+            targetStats: calculateTargetStats(playerHistory),
+            longestDartStreak: calculateLongestStreak(playerHistory),
+          };
+        }),
+        totalRounds: Math.ceil(currentDartIndex / 3),
+        history: history,
+      };
+
+      // Save to localStorage
+      const existingMatches = JSON.parse(localStorage.getItem('cricketMatches') || '[]');
+      existingMatches.push(matchData);
+      localStorage.setItem('cricketMatches', JSON.stringify(existingMatches));
+
+      console.log('Cricket match saved:', matchData.matchId);
+    } catch (error) {
+      console.error('Error saving cricket match:', error);
+    }
+  };
+
   // Helper function to check if we're in PIN phase (for all variants)
   const isInPinPhase = (): boolean => {
     if (variant === 'singles' || variant === 'tag-team') {
@@ -191,6 +368,13 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
 
   // Check if PIN button should be enabled
   const isPinEnabled = isInPinPhase();
+
+  // Save game when winner is determined
+  useEffect(() => {
+    if (gameWinner) {
+      saveGameToDatabase();
+    }
+  }, [gameWinner]);
 
   // Camera stream management
   useEffect(() => {
@@ -332,12 +516,24 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
     }
   }, [isDragging]);
 
-  // Save divider position to localStorage when it changes
+  // Save camera settings to localStorage when they change
   useEffect(() => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('cricketCameraDividerPosition', dividerPosition.toString());
     }
   }, [dividerPosition]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('cricketCameraZoom', cameraZoom.toString());
+    }
+  }, [cameraZoom]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('cricketCameraPan', JSON.stringify(cameraPan));
+    }
+  }, [cameraPan]);
 
   // Auto-advance to next player when 3 darts are thrown (or give bonus turn)
   useEffect(() => {
@@ -881,7 +1077,8 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
 
     const nextPlayerId = players[nextIndex].id;
 
-    // If the new current player was previously skipped, clear their wasSkipped status
+    // Clear wasSkipped status for the NEXT player who is about to start their turn
+    // This allows them to become active and be skipped/hit again in the future
     if (wasSkippedPlayers.has(nextPlayerId)) {
       wasSkippedPlayerRemoved = nextPlayerId;
       newWasSkippedPlayers.delete(nextPlayerId);
@@ -919,6 +1116,7 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
     setDartKOs([null, null, null]);
     setCurrentDartIndex(0);
     setMultiplier(1);
+    setLastSkippedPlayer(null); // Clear so players can be skipped again in future turns
   };
 
   const handleUndo = () => {
@@ -1326,8 +1524,8 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
                 const isCurrent = playerIndex === currentPlayerIndex && !willBeSkipped && !isEliminated;
                 const koPoints = playerScores[playerIndex]?.koPoints || 0;
                 const isGreyedOut = willBeSkipped || wasSkipped || isEliminated;
-                // Can't skip if: currently playing, was last skipped, already served skip penalty, or eliminated
-                const canSkip = !isCurrent && lastSkippedPlayer !== player.id && !wasSkipped && !isEliminated;
+                // Can't skip if: currently playing, was last skipped, eliminated, or already in skip state
+                const canSkip = !isCurrent && lastSkippedPlayer !== player.id && !isEliminated && !willBeSkipped && !wasSkipped;
                 const teamColor = playerScores[playerIndex]?.color || 'blue';
 
                 return (
@@ -1377,6 +1575,7 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
                   // - Clicking own button to remove KO points (always allowed if you have KO points)
                   // - OR current player has completed board and target is not eliminated
                   // - AND there are darts remaining
+                  // Note: Players can receive KO points regardless of their skip status
                   const canKO = (isCurrent && koPoints > 0) || (currentBoardComplete && !isEliminated && !isCurrent);
                   const canClick = canKO && currentDartIndex < 3;
 
@@ -1424,10 +1623,10 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
               const teamIndex = getTeamIndex(playerIndex);
               const teamColor = playerScores[teamIndex]?.color || 'blue';
 
-              // For tag-team: can't skip current player, last skipped player, teammate, or already served penalty
+              // For tag-team: can't skip current player, last skipped player, teammate, or players in skip state
               const canSkip = variant === 'tag-team'
-                ? !isCurrent && lastSkippedPlayer !== player.id && getTeamIndex(currentPlayerIndex) !== teamIndex && !wasSkipped
-                : !isCurrent && lastSkippedPlayer !== player.id && !wasSkipped;
+                ? !isCurrent && lastSkippedPlayer !== player.id && getTeamIndex(currentPlayerIndex) !== teamIndex && !willBeSkipped && !wasSkipped
+                : !isCurrent && lastSkippedPlayer !== player.id && !willBeSkipped && !wasSkipped;
 
               return (
                 <button
@@ -1482,10 +1681,10 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
               const teamIndex = getTeamIndex(playerIndex);
               const teamColor = playerScores[teamIndex]?.color || 'blue';
 
-              // For tag-team: can't skip current player, last skipped player, teammate, or already served penalty
+              // For tag-team: can't skip current player, last skipped player, teammate, or players in skip state
               const canSkip = variant === 'tag-team'
-                ? !isCurrent && lastSkippedPlayer !== player.id && getTeamIndex(currentPlayerIndex) !== teamIndex && !wasSkipped
-                : !isCurrent && lastSkippedPlayer !== player.id && !wasSkipped;
+                ? !isCurrent && lastSkippedPlayer !== player.id && getTeamIndex(currentPlayerIndex) !== teamIndex && !willBeSkipped && !wasSkipped
+                : !isCurrent && lastSkippedPlayer !== player.id && !willBeSkipped && !wasSkipped;
 
               return (
                 <button

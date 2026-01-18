@@ -1,16 +1,19 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { usePlayerContext } from '../contexts/PlayerContext';
 import { useAppContext } from '../contexts/AppContext';
 import { getUniqueCourseNames, loadGolfMatches } from '../lib/golfStats';
+import { RoyalRumbleGameState } from '../types/royalRumble';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  pathname?: string;
 }
 
-export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
+export default function SettingsModal({ isOpen, onClose, pathname = '' }: SettingsModalProps) {
   const { deleteLocalPlayer, getGuestPlayers, refreshPlayers } = usePlayerContext();
   const {
     golfCourseName,
@@ -31,7 +34,33 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [bannerOpacityInput, setBannerOpacityInput] = useState(courseBannerOpacity);
   const [existingCourses, setExistingCourses] = useState<string[]>([]);
   const [showCustomInput, setShowCustomInput] = useState(false);
-  const [activeTab, setActiveTab] = useState<'system' | 'golf' | 'cricket'>('system');
+  const [activeTab, setActiveTab] = useState<'system' | 'golf' | 'cricket' | 'royal-rumble'>('system');
+
+  // Check if we're in Royal Rumble game
+  const isRoyalRumbleGame = pathname.includes('/extra/royal-rumble/game');
+
+  // Royal Rumble state
+  const router = useRouter();
+  const [royalRumbleGameState, setRoyalRumbleGameState] = useState<RoyalRumbleGameState | null>(null);
+
+  // Load Royal Rumble game state when modal opens
+  useEffect(() => {
+    if (isOpen && isRoyalRumbleGame) {
+      // Listen for custom event from game page with current game state
+      const handleGameStateUpdate = (event: CustomEvent<RoyalRumbleGameState>) => {
+        setRoyalRumbleGameState(event.detail);
+      };
+
+      window.addEventListener('royalRumbleGameState' as any, handleGameStateUpdate as any);
+
+      // Request initial game state
+      window.dispatchEvent(new CustomEvent('requestRoyalRumbleGameState'));
+
+      return () => {
+        window.removeEventListener('royalRumbleGameState' as any, handleGameStateUpdate as any);
+      };
+    }
+  }, [isOpen, isRoyalRumbleGame]);
 
   // Load existing course names when modal opens
   useEffect(() => {
@@ -133,6 +162,18 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     alert('Banner settings saved!');
   };
 
+  // Royal Rumble handlers
+  const handleTogglePause = () => {
+    window.dispatchEvent(new CustomEvent('royalRumbleTogglePause'));
+  };
+
+  const handleExitRoyalRumble = () => {
+    if (confirm('Are you sure you want to exit the game? Progress will be lost.')) {
+      router.push('/extra/royal-rumble/setup');
+      onClose();
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -189,6 +230,18 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           >
             CRICKET
           </button>
+          {isRoyalRumbleGame && (
+            <button
+              onClick={() => setActiveTab('royal-rumble')}
+              className={`px-6 py-3 font-bold transition-colors ${
+                activeTab === 'royal-rumble'
+                  ? 'text-white border-b-4 border-[#90EE90]'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              ROYAL RUMBLE
+            </button>
+          )}
         </div>
 
         {/* Tab Content */}
@@ -400,6 +453,68 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   Cricket-specific settings will be available here
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Royal Rumble Tab */}
+          {activeTab === 'royal-rumble' && (
+            <div>
+              {/* Pause/Resume */}
+              <div className="mb-6">
+                <button
+                  onClick={handleTogglePause}
+                  className={`w-full py-4 text-2xl font-bold rounded transition-colors ${
+                    royalRumbleGameState?.isPaused
+                      ? 'bg-[#4CAF50] text-white hover:bg-[#45a049]'
+                      : 'bg-yellow-600 text-white hover:bg-yellow-700'
+                  }`}
+                >
+                  {royalRumbleGameState?.isPaused ? 'RESUME GAME' : 'PAUSE GAME'}
+                </button>
+                {royalRumbleGameState?.isPaused && (
+                  <div className="text-center text-yellow-400 text-lg mt-2">
+                    Game is paused. Timers are stopped.
+                  </div>
+                )}
+              </div>
+
+              {/* Player List */}
+              <div className="mb-6">
+                <h3 className="text-xl font-bold text-white mb-3">PLAYER STATUS</h3>
+                <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                  {royalRumbleGameState?.players.map((player) => (
+                    <div
+                      key={player.playerId}
+                      className="flex items-center justify-between p-3 bg-[#1a1a1a] rounded"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-white text-lg font-bold">{player.playerName}</span>
+                        <span className="text-gray-400 text-sm">#{player.entryNumber}</span>
+                        <span className="text-gray-400 text-sm">KO #{player.koNumber}</span>
+                      </div>
+                      <div>
+                        {player.status === 'active' && (
+                          <span className="text-green-400 font-bold text-sm">ACTIVE ({player.hitsReceived}/10)</span>
+                        )}
+                        {player.status === 'not-entered' && (
+                          <span className="text-yellow-400 font-bold text-sm">WAITING</span>
+                        )}
+                        {player.status === 'eliminated' && (
+                          <span className="text-red-400 font-bold text-sm">OUT</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Exit Game */}
+              <button
+                onClick={handleExitRoyalRumble}
+                className="w-full py-4 bg-red-600 text-white text-xl font-bold rounded hover:bg-red-700 transition-colors"
+              >
+                EXIT GAME
+              </button>
             </div>
           )}
         </div>

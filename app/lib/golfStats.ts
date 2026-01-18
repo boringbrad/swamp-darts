@@ -29,10 +29,17 @@ export function calculateGolfStats(
     playerId?: string;
     courseName?: string;
     playMode?: string;
+    gameRange?: { start: number; end: number }; // Game indices (0-based)
   }
 ): GolfPlayerStats[] {
   // Apply filters
   let filteredMatches = matches;
+
+  // Apply game range filter (slice matches array)
+  if (filters?.gameRange) {
+    const { start, end } = filters.gameRange;
+    filteredMatches = filteredMatches.slice(start, end + 1);
+  }
 
   if (filters?.courseName && filters.courseName !== 'all') {
     filteredMatches = filteredMatches.filter(m => m.courseName === filters.courseName);

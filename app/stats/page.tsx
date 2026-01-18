@@ -1,13 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Header from '../components/Header';
 import PageWrapper from '../components/PageWrapper';
 import ProfileEditModal from '../components/ProfileEditModal';
 import StatsFilters from '../components/stats/StatsFilters';
 import GolfStatsDisplay from '../components/stats/GolfStatsDisplay';
+import CricketStatsDisplay from '../components/stats/CricketStatsDisplay';
 import { useAppContext } from '../contexts/AppContext';
 import { STOCK_AVATARS } from '../lib/avatars';
+import { loadCricketMatches, calculateCricketStats } from '../lib/cricketStats';
+import { CricketPlayerStats } from '../types/stats';
 
 type GameType = 'golf' | 'cricket';
 
@@ -20,6 +23,20 @@ export default function StatsPage() {
   const [playerFilter, setPlayerFilter] = useState('all');
   const [courseFilter, setCourseFilter] = useState('all');
   const [playModeFilter, setPlayModeFilter] = useState('all');
+
+  // Cricket stats state
+  const [cricketStats, setCricketStats] = useState<CricketPlayerStats[]>([]);
+
+  // Load and calculate cricket stats when filters change
+  useEffect(() => {
+    if (selectedGame === 'cricket') {
+      const matches = loadCricketMatches();
+      const stats = calculateCricketStats(matches, {
+        playerId: playerFilter !== 'all' ? playerFilter : undefined,
+      });
+      setCricketStats(stats);
+    }
+  }, [selectedGame, playerFilter]);
 
   // Get avatar data
   const currentAvatar = STOCK_AVATARS.find(a => a.id === userProfile?.avatar) || STOCK_AVATARS[0];
@@ -76,12 +93,10 @@ export default function StatsPage() {
           )}
 
           {selectedGame === 'cricket' && (
-            <div className="bg-[#333333] rounded-lg p-12 text-center">
-              <div className="text-white text-2xl font-bold mb-4">Cricket Stats Coming Soon</div>
-              <div className="text-gray-400 text-lg">
-                Cricket game statistics will be available once cricket games are saved
-              </div>
-            </div>
+            <CricketStatsDisplay
+              stats={cricketStats}
+              selectedPlayerId={playerFilter !== 'all' ? playerFilter : undefined}
+            />
           )}
         </main>
 

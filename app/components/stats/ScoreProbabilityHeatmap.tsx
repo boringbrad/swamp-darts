@@ -6,36 +6,39 @@ interface ScoreProbabilityHeatmapProps {
   stats: GolfPlayerStats;
 }
 
-// Score range to display (2-9+)
-const SCORE_RANGE = [2, 3, 4, 5, 6, 7, 8, 9];
+// Score range to display (1-6 only)
+const SCORE_RANGE = [1, 2, 3, 4, 5, 6];
 
 /**
- * Get color based on percentage and score value
- * Lower scores with higher percentages = greener
- * Higher scores with higher percentages = redder
+ * Get color based on percentage frequency (traditional heatmap)
+ * Low percentage (rare) = GREEN (cool)
+ * Medium percentage = YELLOW (warming)
+ * High percentage (common) = RED (hot)
  */
-function getHeatmapColor(percentage: number, score: number): string {
+function getHeatmapColor(percentage: number): string {
   if (percentage === 0) return '#1a1a1a'; // Dark background for 0%
 
-  // Normalize score (2 is best, 9+ is worst)
-  // For score 2-3: green spectrum
-  // For score 4-5: yellow spectrum
-  // For score 6+: red spectrum
+  // Normalize percentage to 0-1 (assuming 50% is max)
+  const normalized = Math.min(percentage / 50, 1);
 
-  const intensity = Math.min(percentage / 50, 1); // Scale intensity (50% = max)
+  // Create green → yellow → red gradient based on frequency
+  // 0-0.5: Green → Yellow
+  // 0.5-1.0: Yellow → Red
 
-  if (score <= 3) {
-    // Green spectrum for good scores
-    const greenValue = Math.floor(144 + (intensity * 100)); // 90EE90 to brighter
-    return `rgb(${Math.floor(greenValue * 0.6)}, ${greenValue}, ${Math.floor(greenValue * 0.6)})`;
-  } else if (score <= 5) {
-    // Yellow spectrum for par-ish scores
-    const yellowValue = Math.floor(200 + (intensity * 55));
-    return `rgb(${yellowValue}, ${yellowValue}, ${Math.floor(yellowValue * 0.4)})`;
+  if (normalized < 0.5) {
+    // Green → Yellow transition
+    const t = normalized * 2; // 0-0.5 mapped to 0-1
+    const r = Math.floor(50 + (205 * t));   // 50 → 255 (green to yellow)
+    const g = Math.floor(150 + (105 * t));  // 150 → 255
+    const b = Math.floor(50 - (50 * t));    // 50 → 0
+    return `rgb(${r}, ${g}, ${b})`;
   } else {
-    // Red spectrum for bad scores
-    const redValue = Math.floor(180 + (intensity * 75));
-    return `rgb(${redValue}, ${Math.floor(redValue * 0.4)}, ${Math.floor(redValue * 0.4)})`;
+    // Yellow → Red transition
+    const t = (normalized - 0.5) * 2; // 0.5-1.0 mapped to 0-1
+    const r = Math.floor(255);              // 255 (stay bright red)
+    const g = Math.floor(255 - (148 * t)); // 255 → 107 (yellow to red)
+    const b = Math.floor(0);                // 0
+    return `rgb(${r}, ${g}, ${b})`;
   }
 }
 
@@ -65,29 +68,19 @@ export default function ScoreProbabilityHeatmap({ stats }: ScoreProbabilityHeatm
             {SCORE_RANGE.map(score => (
               <tr key={score}>
                 <td className="text-white text-sm font-bold p-2 border border-[#666666] bg-[#1a1a1a] text-center">
-                  {score === 9 ? '9+' : score}
+                  {score}
                 </td>
                 {Array.from({ length: 18 }, (_, holeIndex) => {
                   const distribution = stats.holeScoreDistribution[holeIndex] || {};
-
-                  // For "9+", sum all scores >= 9
-                  let percentage = 0;
-                  if (score === 9) {
-                    percentage = Object.entries(distribution)
-                      .filter(([s]) => parseInt(s) >= 9)
-                      .reduce((sum, [, pct]) => sum + pct, 0);
-                  } else {
-                    percentage = distribution[score] || 0;
-                  }
-
-                  const bgColor = getHeatmapColor(percentage, score);
+                  const percentage = distribution[score] || 0;
+                  const bgColor = getHeatmapColor(percentage);
 
                   return (
                     <td
                       key={holeIndex}
                       className="p-2 border border-[#666666] text-center transition-all hover:opacity-80"
                       style={{ backgroundColor: bgColor }}
-                      title={`Hole ${holeIndex + 1}, Score ${score === 9 ? '9+' : score}: ${percentage.toFixed(1)}%`}
+                      title={`Hole ${holeIndex + 1}, Score ${score}: ${percentage.toFixed(1)}%`}
                     >
                       <span className="text-white text-xs font-bold drop-shadow-lg">
                         {percentage > 0 ? percentage.toFixed(0) : '-'}

@@ -6,7 +6,7 @@ interface HoleAverageChartProps {
   stats: GolfPlayerStats;
 }
 
-const PAR = 3; // Standard par for dart golf
+const PAR = 4; // Standard par for dart golf (4)
 
 export default function HoleAverageChart({ stats }: HoleAverageChartProps) {
   // Find max average to scale bars
@@ -22,11 +22,12 @@ export default function HoleAverageChart({ stats }: HoleAverageChartProps) {
           const heightPercent = (average / maxAverage) * 100;
 
           // Color based on performance relative to par
-          let barColor = '#90EE90'; // Green (under par)
+          // Par is 4: 1-3 = green, 4 = yellow, 5-6 = red
+          let barColor = '#90EE90'; // Green (1-3: under par)
           if (average === PAR) {
-            barColor = '#FFD700'; // Yellow (par)
+            barColor = '#FFD700'; // Yellow (4: par)
           } else if (average > PAR) {
-            barColor = '#FF6B6B'; // Red (over par)
+            barColor = '#FF6B6B'; // Red (5-6: over par)
           }
 
           return (

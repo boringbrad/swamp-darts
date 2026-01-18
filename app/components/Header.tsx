@@ -100,7 +100,7 @@ export default function Header({ title, showBackButton, onBack }: HeaderProps) {
       </div>
 
       {/* Settings Modal */}
-      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} pathname={pathname} />
 
       {/* Golf Info Modal */}
       {isGolfPage && <GolfInfoModal isOpen={isInfoOpen} onClose={() => setIsInfoOpen(false)} />}
