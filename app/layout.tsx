@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AppProvider } from "./contexts/AppContext";
 import { PlayerProvider } from "./contexts/PlayerContext";
+import PWARegister from "./components/PWARegister";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,6 +21,15 @@ export const metadata: Metadata = {
   manifest: "/manifest.json",
   themeColor: "#1a1a1a",
   viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+  icons: {
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [
+      { url: "/icon-180.png", sizes: "180x180", type: "image/png" },
+    ],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -37,6 +47,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <PWARegister />
         <AppProvider>
           <PlayerProvider>
             {children}
