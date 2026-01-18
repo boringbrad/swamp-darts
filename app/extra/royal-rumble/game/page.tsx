@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '../../../components/Header';
 import { useAppContext } from '../../../contexts/AppContext';
+import { usePlayerContext } from '../../../contexts/PlayerContext';
 import {
   RoyalRumblePlayer,
   RoyalRumbleSettings,
@@ -17,6 +18,7 @@ import { playBuzzerSound } from '../../../lib/buzzerSound';
 export default function RoyalRumbleGame() {
   const router = useRouter();
   const { cameraEnabled } = useAppContext();
+  const { updateLocalPlayer } = usePlayerContext();
   const [gameState, setGameState] = useState<RoyalRumbleGameState | null>(null);
   const [currentDarts, setCurrentDarts] = useState<RoyalRumbleDart[]>([]);
   const [use2xMultiplier, setUse2xMultiplier] = useState(false);
@@ -432,6 +434,11 @@ export default function RoyalRumbleGame() {
       existingMatches.push(matchData);
       localStorage.setItem('royalRumbleMatches', JSON.stringify(existingMatches));
       console.log('Royal Rumble match saved:', matchData.matchId);
+
+      // Update lastUsed timestamp for all players
+      finalGameState.players.forEach(player => {
+        updateLocalPlayer(player.playerId, { lastUsed: new Date() });
+      });
     } catch (error) {
       console.error('Error saving Royal Rumble match:', error);
     }

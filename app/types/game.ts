@@ -3,7 +3,10 @@ export interface Player {
   id: string;
   name: string;
   avatar?: string;
+  photoUrl?: string;
   isGuest?: boolean;
+  isGhost?: boolean; // Ghost player (computer fills in scores from best game)
+  ghostBasePlayerId?: string; // Original player ID this ghost is based on
 }
 
 // Game mode types

@@ -1,16 +1,17 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '../../../components/Header';
 import PlayerAvatar from '../../../components/PlayerAvatar';
+import AddGuestPlayerModal from '../../../components/AddGuestPlayerModal';
 import { RoyalRumblePlayer, RoyalRumbleSettings } from '../../../types/royalRumble';
 import { STOCK_AVATARS } from '../../../lib/avatars';
 import { usePlayerContext } from '../../../contexts/PlayerContext';
 
 export default function RoyalRumbleSetup() {
   const router = useRouter();
-  const { localPlayers } = usePlayerContext();
+  const { localPlayers, addGuestPlayer, updateLocalPlayer } = usePlayerContext();
 
   // Player selection
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
@@ -38,6 +39,9 @@ export default function RoyalRumbleSetup() {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
+  // Add Guest Player Modal
+  const [isAddPlayerModalOpen, setIsAddPlayerModalOpen] = useState(false);
+
   // Toggle player selection
   const togglePlayer = (playerId: string) => {
     if (selectedPlayerIds.includes(playerId)) {
@@ -51,6 +55,15 @@ export default function RoyalRumbleSetup() {
         setSelectedPlayerIds([...selectedPlayerIds, playerId]);
       }
     }
+  };
+
+  // Handle adding a guest player
+  const handleAddGuestPlayer = (name: string, avatar: string, photoUrl?: string) => {
+    const player = addGuestPlayer(name, avatar);
+    if (photoUrl) {
+      updateLocalPlayer(player.id, { photoUrl });
+    }
+    setIsAddPlayerModalOpen(false);
   };
 
   // Randomize player order
@@ -255,6 +268,7 @@ export default function RoyalRumbleSetup() {
         // Note: We only store the URL (blob URL for uploaded files, or Spotify URL)
         // File objects cannot be serialized to localStorage
         songUrl: playerSongs[playerId]?.url,
+        photoUrl: player.photoUrl, // Preserve profile picture
         hasEnteredGame: index < 2, // First 2 have entered
       };
     });
@@ -353,13 +367,26 @@ export default function RoyalRumbleSetup() {
                         onTouchMove={handleTouchMove}
                         onTouchEnd={handleTouchEnd}
                       >
-                        <button
-                          onClick={() => togglePlayer(player.id)}
-                          className="w-20 h-20 rounded-full flex items-center justify-center text-4xl hover:opacity-80 transition-opacity ring-4 ring-[#4CAF50] cursor-move"
-                          style={{ backgroundColor: avatar.color }}
-                        >
-                          {avatar.emoji}
-                        </button>
+                        {player.photoUrl ? (
+                          <button
+                            onClick={() => togglePlayer(player.id)}
+                            className="w-20 h-20 rounded-full overflow-hidden hover:opacity-80 transition-opacity ring-4 ring-[#4CAF50] cursor-move"
+                          >
+                            <img
+                              src={player.photoUrl}
+                              alt={player.name}
+                              className="w-full h-full object-cover"
+                            />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => togglePlayer(player.id)}
+                            className="w-20 h-20 rounded-full flex items-center justify-center text-4xl hover:opacity-80 transition-opacity ring-4 ring-[#4CAF50] cursor-move"
+                            style={{ backgroundColor: avatar.color }}
+                          >
+                            {avatar.emoji}
+                          </button>
+                        )}
                         <span className="text-white text-sm font-bold">{player.name}</span>
                         <div className="absolute -top-2 -right-2 bg-[#4CAF50] text-white rounded-full w-7 h-7 flex items-center justify-center font-bold text-sm">
                           {index + 1}
@@ -644,27 +671,38 @@ export default function RoyalRumbleSetup() {
 
         {/* Player Pool - Fixed at bottom */}
         <div className="bg-[#333333]/50 rounded-lg p-4">
-          {filteredPlayers.length > 0 ? (
-            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-3">
-              {filteredPlayers.map((player) => (
-                <PlayerAvatar
-                  key={player.id}
-                  name={player.name}
-                  selected={selectedPlayerIds.includes(player.id)}
-                  onClick={() => togglePlayer(player.id)}
-                  avatar={player.avatar}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <p className="text-white text-xl opacity-50">
-                No players available. Please create players from the main menu.
-              </p>
-            </div>
-          )}
+          <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-3">
+            {filteredPlayers.map((player) => (
+              <PlayerAvatar
+                key={player.id}
+                name={player.name}
+                selected={selectedPlayerIds.includes(player.id)}
+                onClick={() => togglePlayer(player.id)}
+                avatar={player.avatar}
+                photoUrl={player.photoUrl}
+              />
+            ))}
+
+            {/* Add Guest Button */}
+            <button
+              onClick={() => setIsAddPlayerModalOpen(true)}
+              className="flex flex-col items-center gap-2 transition-opacity opacity-60 hover:opacity-80"
+            >
+              <div className="w-24 h-24 rounded-full border-4 border-dashed border-[#666666] flex items-center justify-center bg-[#2d2d2d]">
+                <span className="text-white text-4xl font-bold">+</span>
+              </div>
+              <span className="text-white text-sm font-bold">ADD GUEST</span>
+            </button>
+          </div>
         </div>
       </main>
+
+      {/* Add Guest Player Modal */}
+      <AddGuestPlayerModal
+        isOpen={isAddPlayerModalOpen}
+        onClose={() => setIsAddPlayerModalOpen(false)}
+        onAdd={handleAddGuestPlayer}
+      />
     </div>
   );
 }

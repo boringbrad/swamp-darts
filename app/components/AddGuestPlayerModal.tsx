@@ -2,13 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { STOCK_AVATARS } from '../lib/avatars';
+import PhotoEditor from './PhotoEditor';
 
 interface AddGuestPlayerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAdd: (name: string, avatar: string) => void;
+  onAdd: (name: string, avatar: string, photoUrl?: string) => void;
   initialName?: string;
   initialAvatar?: string;
+  initialPhotoUrl?: string;
   title?: string;
 }
 
@@ -18,18 +20,35 @@ export default function AddGuestPlayerModal({
   onAdd,
   initialName = '',
   initialAvatar = 'avatar-1',
+  initialPhotoUrl,
   title = 'ADD GUEST PLAYER',
 }: AddGuestPlayerModalProps) {
   const [playerName, setPlayerName] = useState(initialName);
   const [selectedAvatar, setSelectedAvatar] = useState(initialAvatar);
+  const [photoUrl, setPhotoUrl] = useState<string | undefined>(initialPhotoUrl);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [showCamera, setShowCamera] = useState(false);
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+  const [showPhotoEditor, setShowPhotoEditor] = useState(false);
+  const [photoToEdit, setPhotoToEdit] = useState<string>('');
 
   // Update state when initial values change (for edit mode)
   useEffect(() => {
     if (isOpen) {
       setPlayerName(initialName);
       setSelectedAvatar(initialAvatar);
+      setPhotoUrl(initialPhotoUrl);
     }
-  }, [isOpen, initialName, initialAvatar]);
+  }, [isOpen, initialName, initialAvatar, initialPhotoUrl]);
+
+  // Cleanup camera stream when modal closes or camera closes
+  useEffect(() => {
+    return () => {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [cameraStream]);
 
   const handleAdd = () => {
     if (!playerName.trim()) {
@@ -37,19 +56,167 @@ export default function AddGuestPlayerModal({
       return;
     }
 
-    onAdd(playerName.trim(), selectedAvatar);
+    onAdd(playerName.trim(), selectedAvatar, photoUrl);
 
     // Reset form
     setPlayerName('');
     setSelectedAvatar('avatar-1');
+    setPhotoUrl(undefined);
     onClose();
   };
 
   const handleCancel = () => {
+    // Stop camera if running
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
+    setShowCamera(false);
+
     // Reset form
     setPlayerName('');
     setSelectedAvatar('avatar-1');
+    setPhotoUrl(undefined);
     onClose();
+  };
+
+  // Compress and resize image to keep file size reasonable for localStorage
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          // Max dimensions (reduce file size significantly)
+          const MAX_WIDTH = 400;
+          const MAX_HEIGHT = 400;
+
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width;
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width *= MAX_HEIGHT / height;
+              height = MAX_HEIGHT;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            // Use lower quality to reduce size further (0.7 = 70% quality)
+            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+
+            // Check if compressed image is still too large (>500KB)
+            const sizeInKB = (compressedDataUrl.length * 3) / 4 / 1024;
+            if (sizeInKB > 500) {
+              // Try even lower quality if still too large
+              const furtherCompressed = canvas.toDataURL('image/jpeg', 0.5);
+              resolve(furtherCompressed);
+            } else {
+              resolve(compressedDataUrl);
+            }
+          } else {
+            reject(new Error('Failed to get canvas context'));
+          }
+        };
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Handle photo upload from file
+  const handlePhotoUpload = async (file: File) => {
+    setIsProcessingPhoto(true);
+    try {
+      const compressed = await compressImage(file);
+      // Open photo editor instead of directly setting photo
+      setPhotoToEdit(compressed);
+      setShowPhotoEditor(true);
+    } catch (error) {
+      console.error('Error processing photo:', error);
+      alert('Failed to process photo. Please try a different image.');
+    } finally {
+      setIsProcessingPhoto(false);
+    }
+  };
+
+  // Handle camera photo capture
+  const handleOpenCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user' }
+      });
+      setCameraStream(stream);
+      setShowCamera(true);
+    } catch (error) {
+      console.error('Error accessing camera:', error);
+      alert('Could not access camera. Please check permissions.');
+    }
+  };
+
+  const handleTakePhoto = () => {
+    if (!cameraStream) return;
+
+    const video = document.getElementById('modal-camera-video') as HTMLVideoElement;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(video, 0, 0);
+      const capturedPhoto = canvas.toDataURL('image/jpeg', 0.8);
+      // Open photo editor instead of directly setting photo
+      setPhotoToEdit(capturedPhoto);
+      setShowPhotoEditor(true);
+    }
+
+    // Stop camera
+    cameraStream.getTracks().forEach(track => track.stop());
+    setCameraStream(null);
+    setShowCamera(false);
+  };
+
+  const handleCancelCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+    }
+    setCameraStream(null);
+    setShowCamera(false);
+  };
+
+  const handleRemovePhoto = () => {
+    setPhotoUrl(undefined);
+  };
+
+  const handlePhotoEditorSave = (editedImageUrl: string) => {
+    setPhotoUrl(editedImageUrl);
+    setShowPhotoEditor(false);
+    setPhotoToEdit('');
+  };
+
+  const handlePhotoEditorCancel = () => {
+    setShowPhotoEditor(false);
+    setPhotoToEdit('');
+  };
+
+  const handleEditPhoto = () => {
+    if (photoUrl) {
+      setPhotoToEdit(photoUrl);
+      setShowPhotoEditor(true);
+    }
   };
 
   if (!isOpen) return null;
@@ -83,10 +250,72 @@ export default function AddGuestPlayerModal({
           />
         </div>
 
+        {/* Photo Upload Section */}
+        <div className="mb-6">
+          <label className="block text-white text-lg font-bold mb-3">
+            PROFILE PICTURE (OPTIONAL)
+          </label>
+
+          {isProcessingPhoto ? (
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 border-4 border-[#6b1a8b] border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-white text-sm">Processing photo...</p>
+            </div>
+          ) : photoUrl ? (
+            <div className="flex items-center gap-4">
+              <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-white/20">
+                <img src={photoUrl} alt="Profile" className="w-full h-full object-cover" />
+              </div>
+              <div className="flex flex-col gap-2">
+                <p className="text-white text-sm">Custom photo uploaded</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleEditPhoto}
+                    className="px-4 py-2 bg-[#2196F3] text-white text-sm font-bold rounded hover:opacity-90 transition-opacity"
+                  >
+                    EDIT PHOTO
+                  </button>
+                  <button
+                    onClick={handleRemovePhoto}
+                    className="px-4 py-2 bg-[#FF6B6B] text-white text-sm font-bold rounded hover:opacity-90 transition-opacity"
+                  >
+                    REMOVE PHOTO
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-3">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handlePhotoUpload(file);
+                }}
+                className="hidden"
+                id="photo-upload-modal"
+              />
+              <label
+                htmlFor="photo-upload-modal"
+                className="px-6 py-3 bg-[#4CAF50] text-white text-lg font-bold rounded hover:bg-[#45a049] transition-colors cursor-pointer"
+              >
+                📁 UPLOAD PHOTO
+              </label>
+              <button
+                onClick={handleOpenCamera}
+                className="px-6 py-3 bg-[#2196F3] text-white text-lg font-bold rounded hover:bg-[#1976D2] transition-colors"
+              >
+                📷 TAKE PHOTO
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* Avatar Selection */}
         <div className="mb-8">
           <label className="block text-white text-lg font-bold mb-3">
-            SELECT AVATAR
+            OR SELECT AVATAR {photoUrl && '(will be used if photo is removed)'}
           </label>
           <div className="grid grid-cols-6 gap-3">
             {STOCK_AVATARS.map((avatar) => (
@@ -123,6 +352,54 @@ export default function AddGuestPlayerModal({
           </button>
         </div>
       </div>
+
+      {/* Camera Modal */}
+      {showCamera && cameraStream && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[60]">
+          <div className="bg-[#333333] rounded-lg p-8 max-w-2xl w-full mx-4">
+            <h2 className="text-white text-2xl font-bold mb-6 text-center">TAKE PHOTO</h2>
+
+            {/* Camera Preview */}
+            <div className="relative mb-6 rounded-lg overflow-hidden bg-black">
+              <video
+                id="modal-camera-video"
+                autoPlay
+                playsInline
+                ref={(video) => {
+                  if (video && cameraStream) {
+                    video.srcObject = cameraStream;
+                  }
+                }}
+                className="w-full h-auto"
+              />
+            </div>
+
+            {/* Buttons */}
+            <div className="flex justify-center gap-4">
+              <button
+                onClick={handleCancelCamera}
+                className="px-6 py-3 bg-[#666666] text-white text-xl font-bold rounded hover:bg-[#777777] transition-colors"
+              >
+                CANCEL
+              </button>
+              <button
+                onClick={handleTakePhoto}
+                className="px-6 py-3 bg-[#4CAF50] text-white text-xl font-bold rounded hover:bg-[#45a049] transition-colors"
+              >
+                CAPTURE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Photo Editor */}
+      <PhotoEditor
+        isOpen={showPhotoEditor}
+        imageUrl={photoToEdit}
+        onSave={handlePhotoEditorSave}
+        onCancel={handlePhotoEditorCancel}
+      />
     </div>
   );
 }

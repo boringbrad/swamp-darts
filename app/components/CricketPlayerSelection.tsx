@@ -52,7 +52,7 @@ const VARIANT_CONFIGS: Record<CricketVariant, VariantConfig> = {
 export default function CricketPlayerSelection({ variant }: CricketPlayerSelectionProps) {
   const router = useRouter();
   const config = VARIANT_CONFIGS[variant];
-  const { localPlayers, addGuestPlayer } = usePlayerContext();
+  const { localPlayers, addGuestPlayer, updateLocalPlayer } = usePlayerContext();
   const { selectedPlayers, setSelectedPlayers } = useAppContext();
 
   // State for selected player IDs
@@ -150,8 +150,11 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
     return config.teamColors?.[teamIndex] || '#666666';
   };
 
-  const handleAddGuestPlayer = (name: string, avatar: string) => {
-    addGuestPlayer(name, avatar);
+  const handleAddGuestPlayer = (name: string, avatar: string, photoUrl?: string) => {
+    const player = addGuestPlayer(name, avatar);
+    if (photoUrl) {
+      updateLocalPlayer(player.id, { photoUrl });
+    }
   };
 
   const handleRandomize = () => {
@@ -315,13 +318,27 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
             >
-              <button
-                onClick={() => handlePlayerClick(playerId)}
-                className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl cursor-move hover:opacity-80 transition-opacity"
-                style={{ backgroundColor: avatar.color, ...borderStyle }}
-              >
-                {avatar.emoji}
-              </button>
+              {player.photoUrl ? (
+                <button
+                  onClick={() => handlePlayerClick(playerId)}
+                  className="w-36 h-36 rounded-full border-6 overflow-hidden cursor-move hover:opacity-80 transition-opacity"
+                  style={borderStyle}
+                >
+                  <img
+                    src={player.photoUrl}
+                    alt={player.name}
+                    className="w-full h-full object-cover"
+                  />
+                </button>
+              ) : (
+                <button
+                  onClick={() => handlePlayerClick(playerId)}
+                  className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl cursor-move hover:opacity-80 transition-opacity"
+                  style={{ backgroundColor: avatar.color, ...borderStyle }}
+                >
+                  {avatar.emoji}
+                </button>
+              )}
               <button
                 onClick={() => handlePlayerClick(playerId)}
                 className="text-white text-base font-bold hover:opacity-80 transition-opacity cursor-pointer"
@@ -397,13 +414,27 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
               >
-                <button
-                  onClick={() => handlePlayerClick(playerId)}
-                  className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl cursor-move hover:opacity-80 transition-opacity"
-                  style={{ backgroundColor: avatar.color, borderColor: getTeamBorderColor(0) }}
-                >
-                  {avatar.emoji}
-                </button>
+                {player.photoUrl ? (
+                  <button
+                    onClick={() => handlePlayerClick(playerId)}
+                    className="w-36 h-36 rounded-full border-6 overflow-hidden cursor-move hover:opacity-80 transition-opacity"
+                    style={{ borderColor: getTeamBorderColor(0) }}
+                  >
+                    <img
+                      src={player.photoUrl}
+                      alt={player.name}
+                      className="w-full h-full object-cover"
+                    />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handlePlayerClick(playerId)}
+                    className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl cursor-move hover:opacity-80 transition-opacity"
+                    style={{ backgroundColor: avatar.color, borderColor: getTeamBorderColor(0) }}
+                  >
+                    {avatar.emoji}
+                  </button>
+                )}
                 <button
                   onClick={() => handlePlayerClick(playerId)}
                   className="text-white text-base font-bold hover:opacity-80 transition-opacity cursor-pointer"
@@ -472,13 +503,27 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
               >
-                <button
-                  onClick={() => handlePlayerClick(playerId)}
-                  className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl cursor-move hover:opacity-80 transition-opacity"
-                  style={{ backgroundColor: avatar.color, borderColor: getTeamBorderColor(1) }}
-                >
-                  {avatar.emoji}
-                </button>
+                {player.photoUrl ? (
+                  <button
+                    onClick={() => handlePlayerClick(playerId)}
+                    className="w-36 h-36 rounded-full border-6 overflow-hidden cursor-move hover:opacity-80 transition-opacity"
+                    style={{ borderColor: getTeamBorderColor(1) }}
+                  >
+                    <img
+                      src={player.photoUrl}
+                      alt={player.name}
+                      className="w-full h-full object-cover"
+                    />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handlePlayerClick(playerId)}
+                    className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl cursor-move hover:opacity-80 transition-opacity"
+                    style={{ backgroundColor: avatar.color, borderColor: getTeamBorderColor(1) }}
+                  >
+                    {avatar.emoji}
+                  </button>
+                )}
                 <button
                   onClick={() => handlePlayerClick(playerId)}
                   className="text-white text-base font-bold hover:opacity-80 transition-opacity cursor-pointer"
@@ -660,6 +705,7 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
                 onClick={() => handlePlayerClick(player.id)}
                 teamColor={getTeamColor(player.id)}
                 avatar={player.avatar}
+                photoUrl={player.photoUrl}
               />
             ))}
             <div className="flex flex-col items-center gap-2">

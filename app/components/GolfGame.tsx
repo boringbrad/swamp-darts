@@ -7,6 +7,7 @@ import { StoredPlayer } from '../types/storage';
 import { usePlayerContext } from '../contexts/PlayerContext';
 import { useAppContext } from '../contexts/AppContext';
 import { getCourseRecord } from '../lib/golfStats';
+import { getGhostPlayerHistory } from '../lib/ghostPlayer';
 
 interface GolfGameProps {
   variant: GolfVariant;
@@ -22,7 +23,7 @@ const TOTAL_HOLES = 18;
 
 export default function GolfGame({ variant }: GolfGameProps) {
   const router = useRouter();
-  const { localPlayers } = usePlayerContext();
+  const { localPlayers, updateLocalPlayer } = usePlayerContext();
   const { selectedPlayers, tieBreakerEnabled, golfCourseName, playMode, courseBannerImage, courseBannerOpacity, cameraEnabled, setCameraEnabled, showCourseRecord, showCourseName } = useAppContext();
   const [players, setPlayers] = useState<StoredPlayer[]>([]);
   const [scores, setScores] = useState<PlayerScore[]>([]);
@@ -240,6 +241,47 @@ export default function GolfGame({ variant }: GolfGameProps) {
       };
     }
   }, [isPanning, panStart]);
+
+  // Auto-score for ghost players
+  useEffect(() => {
+    if (gameComplete || players.length === 0) return;
+
+    const currentPlayer = players[currentPlayerIndex];
+    if (!currentPlayer?.isGhost || !currentPlayer.ghostBasePlayerId) return;
+
+    // Don't auto-score in tie breaker (ghost players shouldn't be in tie breakers typically)
+    if (inTieBreaker) return;
+
+    // Check if this hole hasn't been scored yet
+    if (scores[currentPlayerIndex]?.holes[currentHole] !== null) return;
+
+    // Get ghost player's best game history
+    const history = getGhostPlayerHistory(
+      currentPlayer.id,
+      'golf',
+      variant,
+      currentPlayer.ghostBasePlayerId
+    );
+
+    if (history.length === 0) {
+      console.warn(`No history found for ghost player ${currentPlayer.name}`);
+      return;
+    }
+
+    // Get the score for the current hole (holes are 0-indexed in history)
+    const holeScore = history[currentHole];
+    if (!holeScore || typeof holeScore.score !== 'number') {
+      console.warn(`No score found for ghost player ${currentPlayer.name} on hole ${currentHole + 1}`);
+      return;
+    }
+
+    // Auto-score after a brief delay (500ms) to make it visible
+    const timer = setTimeout(() => {
+      handleScoreInput(holeScore.score);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [currentPlayerIndex, currentHole, players, scores, gameComplete, inTieBreaker, variant]);
 
   // Check if there's a tie for first place
   const checkForTie = (): number[] | null => {
@@ -505,6 +547,24 @@ export default function GolfGame({ variant }: GolfGameProps) {
     const matchPlayPoints = variant === 'match-play' ? calculateMatchPlayPoints(0, 18) : undefined;
     const skinsPoints = variant === 'skins' ? calculateSkinsPoints(0, 18) : undefined;
 
+    // Filter out ghost players - we don't want to save their stats
+    const realPlayersData = players
+      .map((player, index) => ({
+        player,
+        index,
+        isGhost: player.isGhost || false,
+      }))
+      .filter(p => !p.isGhost)
+      .map(({ player, index }) => ({
+        playerId: player.id,
+        playerName: player.name,
+        holeScores: scores[index].holes, // Only first 18 holes (tie breaker excluded)
+        totalScore: calculateTotal(scores[index].holes, 0, 18), // Only count first 18 holes
+        tieBreakerScores: inTieBreaker ? tieBreakerHoles[index] : undefined,
+        matchPlayPoints: matchPlayPoints ? matchPlayPoints[index] : undefined,
+        skinsPoints: skinsPoints ? skinsPoints[index] : undefined,
+      }));
+
     // Prepare match data
     const matchData = {
       matchId,
@@ -514,15 +574,7 @@ export default function GolfGame({ variant }: GolfGameProps) {
       date: new Date().toISOString(),
       winnerId,
       wonByTieBreaker,
-      players: players.map((player, index) => ({
-        playerId: player.id,
-        playerName: player.name,
-        holeScores: scores[index].holes, // Only first 18 holes (tie breaker excluded)
-        totalScore: calculateTotal(scores[index].holes, 0, 18), // Only count first 18 holes
-        tieBreakerScores: inTieBreaker ? tieBreakerHoles[index] : undefined,
-        matchPlayPoints: matchPlayPoints ? matchPlayPoints[index] : undefined,
-        skinsPoints: skinsPoints ? skinsPoints[index] : undefined,
-      })),
+      players: realPlayersData,
     };
 
     // TODO: Implement actual database save
@@ -534,6 +586,12 @@ export default function GolfGame({ variant }: GolfGameProps) {
       existingMatches.push(matchData);
       localStorage.setItem('golfMatches', JSON.stringify(existingMatches));
       console.log('Match saved successfully!');
+
+      // Update lastUsed timestamp for all real players (not ghosts)
+      const realPlayers = players.filter(p => !p.isGhost);
+      realPlayers.forEach(player => {
+        updateLocalPlayer(player.id, { lastUsed: new Date() });
+      });
     } catch (error) {
       console.error('Error saving match:', error);
     }

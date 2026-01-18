@@ -28,6 +28,8 @@ export default function SettingsModal({ isOpen, onClose, pathname = '' }: Settin
     setShowCourseRecord,
     showCourseName,
     setShowCourseName,
+    playMode,
+    setPlayMode,
   } = useAppContext();
   const [courseNameInput, setCourseNameInput] = useState(golfCourseName);
   const [bannerImageInput, setBannerImageInput] = useState(courseBannerImage);
@@ -249,6 +251,43 @@ export default function SettingsModal({ isOpen, onClose, pathname = '' }: Settin
           {/* System Tab */}
           {activeTab === 'system' && (
             <div>
+              {/* Play Mode Setting */}
+              <div className="mb-6">
+                <h3 className="text-xl font-bold text-white mb-4">PLAY MODE</h3>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setPlayMode('practice')}
+                    className={`flex-1 px-6 py-3 font-bold rounded transition-colors ${
+                      playMode === 'practice'
+                        ? 'bg-[#2d5016] text-white'
+                        : 'bg-[#1a1a1a] text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    PRACTICE
+                  </button>
+                  <button
+                    onClick={() => setPlayMode('casual')}
+                    className={`flex-1 px-6 py-3 font-bold rounded transition-colors ${
+                      playMode === 'casual'
+                        ? 'bg-[#2d5016] text-white'
+                        : 'bg-[#1a1a1a] text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    CASUAL
+                  </button>
+                  <button
+                    onClick={() => setPlayMode('league')}
+                    className={`flex-1 px-6 py-3 font-bold rounded transition-colors ${
+                      playMode === 'league'
+                        ? 'bg-[#2d5016] text-white'
+                        : 'bg-[#1a1a1a] text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    LEAGUE
+                  </button>
+                </div>
+              </div>
+
               {/* Show Camera Setting */}
               <div className="mb-6">
                 <h3 className="text-xl font-bold text-white mb-4">CAMERA</h3>

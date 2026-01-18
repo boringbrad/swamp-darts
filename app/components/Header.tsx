@@ -5,22 +5,27 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useAppContext } from '../contexts/AppContext';
 import SettingsModal from './SettingsModal';
 import GolfInfoModal from './GolfInfoModal';
+import CricketInfoModal from './CricketInfoModal';
+import RoyalRumbleInfoModal from './RoyalRumbleInfoModal';
 
 interface HeaderProps {
   title?: string;
   showBackButton?: boolean;
   onBack?: () => void;
+  gameInfo?: string; // e.g., "Cricket - Singles Match - Casual"
 }
 
-export default function Header({ title, showBackButton, onBack }: HeaderProps) {
+export default function Header({ title, showBackButton, onBack, gameInfo }: HeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { userProfile, popRoute } = useAppContext();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
 
-  // Check if we're on a golf game page
+  // Check if we're on a golf, cricket, or royal rumble page
   const isGolfPage = pathname.includes('/golf/');
+  const isCricketPage = pathname.includes('/cricket/');
+  const isRoyalRumblePage = pathname.includes('/royal-rumble');
 
   // Determine if we should show the back button
   const shouldShowBack = showBackButton !== undefined ? showBackButton : pathname !== '/';
@@ -57,8 +62,14 @@ export default function Header({ title, showBackButton, onBack }: HeaderProps) {
         )}
       </div>
 
-      {/* Spacer for center alignment */}
-      <div className="flex-1"></div>
+      {/* Center Game Info or Spacer */}
+      <div className="flex-1 flex items-center justify-center">
+        {gameInfo && (
+          <div className="text-white text-sm font-bold opacity-75">
+            {gameInfo}
+          </div>
+        )}
+      </div>
 
       {/* Right Icons */}
       <div className="flex gap-6 opacity-50 pr-8">
@@ -76,12 +87,12 @@ export default function Header({ title, showBackButton, onBack }: HeaderProps) {
 
         {/* Info Icon */}
         <button
-          onClick={() => isGolfPage && setIsInfoOpen(true)}
+          onClick={() => (isGolfPage || isCricketPage || isRoyalRumblePage) && setIsInfoOpen(true)}
           className={`w-6 h-6 rounded-full border-2 border-white flex items-center justify-center transition-opacity ${
-            isGolfPage ? 'hover:opacity-80 cursor-pointer' : 'opacity-30 cursor-not-allowed'
+            (isGolfPage || isCricketPage || isRoyalRumblePage) ? 'hover:opacity-80 cursor-pointer' : 'opacity-30 cursor-not-allowed'
           }`}
           aria-label="Information"
-          disabled={!isGolfPage}
+          disabled={!isGolfPage && !isCricketPage && !isRoyalRumblePage}
         >
           <span className="text-white text-sm font-bold">i</span>
         </button>
@@ -104,6 +115,12 @@ export default function Header({ title, showBackButton, onBack }: HeaderProps) {
 
       {/* Golf Info Modal */}
       {isGolfPage && <GolfInfoModal isOpen={isInfoOpen} onClose={() => setIsInfoOpen(false)} />}
+
+      {/* Cricket Info Modal */}
+      {isCricketPage && <CricketInfoModal isOpen={isInfoOpen} onClose={() => setIsInfoOpen(false)} />}
+
+      {/* Royal Rumble Info Modal */}
+      {isRoyalRumblePage && <RoyalRumbleInfoModal isOpen={isInfoOpen} onClose={() => setIsInfoOpen(false)} />}
     </header>
   );
 }

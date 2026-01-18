@@ -3,7 +3,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppContext } from '../contexts/AppContext';
+import { usePlayerContext } from '../contexts/PlayerContext';
 import { CricketNumber, CricketVariant, CricketRules, Player } from '../types/game';
+import { STOCK_AVATARS } from '../lib/avatars';
 
 interface CricketGameProps {
   variant: CricketVariant;
@@ -62,11 +64,24 @@ interface HistoryEntry {
   lastSkippedPlayerSnapshot?: string | null;
 }
 
-export default function CricketGame({ variant, players, rules }: CricketGameProps) {
+export default function CricketGame({ variant, players: initialPlayers, rules }: CricketGameProps) {
   const router = useRouter();
   const { cameraEnabled, selectedPlayers } = useAppContext();
+  const { updateLocalPlayer, localPlayers } = usePlayerContext();
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Reconstruct full player data from localPlayers to ensure photoUrl is included
+  const [players, setPlayers] = useState<Player[]>(initialPlayers);
+
+  useEffect(() => {
+    // Map initial players to full StoredPlayer data from localPlayers
+    const fullPlayers = initialPlayers.map(p => {
+      const localPlayer = localPlayers.find(lp => lp.id === p.id);
+      return localPlayer || p; // Fall back to initial player if not found
+    });
+    setPlayers(fullPlayers);
+  }, [initialPlayers, localPlayers]);
 
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0);
   const [dartScores, setDartScores] = useState<(CricketNumber | null)[]>([null, null, null]);
@@ -345,6 +360,11 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
       localStorage.setItem('cricketMatches', JSON.stringify(existingMatches));
 
       console.log('Cricket match saved:', matchData.matchId);
+
+      // Update lastUsed timestamp for all players
+      players.forEach(player => {
+        updateLocalPlayer(player.id, { lastUsed: new Date() });
+      });
     } catch (error) {
       console.error('Error saving cricket match:', error);
     }
@@ -1380,6 +1400,8 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
                   : (playerScores[index]?.color || 'blue');
                 const isGreyedOut = willBeSkipped || wasSkipped || isEliminated;
 
+                const avatarData = STOCK_AVATARS.find(a => a.id === player.avatar) || STOCK_AVATARS[0];
+
                 return (
                   <div
                     key={player.id}
@@ -1388,10 +1410,26 @@ export default function CricketGame({ variant, players, rules }: CricketGameProp
                     }`}
                   >
                     {isCurrent && <span className="text-white text-4xl flex-shrink-0">▶</span>}
-                    <div
-                      className={`w-12 h-12 rounded-full flex-shrink-0 border-2 border-white ${willBeSkipped ? 'opacity-25' : ''}`}
-                      style={{ backgroundColor: getPlayerColor(playerColor) }}
-                    />
+                    <div className={`flex-shrink-0 ${willBeSkipped ? 'opacity-25' : ''}`}>
+                      {player.photoUrl ? (
+                        <div
+                          className="w-12 h-12 rounded-full border-2 border-white overflow-hidden"
+                        >
+                          <img
+                            src={player.photoUrl}
+                            alt={player.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div
+                          className="w-12 h-12 rounded-full border-2 border-white flex items-center justify-center text-2xl"
+                          style={{ backgroundColor: avatarData.color }}
+                        >
+                          {avatarData.emoji}
+                        </div>
+                      )}
+                    </div>
                     <span className={`text-white font-bold whitespace-nowrap overflow-hidden text-ellipsis ${willBeSkipped ? 'line-through' : ''} ${isGreyedOut ? 'opacity-25' : ''}`} style={{ fontSize: 'clamp(0.875rem, 2vw, 2.5rem)' }}>
                       {player.name}
                     </span>

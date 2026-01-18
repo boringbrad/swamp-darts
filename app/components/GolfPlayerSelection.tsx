@@ -8,7 +8,8 @@ import { usePlayerContext } from '../contexts/PlayerContext';
 import { useAppContext } from '../contexts/AppContext';
 import { StoredPlayer } from '../types/storage';
 import { STOCK_AVATARS } from '../lib/avatars';
-import { GolfVariant } from '../types/game';
+import { GolfVariant, Player } from '../types/game';
+import { playerHasGames, createGhostPlayer } from '../lib/ghostPlayer';
 
 interface GolfPlayerSelectionProps {
   variant: GolfVariant;
@@ -22,34 +23,78 @@ const VARIANT_TITLES: Record<GolfVariant, string> = {
 
 export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProps) {
   const router = useRouter();
-  const { localPlayers, addGuestPlayer } = usePlayerContext();
-  const { setSelectedPlayers: setGlobalSelectedPlayers } = useAppContext();
+  const { localPlayers, addGuestPlayer, updateLocalPlayer } = usePlayerContext();
+  const { setSelectedPlayers: setGlobalSelectedPlayers, playMode } = useAppContext();
   const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
   const [isAddPlayerModalOpen, setIsAddPlayerModalOpen] = useState(false);
   const [draggedPlayerIndex, setDraggedPlayerIndex] = useState<number | null>(null);
   const [playerFilter, setPlayerFilter] = useState<'all' | 'league' | 'guests'>('all');
   const [playerSort, setPlayerSort] = useState<'alphabetical' | 'recent'>('recent');
+  const [ghostMode, setGhostMode] = useState(false);
+  const [ghostPlayers, setGhostPlayers] = useState<Map<string, Player>>(new Map()); // Store ghost player objects
 
   const handlePlayerClick = (playerId: string) => {
-    if (selectedPlayers.includes(playerId)) {
-      setSelectedPlayers(selectedPlayers.filter(id => id !== playerId));
+    if (ghostMode) {
+      // Ghost mode: create and add ghost player
+      // Check if there's a ghost player for this base player ID
+      const existingGhostEntry = Array.from(ghostPlayers.entries()).find(
+        ([_, ghost]) => ghost.ghostBasePlayerId === playerId
+      );
+
+      if (existingGhostEntry) {
+        // Remove the ghost player
+        const [ghostId] = existingGhostEntry;
+        setSelectedPlayers(selectedPlayers.filter(id => id !== ghostId));
+        const newGhosts = new Map(ghostPlayers);
+        newGhosts.delete(ghostId);
+        setGhostPlayers(newGhosts);
+      } else {
+        // Add ghost player (keep any regular player that's already selected)
+        const basePlayer = localPlayers.find(p => p.id === playerId);
+        if (!basePlayer) return;
+
+        const ghostPlayer = createGhostPlayer(basePlayer, 'golf', variant);
+        if (!ghostPlayer) {
+          alert(`${basePlayer.name} has no games recorded in ${variant.replace(/-/g, ' ')} mode.`);
+          return;
+        }
+
+        setSelectedPlayers([...selectedPlayers, ghostPlayer.id]);
+        const newGhosts = new Map(ghostPlayers);
+        newGhosts.set(ghostPlayer.id, ghostPlayer);
+        setGhostPlayers(newGhosts);
+      }
     } else {
-      setSelectedPlayers([...selectedPlayers, playerId]);
+      // Normal mode: add regular player
+      if (selectedPlayers.includes(playerId)) {
+        setSelectedPlayers(selectedPlayers.filter(id => id !== playerId));
+      } else {
+        setSelectedPlayers([...selectedPlayers, playerId]);
+      }
     }
   };
 
-  const handleAddGuestPlayer = (name: string, avatar: string) => {
-    addGuestPlayer(name, avatar);
+  const handleAddGuestPlayer = (name: string, avatar: string, photoUrl?: string) => {
+    const player = addGuestPlayer(name, avatar);
+    if (photoUrl) {
+      updateLocalPlayer(player.id, { photoUrl });
+    }
   };
 
   const getFilteredAndSortedPlayers = () => {
     let filtered = localPlayers;
 
+    // Apply ghost mode filter first
+    if (ghostMode) {
+      // Only show players who have games in this variant
+      filtered = localPlayers.filter(p => playerHasGames(p.id, 'golf', variant));
+    }
+
     // Apply filter
     if (playerFilter === 'league') {
-      filtered = localPlayers.filter(p => !p.isGuest);
+      filtered = filtered.filter(p => !p.isGuest);
     } else if (playerFilter === 'guests') {
-      filtered = localPlayers.filter(p => p.isGuest);
+      filtered = filtered.filter(p => p.isGuest);
     }
 
     // Apply sort
@@ -68,6 +113,27 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
   };
 
   const filteredPlayers = getFilteredAndSortedPlayers();
+
+  // Helper to get player (either regular or ghost)
+  const getPlayer = (playerId: string): Player | StoredPlayer | null => {
+    const ghostPlayer = ghostPlayers.get(playerId);
+    if (ghostPlayer) return ghostPlayer;
+    return localPlayers.find(p => p.id === playerId) || null;
+  };
+
+  // Helper to check if a base player is selected (including as a ghost)
+  const isPlayerSelected = (basePlayerId: string): boolean => {
+    // In ghost mode, only show as selected if ghost version is selected
+    if (ghostMode) {
+      const hasGhost = Array.from(ghostPlayers.values()).some(
+        ghost => ghost.ghostBasePlayerId === basePlayerId && selectedPlayers.includes(ghost.id)
+      );
+      return hasGhost;
+    }
+
+    // In normal mode, check if the regular player ID is selected
+    return selectedPlayers.includes(basePlayerId);
+  };
 
   const handleDragStart = (index: number) => {
     setDraggedPlayerIndex(index);
@@ -121,8 +187,20 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
     setDraggedPlayerIndex(null);
   };
 
-  const getPlayerColor = (playerId: string): PlayerColor => {
-    const playerIndex = selectedPlayers.indexOf(playerId);
+  const getPlayerColor = (basePlayerId: string): PlayerColor => {
+    // Check if regular player is selected
+    let playerIndex = selectedPlayers.indexOf(basePlayerId);
+
+    // If not found, check if ghost version is selected
+    if (playerIndex === -1) {
+      const ghostEntry = Array.from(ghostPlayers.entries()).find(
+        ([ghostId, ghost]) => ghost.ghostBasePlayerId === basePlayerId
+      );
+      if (ghostEntry) {
+        playerIndex = selectedPlayers.indexOf(ghostEntry[0]);
+      }
+    }
+
     if (playerIndex === -1) return null;
 
     const colors: PlayerColor[] = ['blue', 'red', 'purple', 'green'];
@@ -138,10 +216,10 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
   };
 
   const handlePlayGame = () => {
-    // Save selected players to global context
+    // Save selected players to global context (include both regular and ghost players)
     const players = selectedPlayers
-      .map(id => localPlayers.find(p => p.id === id))
-      .filter(Boolean) as StoredPlayer[];
+      .map(id => getPlayer(id))
+      .filter(Boolean) as Player[];
 
     setGlobalSelectedPlayers('golf', variant, players);
 
@@ -169,10 +247,22 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
         {/* Top spacer */}
         <div className="flex-[0.7]"></div>
 
+        {/* Ghost Mode Indicator */}
+        {ghostMode && (
+          <div className="mb-6 px-8">
+            <div className="bg-[#9b59b6]/20 border-2 border-[#9b59b6] rounded-lg p-4">
+              <p className="text-white text-center text-lg font-bold flex items-center justify-center gap-2">
+                <span className="text-2xl">👻</span>
+                <span>GHOST MODE ACTIVE - Select players to add their best game performance</span>
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Selected Players Display - vertically centered */}
         <div className="flex justify-center gap-4">
           {selectedPlayers.slice(0, 4).map((playerId, index) => {
-            const player = localPlayers.find(p => p.id === playerId);
+            const player = getPlayer(playerId);
             if (!player) return null;
 
             const avatar = STOCK_AVATARS.find(a => a.id === player.avatar) || STOCK_AVATARS[0];
@@ -192,13 +282,27 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
               >
-                <button
-                  onClick={() => handlePlayerClick(playerId)}
-                  className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl cursor-move hover:opacity-80 transition-opacity"
-                  style={{ backgroundColor: avatar.color, borderColor }}
-                >
-                  {avatar.emoji}
-                </button>
+                {player.photoUrl ? (
+                  <button
+                    onClick={() => handlePlayerClick(playerId)}
+                    className="w-36 h-36 rounded-full border-6 flex items-center justify-center overflow-hidden cursor-move hover:opacity-80 transition-opacity"
+                    style={{ borderColor }}
+                  >
+                    <img
+                      src={player.photoUrl}
+                      alt={player.name}
+                      className="w-full h-full object-cover"
+                    />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handlePlayerClick(playerId)}
+                    className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl cursor-move hover:opacity-80 transition-opacity"
+                    style={{ backgroundColor: avatar.color, borderColor }}
+                  >
+                    {avatar.emoji}
+                  </button>
+                )}
                 <button
                   onClick={() => handlePlayerClick(playerId)}
                   className="text-white text-base font-bold hover:opacity-80 transition-opacity cursor-pointer"
@@ -273,6 +377,23 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
             </button>
           </div>
 
+          {/* Ghost Mode Toggle (Practice Mode Only) */}
+          {playMode === 'practice' && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setGhostMode(!ghostMode)}
+                className={`px-4 py-2 font-bold rounded transition-colors flex items-center gap-2 ${
+                  ghostMode
+                    ? 'bg-[#9b59b6] text-white ring-2 ring-white'
+                    : 'bg-[#666666] text-white hover:bg-[#777777]'
+                }`}
+              >
+                <span>👻</span>
+                <span>GHOST MODE</span>
+              </button>
+            </div>
+          )}
+
           {/* Sort buttons */}
           <div className="flex gap-2">
             <button
@@ -301,18 +422,20 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
 
       {/* Available Players - compact at bottom */}
       <div className="bg-[#333333]/50 rounded-lg p-4">
-        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-3">
+        <div className="flex gap-3 overflow-x-auto pb-2">
           {filteredPlayers.map((player) => (
-            <PlayerAvatar
-              key={player.id}
-              name={player.name}
-              selected={selectedPlayers.includes(player.id)}
-              onClick={() => handlePlayerClick(player.id)}
-              teamColor={getPlayerColor(player.id)}
-              avatar={player.avatar}
-            />
+            <div key={player.id} className="flex-shrink-0">
+              <PlayerAvatar
+                name={player.name}
+                selected={isPlayerSelected(player.id)}
+                onClick={() => handlePlayerClick(player.id)}
+                teamColor={getPlayerColor(player.id)}
+                avatar={player.avatar}
+                photoUrl={player.photoUrl}
+              />
+            </div>
           ))}
-          <div className="flex flex-col items-center gap-2">
+          <div className="flex flex-col items-center gap-2 flex-shrink-0">
             <button
               onClick={() => setIsAddPlayerModalOpen(true)}
               className="w-24 h-24 rounded-full bg-[#666666] border-4 border-transparent flex items-center justify-center hover:bg-[#777777] transition-colors"

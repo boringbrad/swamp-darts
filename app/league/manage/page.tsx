@@ -11,27 +11,30 @@ export default function ManageLeaguePage() {
   const { localPlayers, addLocalPlayer, updateLocalPlayer, deleteLocalPlayer, addGuestPlayer } = usePlayerContext();
   const [isAddPlayerModalOpen, setIsAddPlayerModalOpen] = useState(false);
   const [isAddGuestModalOpen, setIsAddGuestModalOpen] = useState(false);
-  const [editingPlayer, setEditingPlayer] = useState<{ id: string; name: string; avatar: string } | null>(null);
+  const [editingPlayer, setEditingPlayer] = useState<{ id: string; name: string; avatar: string; photoUrl?: string } | null>(null);
 
   // Filter out guest players - only show persistent league players
   const leaguePlayers = localPlayers.filter(p => !p.isGuest);
   const guestPlayers = localPlayers.filter(p => p.isGuest);
 
-  const handleAddPlayer = (name: string, avatar: string) => {
-    addLocalPlayer(name, avatar, false); // false = not a guest
+  const handleAddPlayer = (name: string, avatar: string, photoUrl?: string) => {
+    const player = addLocalPlayer(name, avatar, false); // false = not a guest
+    if (photoUrl) {
+      updateLocalPlayer(player.id, { photoUrl });
+    }
     setIsAddPlayerModalOpen(false);
   };
 
   const handleEditPlayer = (id: string) => {
     const player = leaguePlayers.find(p => p.id === id);
     if (player) {
-      setEditingPlayer({ id: player.id, name: player.name, avatar: player.avatar || 'avatar-1' });
+      setEditingPlayer({ id: player.id, name: player.name, avatar: player.avatar || 'avatar-1', photoUrl: player.photoUrl });
     }
   };
 
-  const handleSaveEdit = (name: string, avatar: string) => {
+  const handleSaveEdit = (name: string, avatar: string, photoUrl?: string) => {
     if (editingPlayer) {
-      updateLocalPlayer(editingPlayer.id, { name, avatar });
+      updateLocalPlayer(editingPlayer.id, { name, avatar, photoUrl });
       setEditingPlayer(null);
     }
   };
@@ -42,8 +45,11 @@ export default function ManageLeaguePage() {
     }
   };
 
-  const handleAddGuest = (name: string, avatar: string) => {
-    addGuestPlayer(name, avatar);
+  const handleAddGuest = (name: string, avatar: string, photoUrl?: string) => {
+    const player = addGuestPlayer(name, avatar);
+    if (photoUrl) {
+      updateLocalPlayer(player.id, { photoUrl });
+    }
     setIsAddGuestModalOpen(false);
   };
 
@@ -73,23 +79,35 @@ export default function ManageLeaguePage() {
             <div className="grid grid-cols-6 gap-6 mb-8">
               {leaguePlayers.map((player) => {
                 const avatar = STOCK_AVATARS.find(a => a.id === player.avatar) || STOCK_AVATARS[0];
+                const hasPhoto = !!player.photoUrl;
+
                 return (
                   <div key={player.id} className="flex flex-col items-center gap-2 relative">
-                    {/* Avatar */}
-                    <div
-                      className="w-24 h-24 rounded-full flex items-center justify-center text-4xl"
-                      style={{ backgroundColor: avatar.color }}
-                    >
-                      {avatar.emoji}
-                    </div>
+                    {/* Avatar or Photo */}
+                    {hasPhoto ? (
+                      <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-white/20">
+                        <img
+                          src={player.photoUrl}
+                          alt={player.name}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <div
+                        className="w-24 h-24 rounded-full flex items-center justify-center text-4xl"
+                        style={{ backgroundColor: avatar.color }}
+                      >
+                        {avatar.emoji}
+                      </div>
+                    )}
 
                     {/* Name */}
                     <span className="text-white text-sm font-bold text-center max-w-24 truncate">
                       {player.name}
                     </span>
 
-                    {/* Edit/Delete Buttons (always visible) */}
-                    <div className="flex gap-2 mt-2">
+                    {/* Edit/Delete Buttons */}
+                    <div className="flex gap-2">
                       <button
                         onClick={() => handleEditPlayer(player.id)}
                         className="px-3 py-1 bg-[#6b1a8b] text-white text-xs font-bold rounded hover:opacity-90 transition-opacity"
@@ -137,15 +155,27 @@ export default function ManageLeaguePage() {
               <div className="grid grid-cols-6 gap-6 mb-8">
                 {guestPlayers.map((player) => {
                   const avatar = STOCK_AVATARS.find(a => a.id === player.avatar) || STOCK_AVATARS[0];
+                  const hasPhoto = !!player.photoUrl;
+
                   return (
                     <div key={player.id} className="flex flex-col items-center gap-2 relative">
-                      {/* Avatar */}
-                      <div
-                        className="w-24 h-24 rounded-full flex items-center justify-center text-4xl"
-                        style={{ backgroundColor: avatar.color }}
-                      >
-                        {avatar.emoji}
-                      </div>
+                      {/* Avatar or Photo */}
+                      {hasPhoto ? (
+                        <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-white/20">
+                          <img
+                            src={player.photoUrl}
+                            alt={player.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div
+                          className="w-24 h-24 rounded-full flex items-center justify-center text-4xl"
+                          style={{ backgroundColor: avatar.color }}
+                        >
+                          {avatar.emoji}
+                        </div>
+                      )}
 
                       {/* Name */}
                       <span className="text-white text-sm font-bold text-center max-w-24 truncate">
@@ -153,7 +183,7 @@ export default function ManageLeaguePage() {
                       </span>
 
                       {/* Delete Button */}
-                      <div className="flex gap-2 mt-2">
+                      <div className="flex gap-2">
                         <button
                           onClick={() => handleDeleteGuest(player.id)}
                           className="px-3 py-1 bg-[#9d1a1a] text-white text-xs font-bold rounded hover:opacity-90 transition-opacity"
@@ -196,6 +226,7 @@ export default function ManageLeaguePage() {
           onAdd={editingPlayer ? handleSaveEdit : handleAddPlayer}
           initialName={editingPlayer?.name}
           initialAvatar={editingPlayer?.avatar}
+          initialPhotoUrl={editingPlayer?.photoUrl}
           title={editingPlayer ? 'EDIT PLAYER' : 'ADD PLAYER'}
         />
 

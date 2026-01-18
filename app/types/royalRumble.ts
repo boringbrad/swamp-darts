@@ -12,6 +12,7 @@ export interface RoyalRumblePlayer {
   status: PlayerStatus;
   hitsReceived: number; // 0-10 (10 = eliminated)
   songUrl?: string; // Blob URL for uploaded file, or Spotify link
+  photoUrl?: string; // Profile picture URL
   hasEnteredGame: boolean; // Whether they've actually entered yet
 }
 
