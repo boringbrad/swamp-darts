@@ -24,16 +24,16 @@ export default function GameModeCard({ title, href, color, size = 'large', disab
   const bgColor = colorClasses[color];
 
   const sizeClasses = size === 'large'
-    ? 'min-h-[150px] sm:min-h-[200px] flex-1'
-    : 'min-h-[100px] sm:h-24 flex-1';
+    ? 'h-[150px] sm:h-[200px] flex-1'
+    : 'h-[120px] sm:h-[150px] flex-1';
 
   const content = (
-    <div className="flex flex-col items-center justify-center gap-2 px-2">
-      <span className="text-white text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold tracking-wider text-center">
+    <div className="flex flex-col items-center justify-center gap-2 px-4 w-full h-full">
+      <span className="text-white text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold tracking-wider text-center leading-tight">
         {title}
       </span>
       {subtitle && (
-        <span className="text-white text-base sm:text-lg md:text-xl opacity-70">
+        <span className="text-white text-sm sm:text-base md:text-lg opacity-70 text-center">
           {subtitle}
         </span>
       )}
@@ -43,7 +43,8 @@ export default function GameModeCard({ title, href, color, size = 'large', disab
   if (disabled) {
     return (
       <div
-        className={`${bgColor} ${sizeClasses} rounded-lg flex items-center justify-center opacity-50 cursor-not-allowed shadow-lg`}
+        className={`${bgColor} ${sizeClasses} rounded-lg flex items-center justify-center opacity-50 cursor-not-allowed shadow-lg overflow-hidden`}
+        style={{ WebkitBackfaceVisibility: 'hidden', backfaceVisibility: 'hidden' }}
       >
         {content}
       </div>
@@ -53,7 +54,8 @@ export default function GameModeCard({ title, href, color, size = 'large', disab
   return (
     <Link
       href={href}
-      className={`${bgColor} ${sizeClasses} rounded-lg flex items-center justify-center hover:opacity-90 transition-opacity cursor-pointer shadow-lg`}
+      className={`${bgColor} ${sizeClasses} rounded-lg flex items-center justify-center hover:opacity-90 transition-opacity cursor-pointer shadow-lg overflow-hidden`}
+      style={{ WebkitBackfaceVisibility: 'hidden', backfaceVisibility: 'hidden' }}
     >
       {content}
     </Link>

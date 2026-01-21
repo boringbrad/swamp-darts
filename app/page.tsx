@@ -14,9 +14,9 @@ export default function Home() {
 
       <PageWrapper>
         {/* Main content */}
-        <main className="px-4 sm:px-6 pb-28 flex flex-col lg:flex-row gap-4 sm:gap-6" style={{ minHeight: 'calc(100vh - 176px)' }}>
+        <main className="px-4 sm:px-6 pb-24 sm:pb-28 flex flex-col lg:flex-row gap-3 sm:gap-4 lg:gap-6">
           {/* Left side - Game modes in grid */}
-          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+          <div className="flex-1 grid grid-cols-2 gap-3 sm:gap-4">
             <GameModeCard title="CRICKET" href="/cricket" color="cricket" />
             <GameModeCard title="GOLF" href="/golf" color="golf" />
             <GameModeCard title="ROYAL RUMBLE" href="/extra/royal-rumble/setup" color="extra" />
