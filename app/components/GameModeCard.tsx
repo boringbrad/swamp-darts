@@ -24,8 +24,8 @@ export default function GameModeCard({ title, href, color, size = 'large', disab
   const bgColor = colorClasses[color];
 
   const sizeClasses = size === 'large'
-    ? 'h-[150px] sm:h-[200px] flex-1'
-    : 'h-[120px] sm:h-[150px] flex-1';
+    ? 'min-h-[150px] sm:min-h-[200px]'
+    : 'min-h-[120px] sm:min-h-[150px]';
 
   const content = (
     <div className="flex flex-col items-center justify-center gap-2 px-4 w-full h-full">
