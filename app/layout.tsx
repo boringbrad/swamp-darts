@@ -4,6 +4,7 @@ import "./globals.css";
 import { AppProvider } from "./contexts/AppContext";
 import { PlayerProvider } from "./contexts/PlayerContext";
 import PWARegister from "./components/PWARegister";
+import GoogleAnalytics from "./components/GoogleAnalytics";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -47,6 +48,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <GoogleAnalytics />
         <PWARegister />
         <AppProvider>
           <PlayerProvider>

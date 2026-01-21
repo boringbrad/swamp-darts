@@ -1122,7 +1122,7 @@ export default function RoyalRumbleGame() {
             {/* TOP SECTION: Timer, Turn Info, Darts - Full Width, Large */}
             <div className="w-full mb-3">
 
-              {/* Timer Row - Full Width, 2.5x larger with white text */}
+              {/* Timer Row - Full Width */}
               <div className="w-full bg-[#2d2d2d] rounded-lg p-4 mb-2">
                 <div className="flex items-center justify-center gap-8">
                   {/* Next Player Timer */}
@@ -1150,7 +1150,7 @@ export default function RoyalRumbleGame() {
 
                   {/* Pending No Heal - waiting for current player to finish */}
                   {pendingNoHeal && !gameState.noHealActive && (
-                    <div className="text-center">
+                    <div className="text-center px-2">
                       <div className="text-orange-400 text-3xl font-bold animate-pulse">
                         NO HEAL ACTIVATES AFTER THIS TURN
                       </div>
@@ -1159,7 +1159,7 @@ export default function RoyalRumbleGame() {
 
                   {/* No Heal Active */}
                   {gameState.noHealActive && (
-                    <div className="text-center">
+                    <div className="text-center px-2">
                       <div className="text-red-500 text-4xl font-bold animate-pulse">⚠️ NO HEAL MODE ACTIVE ⚠️</div>
                     </div>
                   )}
@@ -1183,10 +1183,10 @@ export default function RoyalRumbleGame() {
                 </div>
               )}
 
-              {/* Current Player Turn Banner - Full Width, Much Larger, matches active player badge */}
+              {/* Current Player Turn Banner - Full Width */}
               {!gameState.winnerId && (
                 <div className="w-full bg-green-600 rounded-lg p-5 mb-2 text-center">
-                  <div className="text-black font-bold" style={{ fontSize: '3.5rem' }}>
+                  <div className="text-black font-bold text-6xl">
                     {currentPlayer.playerName}'s Turn
                   </div>
                   <div className="text-black text-3xl opacity-70">
@@ -1384,13 +1384,13 @@ export default function RoyalRumbleGame() {
                   <button
                     onClick={handleMiss}
                     disabled={currentDarts.length >= 3}
-                    className="min-h-[105px] bg-red-600 text-white text-2xl font-bold rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="h-[105px] bg-red-600 text-white text-2xl font-bold rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     MISS
                   </button>
                   <button
                     onClick={() => setUse2xMultiplier(!use2xMultiplier)}
-                    className={`min-h-[105px] text-2xl font-bold rounded-lg transition-colors ${
+                    className={`h-[105px] text-2xl font-bold rounded-lg transition-colors ${
                       use2xMultiplier
                         ? 'bg-yellow-500 text-white hover:bg-yellow-600'
                         : 'bg-[#666666] text-white hover:bg-[#777777]'
@@ -1401,7 +1401,7 @@ export default function RoyalRumbleGame() {
                   <button
                     onClick={handleUndo}
                     disabled={(currentDarts.length === 0 && gameState.history.length === 0) || gameState.isPlayingSong}
-                    className="min-h-[105px] bg-yellow-500 text-white text-2xl font-bold rounded-lg hover:bg-yellow-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="h-[105px] bg-yellow-500 text-white text-2xl font-bold rounded-lg hover:bg-yellow-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     UNDO
                   </button>

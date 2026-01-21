@@ -241,7 +241,7 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
   };
 
   return (
-    <main className="px-6 pb-16 flex flex-col min-h-screen">
+    <main className="px-4 sm:px-6 pb-16 flex flex-col min-h-screen">
       {/* Content container - takes available space above player pool */}
       <div className="flex-1 flex flex-col pb-4">
         {/* Top spacer */}
@@ -249,18 +249,18 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
 
         {/* Ghost Mode Indicator */}
         {ghostMode && (
-          <div className="mb-6 px-8">
-            <div className="bg-[#9b59b6]/20 border-2 border-[#9b59b6] rounded-lg p-4">
-              <p className="text-white text-center text-lg font-bold flex items-center justify-center gap-2">
-                <span className="text-2xl">👻</span>
-                <span>GHOST MODE ACTIVE - Select players to add their best game performance</span>
+          <div className="mb-6 px-4 sm:px-8">
+            <div className="bg-[#9b59b6]/20 border-2 border-[#9b59b6] rounded-lg p-3 sm:p-4">
+              <p className="text-white text-center text-sm sm:text-base md:text-lg font-bold flex flex-col sm:flex-row items-center justify-center gap-2">
+                <span className="text-xl sm:text-2xl">👻</span>
+                <span>GHOSTS ACTIVE - Select players to add their best game performance</span>
               </p>
             </div>
           </div>
         )}
 
         {/* Selected Players Display - vertically centered */}
-        <div className="flex justify-center gap-4">
+        <div className="flex flex-wrap justify-center gap-3 sm:gap-4">
           {selectedPlayers.slice(0, 4).map((playerId, index) => {
             const player = getPlayer(playerId);
             if (!player) return null;
@@ -285,7 +285,7 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
                 {player.photoUrl ? (
                   <button
                     onClick={() => handlePlayerClick(playerId)}
-                    className="w-36 h-36 rounded-full border-6 flex items-center justify-center overflow-hidden cursor-move hover:opacity-80 transition-opacity"
+                    className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 lg:w-36 lg:h-36 rounded-full border-4 sm:border-6 flex items-center justify-center overflow-hidden cursor-move hover:opacity-80 transition-opacity"
                     style={{ borderColor }}
                   >
                     <img
@@ -297,7 +297,7 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
                 ) : (
                   <button
                     onClick={() => handlePlayerClick(playerId)}
-                    className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl cursor-move hover:opacity-80 transition-opacity"
+                    className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 lg:w-36 lg:h-36 rounded-full border-4 sm:border-6 flex items-center justify-center text-3xl sm:text-4xl md:text-5xl cursor-move hover:opacity-80 transition-opacity"
                     style={{ backgroundColor: avatar.color, borderColor }}
                   >
                     {avatar.emoji}
@@ -305,7 +305,7 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
                 )}
                 <button
                   onClick={() => handlePlayerClick(playerId)}
-                  className="text-white text-base font-bold hover:opacity-80 transition-opacity cursor-pointer"
+                  className="text-white text-xs sm:text-sm md:text-base font-bold hover:opacity-80 transition-opacity cursor-pointer text-center"
                 >
                   {player.name}
                 </button>
@@ -318,11 +318,11 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
         <div className="flex-1"></div>
 
         {/* Action Buttons - positioned below selected players */}
-        <div className="flex flex-col items-center justify-center gap-4">
+        <div className="flex flex-col items-center justify-center gap-3 sm:gap-4 px-4">
           <button
             onClick={handleRandomizeOrder}
             disabled={selectedPlayers.length === 0}
-            className="px-18 py-6 bg-[#666666] text-white text-3xl font-bold rounded hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full max-w-md px-6 sm:px-12 md:px-18 py-3 sm:py-4 md:py-6 bg-[#666666] text-white text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold rounded hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             RANDOMIZE ORDER
           </button>
@@ -330,7 +330,7 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
           <button
             onClick={handlePlayGame}
             disabled={selectedPlayers.length === 0}
-            className="px-18 py-6 bg-[#666666] text-white text-3xl font-bold rounded hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full max-w-md px-6 sm:px-12 md:px-18 py-3 sm:py-4 md:py-6 bg-[#666666] text-white text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold rounded hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             PLAY GAME
           </button>
@@ -389,7 +389,7 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
                 }`}
               >
                 <span>👻</span>
-                <span>GHOST MODE</span>
+                <span>GHOSTS</span>
               </button>
             </div>
           )}

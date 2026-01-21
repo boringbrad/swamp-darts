@@ -273,7 +273,7 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
     const colors: PlayerColor[] = ['blue', 'red', 'purple', 'green'];
 
     return (
-      <div className="flex justify-center gap-8">
+      <div className="flex flex-wrap justify-center gap-4 sm:gap-6 md:gap-8">
         {Array.from({ length: config.playerCount }).map((_, index) => {
           const playerId = selectedPlayerIds[index];
           const player = playerId ? getPlayerById(playerId) : null;
@@ -286,16 +286,16 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
             return (
               <div key={`slot-${index}`} className="flex flex-col items-center gap-2">
                 <div
-                  className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl border-dashed opacity-30"
+                  className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 lg:w-36 lg:h-36 rounded-full border-4 sm:border-6 flex items-center justify-center border-dashed opacity-30"
                   style={borderStyle}
                 >
-                  <span className="text-white text-4xl">?</span>
+                  <span className="text-white text-2xl sm:text-3xl md:text-4xl">?</span>
                 </div>
-                <div className="text-white text-base font-bold opacity-30">PLAYER {index + 1}</div>
-                <div className="text-white text-6xl font-bold opacity-30">-</div>
-                <div className="flex gap-2 opacity-0">
-                  <button className="w-8 h-8 bg-[#333333] text-white rounded">-</button>
-                  <button className="w-8 h-8 bg-[#333333] text-white rounded">+</button>
+                <div className="text-white text-xs sm:text-sm md:text-base font-bold opacity-30">PLAYER {index + 1}</div>
+                <div className="text-white text-4xl sm:text-5xl md:text-6xl font-bold opacity-30">-</div>
+                <div className="flex gap-1 sm:gap-2 opacity-0">
+                  <button className="w-6 h-6 sm:w-8 sm:h-8 bg-[#333333] text-white rounded text-sm sm:text-base">-</button>
+                  <button className="w-6 h-6 sm:w-8 sm:h-8 bg-[#333333] text-white rounded text-sm sm:text-base">+</button>
                 </div>
               </div>
             );
@@ -321,7 +321,7 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
               {player.photoUrl ? (
                 <button
                   onClick={() => handlePlayerClick(playerId)}
-                  className="w-36 h-36 rounded-full border-6 overflow-hidden cursor-move hover:opacity-80 transition-opacity"
+                  className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 lg:w-36 lg:h-36 rounded-full border-4 sm:border-6 overflow-hidden cursor-move hover:opacity-80 transition-opacity"
                   style={borderStyle}
                 >
                   <img
@@ -333,7 +333,7 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
               ) : (
                 <button
                   onClick={() => handlePlayerClick(playerId)}
-                  className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl cursor-move hover:opacity-80 transition-opacity"
+                  className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 lg:w-36 lg:h-36 rounded-full border-4 sm:border-6 flex items-center justify-center text-3xl sm:text-4xl md:text-5xl cursor-move hover:opacity-80 transition-opacity"
                   style={{ backgroundColor: avatar.color, ...borderStyle }}
                 >
                   {avatar.emoji}
@@ -341,21 +341,21 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
               )}
               <button
                 onClick={() => handlePlayerClick(playerId)}
-                className="text-white text-base font-bold hover:opacity-80 transition-opacity cursor-pointer"
+                className="text-white text-xs sm:text-sm md:text-base font-bold hover:opacity-80 transition-opacity cursor-pointer text-center"
               >
                 {player.name}
               </button>
-              <div className="text-white text-6xl font-bold">{koNumbers[playerId] || 1}</div>
-              <div className="flex gap-2">
+              <div className="text-white text-4xl sm:text-5xl md:text-6xl font-bold">{koNumbers[playerId] || 1}</div>
+              <div className="flex gap-1 sm:gap-2">
                 <button
                   onClick={() => decrementKO(playerId)}
-                  className="w-8 h-8 bg-[#333333] text-white rounded flex items-center justify-center text-xl hover:bg-[#444444] transition-colors"
+                  className="w-6 h-6 sm:w-8 sm:h-8 bg-[#333333] text-white rounded flex items-center justify-center text-base sm:text-lg md:text-xl hover:bg-[#444444] transition-colors"
                 >
                   -
                 </button>
                 <button
                   onClick={() => incrementKO(playerId)}
-                  className="w-8 h-8 bg-[#333333] text-white rounded flex items-center justify-center text-xl hover:bg-[#444444] transition-colors"
+                  className="w-6 h-6 sm:w-8 sm:h-8 bg-[#333333] text-white rounded flex items-center justify-center text-base sm:text-lg md:text-xl hover:bg-[#444444] transition-colors"
                 >
                   +
                 </button>
@@ -371,7 +371,7 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
     const playersPerTeam = config.playerCount / 2;
 
     return (
-      <div className="flex justify-center gap-16">
+      <div className="flex flex-col sm:flex-row justify-center gap-8 sm:gap-12 md:gap-16">
         {/* Team 0 (Blue) */}
         <div className="flex gap-4">
           {Array.from({ length: playersPerTeam }).map((_, teamIndex) => {
@@ -583,7 +583,7 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
 
   return (
     <>
-      <main className="px-6 pb-16 flex flex-col min-h-screen">
+      <main className="px-4 sm:px-6 pb-16 flex flex-col min-h-screen">
         {/* Content container - takes available space above player pool */}
         <div className="flex-1 flex flex-col pb-4">
           {/* Top spacer */}
@@ -598,12 +598,12 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
           <div className="flex-1"></div>
 
           {/* Action Buttons - positioned below selected players */}
-          <div className="flex flex-col items-center justify-center gap-4">
+          <div className="flex flex-col items-center justify-center gap-3 sm:gap-4 px-4">
             {/* Randomize Numbers Button */}
             <button
               onClick={handleRandomize}
               disabled={selectedPlayerIds.length === 0}
-              className="px-18 py-6 bg-[#666666] text-white text-3xl font-bold rounded hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full max-w-md px-6 sm:px-12 md:px-18 py-3 sm:py-4 md:py-6 bg-[#666666] text-white text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold rounded hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               RANDOMIZE NUMBERS
             </button>
@@ -612,7 +612,7 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
             <button
               onClick={handleRandomizeOrder}
               disabled={selectedPlayerIds.length === 0}
-              className="px-18 py-6 bg-[#666666] text-white text-3xl font-bold rounded hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full max-w-md px-6 sm:px-12 md:px-18 py-3 sm:py-4 md:py-6 bg-[#666666] text-white text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold rounded hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               RANDOMIZE ORDER
             </button>
@@ -621,7 +621,7 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
             <button
               onClick={handlePlayGame}
               disabled={isPlayDisabled}
-              className="px-18 py-6 bg-[#666666] text-white text-3xl font-bold rounded hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full max-w-md px-6 sm:px-12 md:px-18 py-3 sm:py-4 md:py-6 bg-[#666666] text-white text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold rounded hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               PLAY GAME
             </button>

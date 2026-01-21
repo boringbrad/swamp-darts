@@ -316,7 +316,7 @@ export default function RoyalRumbleSetup() {
     <div className="min-h-screen bg-[#1a5a5a]">
       <Header title="ROYAL RUMBLE SETUP" />
 
-      <main className="px-6 pb-16 flex flex-col min-h-screen">
+      <main className="px-4 sm:px-6 pb-16 flex flex-col min-h-screen">
         {/* Content container - takes available space above player pool */}
         <div className="flex-1 flex flex-col pb-4">
           {/* Top spacer */}
@@ -324,20 +324,20 @@ export default function RoyalRumbleSetup() {
 
           {/* Selected Players Display - centered */}
           <div className="flex flex-col items-center w-full">
-            <div className="w-full max-w-4xl">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-4xl font-bold text-white">
+            <div className="w-full max-w-4xl px-2 sm:px-0">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4">
+                <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white">
                   SELECTED PLAYERS ({selectedPlayerIds.length}/20)
                 </h2>
                 <button
                   onClick={randomizeOrder}
                   disabled={selectedPlayerIds.length === 0}
-                  className="px-6 py-3 bg-[#666666] text-white text-2xl font-bold rounded hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 sm:px-6 py-2 sm:py-3 bg-[#666666] text-white text-base sm:text-xl md:text-2xl font-bold rounded hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                 >
                   RANDOMIZE ORDER
                 </button>
               </div>
-              <p className="text-white text-xl mb-4">
+              <p className="text-white text-sm sm:text-base md:text-xl mb-4">
                 Minimum 4 players required. Tap players in the pool below to select.
               </p>
             </div>
@@ -412,10 +412,10 @@ export default function RoyalRumbleSetup() {
           <div className="flex flex-col items-center justify-center gap-4 w-full">
             {/* Settings Panel */}
             {selectedPlayerIds.length >= 4 && (
-              <div className="bg-[#2d2d2d] rounded-lg p-6 w-full max-w-4xl">
-                <h2 className="text-4xl font-bold text-white mb-6">SETTINGS</h2>
+              <div className="bg-[#2d2d2d] rounded-lg p-4 sm:p-6 w-full max-w-4xl">
+                <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-4 sm:mb-6">SETTINGS</h2>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                   {/* Number Assignment */}
                   <div>
                     <h3 className="text-2xl font-bold text-white mb-4">Number Assignment</h3>
@@ -585,17 +585,17 @@ export default function RoyalRumbleSetup() {
             )}
 
             {/* Start Button */}
-            <div className="flex justify-center gap-6">
+            <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-6 w-full max-w-2xl px-4">
               <button
                 onClick={() => router.push('/extra')}
-                className="px-12 py-6 bg-[#666666] text-white text-4xl font-bold rounded hover:bg-[#777777] transition-colors"
+                className="flex-1 px-6 sm:px-12 py-3 sm:py-6 bg-[#666666] text-white text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold rounded hover:bg-[#777777] transition-colors"
               >
                 BACK
               </button>
               <button
                 onClick={handleStartGame}
                 disabled={selectedPlayerIds.length < 4}
-                className="px-12 py-6 bg-[#4CAF50] text-white text-4xl font-bold rounded hover:bg-[#45a049] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-6 sm:px-12 py-3 sm:py-6 bg-[#4CAF50] text-white text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold rounded hover:bg-[#45a049] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 START RUMBLE
               </button>

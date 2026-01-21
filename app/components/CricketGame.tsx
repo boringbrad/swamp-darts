@@ -1289,7 +1289,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
         <span
           className="text-white font-bold"
           style={{
-            fontSize: 'clamp(1.12rem, 4.48vw, 5.6rem)',
+            fontSize: 'clamp(2rem, 4.48vw, 5.6rem)',
             lineHeight: 1,
             opacity: isEliminated ? 0.3 : 1
           }}

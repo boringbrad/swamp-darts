@@ -928,7 +928,7 @@ export default function GolfGame({ variant }: GolfGameProps) {
         </div>
 
         {/* Scorecard Tables - scrollable if needed */}
-        <div className="px-6 pt-2 pb-0 flex-shrink-0">
+        <div className="px-6 pt-2 pb-0 flex-shrink-0 max-h-[45vh] overflow-y-auto">
           {/* Single unified table */}
           <table className="w-full border-collapse table-fixed">
             <colgroup>
@@ -1000,7 +1000,7 @@ export default function GolfGame({ variant }: GolfGameProps) {
                     }`}
                   >
                     <td className="border border-[#1a1a1a] p-[0.1vw] text-white font-bold" style={{ height: 'clamp(2rem, 4vw, 6rem)' }}>
-                      <span style={{ fontSize: 'clamp(0.8rem, 1.5vw, 2.5rem)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>{player.name.toUpperCase()}</span>
+                      <span className="block overflow-hidden" style={{ fontSize: 'clamp(0.5rem, 1.5vw, 2.5rem)' }}>{player.name.toUpperCase()}</span>
                     </td>
                     {playerScores.slice(0, 9).map((score, holeIndex) => {
                       const isWinner = (variant === 'match-play' || variant === 'skins') && isHoleWinner(playerIndex, holeIndex);
@@ -1111,7 +1111,7 @@ export default function GolfGame({ variant }: GolfGameProps) {
                     }`}
                   >
                     <td className="border border-[#1a1a1a] p-[0.1vw] text-white font-bold" style={{ height: 'clamp(2rem, 4vw, 6rem)' }}>
-                      <span style={{ fontSize: 'clamp(0.8rem, 1.5vw, 2.5rem)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>{player.name.toUpperCase()}</span>
+                      <span className="block overflow-hidden" style={{ fontSize: 'clamp(0.5rem, 1.5vw, 2.5rem)' }}>{player.name.toUpperCase()}</span>
                     </td>
                     {playerScores.slice(9, 18).map((score, holeIndex) => {
                       const actualHoleIndex = holeIndex + 9;
@@ -1225,23 +1225,79 @@ export default function GolfGame({ variant }: GolfGameProps) {
 
         {/* Score Input Buttons - spacing from scorecard */}
         <div className="px-6 pb-0 pt-0 flex-shrink-0">
-          <div className="grid grid-cols-7 gap-4">
+          <style jsx>{`
+            .golf-button {
+              aspect-ratio: 1 / 1;
+            }
+            @media (orientation: landscape) and (max-width: 1023px) {
+              .golf-button {
+                aspect-ratio: auto;
+                height: 100px;
+              }
+            }
+            @media (min-width: 1024px) {
+              .golf-button {
+                aspect-ratio: auto;
+                height: 200px;
+              }
+            }
+            .golf-button-grid {
+              gap: 0.25rem;
+            }
+            @media (orientation: landscape) {
+              .golf-button-grid {
+                gap: 0.5rem;
+              }
+            }
+            @media (min-width: 1024px) {
+              .golf-button-grid {
+                gap: 1rem;
+              }
+            }
+            .golf-number-text {
+              font-size: 1.875rem;
+            }
+            @media (orientation: landscape) and (max-width: 1023px) {
+              .golf-number-text {
+                font-size: 2rem;
+              }
+            }
+            @media (min-width: 1024px) {
+              .golf-number-text {
+                font-size: 3.75rem;
+              }
+            }
+            .golf-undo-text {
+              font-size: 1.125rem;
+            }
+            @media (orientation: landscape) and (max-width: 1023px) {
+              .golf-undo-text {
+                font-size: 1.25rem;
+              }
+            }
+            @media (min-width: 1024px) {
+              .golf-undo-text {
+                font-size: 1.875rem;
+              }
+            }
+          `}</style>
+          <div className="grid grid-cols-7 golf-button-grid">
             {[1, 2, 3, 4, 5, 6].map(score => (
               <button
                 key={score}
                 onClick={() => handleScoreInput(score)}
                 disabled={gameComplete}
-                className="bg-[#FFD700] text-black text-6xl font-bold rounded hover:bg-[#FFC700] transition-colors opacity-50 hover:opacity-60 active:opacity-80 disabled:opacity-25 disabled:cursor-not-allowed min-h-[100px] flex items-center justify-center"
+                className="golf-button bg-[#FFD700] text-black font-bold rounded hover:bg-[#FFC700] transition-colors opacity-50 hover:opacity-60 active:opacity-80 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center"
               >
-                {score}
+                <span className="golf-number-text">{score}</span>
               </button>
             ))}
             <button
               onClick={handleUndo}
               disabled={currentHole === 0 && currentPlayerIndex === 0}
-              className="bg-[#FFD700] text-black text-3xl font-bold rounded hover:bg-[#FFC700] transition-colors opacity-50 hover:opacity-60 active:opacity-80 disabled:opacity-25 disabled:cursor-not-allowed min-h-[100px] flex items-center justify-center"
+              className="golf-button bg-[#FFD700] text-black font-bold rounded hover:bg-[#FFC700] transition-colors opacity-50 hover:opacity-60 active:opacity-80 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center px-1"
             >
-              UNDO
+              <span className="golf-undo-text">UNDO</span>
             </button>
           </div>
 
@@ -1250,13 +1306,13 @@ export default function GolfGame({ variant }: GolfGameProps) {
             <div className="grid grid-cols-2 gap-4 mt-4">
               <button
                 onClick={handleSaveAndPlayAgain}
-                className="bg-[#2d5016] text-white text-4xl font-bold rounded hover:bg-[#3d6026] transition-colors min-h-[120px] flex items-center justify-center"
+                className="bg-[#2d5016] text-white text-4xl font-bold rounded hover:bg-[#3d6026] transition-colors h-[120px] flex items-center justify-center px-2"
               >
                 SAVE & PLAY AGAIN
               </button>
               <button
                 onClick={handleReturnHome}
-                className="bg-[#666666] text-white text-4xl font-bold rounded hover:bg-[#777777] transition-colors min-h-[120px] flex items-center justify-center"
+                className="bg-[#666666] text-white text-4xl font-bold rounded hover:bg-[#777777] transition-colors h-[120px] flex items-center justify-center px-2"
               >
                 RETURN HOME
               </button>
