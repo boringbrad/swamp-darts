@@ -12,6 +12,7 @@ export default function ManageLeaguePage() {
   const [isAddPlayerModalOpen, setIsAddPlayerModalOpen] = useState(false);
   const [isAddGuestModalOpen, setIsAddGuestModalOpen] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<{ id: string; name: string; avatar: string; photoUrl?: string } | null>(null);
+  const [editingGuest, setEditingGuest] = useState<{ id: string; name: string; avatar: string; photoUrl?: string } | null>(null);
 
   // Filter out guest players - only show persistent league players
   const leaguePlayers = localPlayers.filter(p => !p.isGuest);
@@ -51,6 +52,20 @@ export default function ManageLeaguePage() {
       updateLocalPlayer(player.id, { photoUrl });
     }
     setIsAddGuestModalOpen(false);
+  };
+
+  const handleEditGuest = (id: string) => {
+    const player = guestPlayers.find(p => p.id === id);
+    if (player) {
+      setEditingGuest({ id: player.id, name: player.name, avatar: player.avatar || 'avatar-1', photoUrl: player.photoUrl });
+    }
+  };
+
+  const handleSaveGuestEdit = (name: string, avatar: string, photoUrl?: string) => {
+    if (editingGuest) {
+      updateLocalPlayer(editingGuest.id, { name, avatar, photoUrl });
+      setEditingGuest(null);
+    }
   };
 
   const handleDeleteGuest = (id: string) => {
@@ -182,8 +197,14 @@ export default function ManageLeaguePage() {
                         {player.name}
                       </span>
 
-                      {/* Delete Button */}
+                      {/* Edit/Delete Buttons */}
                       <div className="flex gap-2">
+                        <button
+                          onClick={() => handleEditGuest(player.id)}
+                          className="px-3 py-1 bg-[#6b1a8b] text-white text-xs font-bold rounded hover:opacity-90 transition-opacity"
+                        >
+                          EDIT
+                        </button>
                         <button
                           onClick={() => handleDeleteGuest(player.id)}
                           className="px-3 py-1 bg-[#9d1a1a] text-white text-xs font-bold rounded hover:opacity-90 transition-opacity"
@@ -230,12 +251,18 @@ export default function ManageLeaguePage() {
           title={editingPlayer ? 'EDIT PLAYER' : 'ADD PLAYER'}
         />
 
-        {/* Add Guest Modal */}
+        {/* Add/Edit Guest Modal */}
         <AddGuestPlayerModal
-          isOpen={isAddGuestModalOpen}
-          onClose={() => setIsAddGuestModalOpen(false)}
-          onAdd={handleAddGuest}
-          title="ADD GUEST"
+          isOpen={isAddGuestModalOpen || editingGuest !== null}
+          onClose={() => {
+            setIsAddGuestModalOpen(false);
+            setEditingGuest(null);
+          }}
+          onAdd={editingGuest ? handleSaveGuestEdit : handleAddGuest}
+          initialName={editingGuest?.name}
+          initialAvatar={editingGuest?.avatar}
+          initialPhotoUrl={editingGuest?.photoUrl}
+          title={editingGuest ? 'EDIT GUEST' : 'ADD GUEST'}
         />
       </PageWrapper>
     </div>

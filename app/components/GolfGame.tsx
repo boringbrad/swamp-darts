@@ -1308,7 +1308,7 @@ export default function GolfGame({ variant }: GolfGameProps) {
                 onClick={handleSaveAndPlayAgain}
                 className="bg-[#2d5016] text-white text-4xl font-bold rounded hover:bg-[#3d6026] transition-colors h-[120px] flex items-center justify-center px-2"
               >
-                SAVE & PLAY AGAIN
+                PLAY AGAIN
               </button>
               <button
                 onClick={handleReturnHome}
