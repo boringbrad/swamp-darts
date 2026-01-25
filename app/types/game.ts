@@ -21,6 +21,9 @@ export interface CricketRules {
   noPoint: boolean;
   point: boolean;
   tornadoTag?: boolean; // For tag team
+  enableKO?: boolean; // Enable K.O. Cricket (hit numbers and skip turn mechanic)
+  enablePIN?: boolean; // Enable PIN mechanic (default win condition)
+  enable3Darts3Marks?: boolean; // Enable 3 Darts/3 Marks bonus turn mechanic
 }
 
 // Cricket scoring

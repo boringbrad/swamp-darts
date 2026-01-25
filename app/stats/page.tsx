@@ -62,7 +62,7 @@ export default function StatsPage() {
           <div className="flex items-center justify-center gap-8 mb-8">
             {/* Avatar */}
             <div
-              className="w-32 h-32 rounded-full flex items-center justify-center text-6xl"
+              className="w-16 h-16 sm:w-32 sm:h-32 rounded-full flex items-center justify-center text-3xl sm:text-6xl"
               style={{ backgroundColor: currentAvatar.color }}
             >
               {currentAvatar.emoji}

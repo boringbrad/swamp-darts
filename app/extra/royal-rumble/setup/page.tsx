@@ -370,7 +370,7 @@ export default function RoyalRumbleSetup() {
                         {player.photoUrl ? (
                           <button
                             onClick={() => togglePlayer(player.id)}
-                            className="w-20 h-20 rounded-full overflow-hidden hover:opacity-80 transition-opacity ring-4 ring-[#4CAF50] cursor-move"
+                            className="w-10 h-10 sm:w-20 sm:h-20 rounded-full overflow-hidden hover:opacity-80 transition-opacity ring-4 ring-[#4CAF50] cursor-move"
                           >
                             <img
                               src={player.photoUrl}
@@ -381,7 +381,7 @@ export default function RoyalRumbleSetup() {
                         ) : (
                           <button
                             onClick={() => togglePlayer(player.id)}
-                            className="w-20 h-20 rounded-full flex items-center justify-center text-4xl hover:opacity-80 transition-opacity ring-4 ring-[#4CAF50] cursor-move"
+                            className="w-10 h-10 sm:w-20 sm:h-20 rounded-full flex items-center justify-center text-2xl sm:text-4xl hover:opacity-80 transition-opacity ring-4 ring-[#4CAF50] cursor-move"
                             style={{ backgroundColor: avatar.color }}
                           >
                             {avatar.emoji}
@@ -688,7 +688,7 @@ export default function RoyalRumbleSetup() {
               onClick={() => setIsAddPlayerModalOpen(true)}
               className="flex flex-col items-center gap-2 transition-opacity opacity-60 hover:opacity-80"
             >
-              <div className="w-24 h-24 rounded-full border-4 border-dashed border-[#666666] flex items-center justify-center bg-[#2d2d2d]">
+              <div className="w-12 h-12 sm:w-24 sm:h-24 rounded-full border-4 border-dashed border-[#666666] flex items-center justify-center bg-[#2d2d2d]">
                 <span className="text-white text-4xl font-bold">+</span>
               </div>
               <span className="text-white text-sm font-bold">ADD GUEST</span>

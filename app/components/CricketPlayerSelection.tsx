@@ -53,7 +53,10 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
   const router = useRouter();
   const config = VARIANT_CONFIGS[variant];
   const { localPlayers, addGuestPlayer, updateLocalPlayer } = usePlayerContext();
-  const { selectedPlayers, setSelectedPlayers } = useAppContext();
+  const { selectedPlayers, setSelectedPlayers, cricketRules } = useAppContext();
+
+  // Check if KO is enabled (default true)
+  const enableKO = cricketRules.enableKO !== false;
 
   // State for selected player IDs
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
@@ -286,7 +289,7 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
             return (
               <div key={`slot-${index}`} className="flex flex-col items-center gap-2">
                 <div
-                  className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 lg:w-36 lg:h-36 rounded-full border-4 sm:border-6 flex items-center justify-center border-dashed opacity-30"
+                  className="w-12 h-12 sm:w-28 sm:h-28 md:w-32 md:h-32 lg:w-36 lg:h-36 rounded-full border-4 sm:border-6 flex items-center justify-center border-dashed opacity-30"
                   style={borderStyle}
                 >
                   <span className="text-white text-2xl sm:text-3xl md:text-4xl">?</span>
@@ -321,7 +324,7 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
               {player.photoUrl ? (
                 <button
                   onClick={() => handlePlayerClick(playerId)}
-                  className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 lg:w-36 lg:h-36 rounded-full border-4 sm:border-6 overflow-hidden cursor-move hover:opacity-80 transition-opacity"
+                  className="w-12 h-12 sm:w-28 sm:h-28 md:w-32 md:h-32 lg:w-36 lg:h-36 rounded-full border-4 sm:border-6 overflow-hidden cursor-move hover:opacity-80 transition-opacity"
                   style={borderStyle}
                 >
                   <img
@@ -333,7 +336,7 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
               ) : (
                 <button
                   onClick={() => handlePlayerClick(playerId)}
-                  className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 lg:w-36 lg:h-36 rounded-full border-4 sm:border-6 flex items-center justify-center text-3xl sm:text-4xl md:text-5xl cursor-move hover:opacity-80 transition-opacity"
+                  className="w-12 h-12 sm:w-28 sm:h-28 md:w-32 md:h-32 lg:w-36 lg:h-36 rounded-full border-4 sm:border-6 flex items-center justify-center text-3xl sm:text-4xl md:text-5xl cursor-move hover:opacity-80 transition-opacity"
                   style={{ backgroundColor: avatar.color, ...borderStyle }}
                 >
                   {avatar.emoji}
@@ -345,21 +348,25 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
               >
                 {player.name}
               </button>
-              <div className="text-white text-4xl sm:text-5xl md:text-6xl font-bold">{koNumbers[playerId] || 1}</div>
-              <div className="flex gap-1 sm:gap-2">
-                <button
-                  onClick={() => decrementKO(playerId)}
-                  className="w-6 h-6 sm:w-8 sm:h-8 bg-[#333333] text-white rounded flex items-center justify-center text-base sm:text-lg md:text-xl hover:bg-[#444444] transition-colors"
-                >
-                  -
-                </button>
-                <button
-                  onClick={() => incrementKO(playerId)}
-                  className="w-6 h-6 sm:w-8 sm:h-8 bg-[#333333] text-white rounded flex items-center justify-center text-base sm:text-lg md:text-xl hover:bg-[#444444] transition-colors"
-                >
-                  +
-                </button>
-              </div>
+              {enableKO && (
+                <>
+                  <div className="text-white text-4xl sm:text-5xl md:text-6xl font-bold">{koNumbers[playerId] || 1}</div>
+                  <div className="flex gap-1 sm:gap-2">
+                    <button
+                      onClick={() => decrementKO(playerId)}
+                      className="w-6 h-6 sm:w-8 sm:h-8 bg-[#333333] text-white rounded flex items-center justify-center text-base sm:text-lg md:text-xl hover:bg-[#444444] transition-colors"
+                    >
+                      -
+                    </button>
+                    <button
+                      onClick={() => incrementKO(playerId)}
+                      className="w-6 h-6 sm:w-8 sm:h-8 bg-[#333333] text-white rounded flex items-center justify-center text-base sm:text-lg md:text-xl hover:bg-[#444444] transition-colors"
+                    >
+                      +
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           );
         })}
@@ -384,7 +391,7 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
               return (
                 <div key={`team0-slot-${teamIndex}`} className="flex flex-col items-center gap-2">
                   <div
-                    className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl border-dashed opacity-30"
+                    className="w-18 h-18 sm:w-36 sm:h-36 rounded-full border-6 flex items-center justify-center text-5xl border-dashed opacity-30"
                     style={{ borderColor: getTeamBorderColor(0) }}
                   >
                     <span className="text-white text-4xl">?</span>
@@ -417,7 +424,7 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
                 {player.photoUrl ? (
                   <button
                     onClick={() => handlePlayerClick(playerId)}
-                    className="w-36 h-36 rounded-full border-6 overflow-hidden cursor-move hover:opacity-80 transition-opacity"
+                    className="w-18 h-18 sm:w-36 sm:h-36 rounded-full border-6 overflow-hidden cursor-move hover:opacity-80 transition-opacity"
                     style={{ borderColor: getTeamBorderColor(0) }}
                   >
                     <img
@@ -429,7 +436,7 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
                 ) : (
                   <button
                     onClick={() => handlePlayerClick(playerId)}
-                    className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl cursor-move hover:opacity-80 transition-opacity"
+                    className="w-18 h-18 sm:w-36 sm:h-36 rounded-full border-6 flex items-center justify-center text-5xl cursor-move hover:opacity-80 transition-opacity"
                     style={{ backgroundColor: avatar.color, borderColor: getTeamBorderColor(0) }}
                   >
                     {avatar.emoji}
@@ -441,21 +448,25 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
                 >
                   {player.name}
                 </button>
-                <div className="text-white text-6xl font-bold">{koNumbers[playerId] || 1}</div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => decrementKO(playerId)}
-                    className="w-8 h-8 bg-[#333333] text-white rounded flex items-center justify-center text-xl hover:bg-[#444444] transition-colors"
-                  >
-                    -
-                  </button>
-                  <button
-                    onClick={() => incrementKO(playerId)}
-                    className="w-8 h-8 bg-[#333333] text-white rounded flex items-center justify-center text-xl hover:bg-[#444444] transition-colors"
-                  >
-                    +
-                  </button>
-                </div>
+                {enableKO && (
+                  <>
+                    <div className="text-white text-6xl font-bold">{koNumbers[playerId] || 1}</div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => decrementKO(playerId)}
+                        className="w-8 h-8 bg-[#333333] text-white rounded flex items-center justify-center text-xl hover:bg-[#444444] transition-colors"
+                      >
+                        -
+                      </button>
+                      <button
+                        onClick={() => incrementKO(playerId)}
+                        className="w-8 h-8 bg-[#333333] text-white rounded flex items-center justify-center text-xl hover:bg-[#444444] transition-colors"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             );
           })}
@@ -473,7 +484,7 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
               return (
                 <div key={`team1-slot-${teamIndex}`} className="flex flex-col items-center gap-2">
                   <div
-                    className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl border-dashed opacity-30"
+                    className="w-18 h-18 sm:w-36 sm:h-36 rounded-full border-6 flex items-center justify-center text-5xl border-dashed opacity-30"
                     style={{ borderColor: getTeamBorderColor(1) }}
                   >
                     <span className="text-white text-4xl">?</span>
@@ -506,7 +517,7 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
                 {player.photoUrl ? (
                   <button
                     onClick={() => handlePlayerClick(playerId)}
-                    className="w-36 h-36 rounded-full border-6 overflow-hidden cursor-move hover:opacity-80 transition-opacity"
+                    className="w-18 h-18 sm:w-36 sm:h-36 rounded-full border-6 overflow-hidden cursor-move hover:opacity-80 transition-opacity"
                     style={{ borderColor: getTeamBorderColor(1) }}
                   >
                     <img
@@ -518,7 +529,7 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
                 ) : (
                   <button
                     onClick={() => handlePlayerClick(playerId)}
-                    className="w-36 h-36 rounded-full border-6 flex items-center justify-center text-5xl cursor-move hover:opacity-80 transition-opacity"
+                    className="w-18 h-18 sm:w-36 sm:h-36 rounded-full border-6 flex items-center justify-center text-5xl cursor-move hover:opacity-80 transition-opacity"
                     style={{ backgroundColor: avatar.color, borderColor: getTeamBorderColor(1) }}
                   >
                     {avatar.emoji}
@@ -530,21 +541,25 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
                 >
                   {player.name}
                 </button>
-                <div className="text-white text-6xl font-bold">{koNumbers[playerId] || 1}</div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => decrementKO(playerId)}
-                    className="w-8 h-8 bg-[#333333] text-white rounded flex items-center justify-center text-xl hover:bg-[#444444] transition-colors"
-                  >
-                    -
-                  </button>
-                  <button
-                    onClick={() => incrementKO(playerId)}
-                    className="w-8 h-8 bg-[#333333] text-white rounded flex items-center justify-center text-xl hover:bg-[#444444] transition-colors"
-                  >
-                    +
-                  </button>
-                </div>
+                {enableKO && (
+                  <>
+                    <div className="text-white text-6xl font-bold">{koNumbers[playerId] || 1}</div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => decrementKO(playerId)}
+                        className="w-8 h-8 bg-[#333333] text-white rounded flex items-center justify-center text-xl hover:bg-[#444444] transition-colors"
+                      >
+                        -
+                      </button>
+                      <button
+                        onClick={() => incrementKO(playerId)}
+                        className="w-8 h-8 bg-[#333333] text-white rounded flex items-center justify-center text-xl hover:bg-[#444444] transition-colors"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             );
           })}
@@ -599,14 +614,16 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
 
           {/* Action Buttons - positioned below selected players */}
           <div className="flex flex-col items-center justify-center gap-3 sm:gap-4 px-4">
-            {/* Randomize Numbers Button */}
-            <button
-              onClick={handleRandomize}
-              disabled={selectedPlayerIds.length === 0}
-              className="w-full max-w-md px-6 sm:px-12 md:px-18 py-3 sm:py-4 md:py-6 bg-[#666666] text-white text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold rounded hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              RANDOMIZE NUMBERS
-            </button>
+            {/* Randomize Numbers Button - only show if KO is enabled */}
+            {enableKO && (
+              <button
+                onClick={handleRandomize}
+                disabled={selectedPlayerIds.length === 0}
+                className="w-full max-w-md px-6 sm:px-12 md:px-18 py-3 sm:py-4 md:py-6 bg-[#666666] text-white text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold rounded hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                RANDOMIZE NUMBERS
+              </button>
+            )}
 
             {/* Randomize Order Button */}
             <button
@@ -711,9 +728,9 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
             <div className="flex flex-col items-center gap-2">
               <button
                 onClick={() => setIsAddPlayerModalOpen(true)}
-                className="w-24 h-24 rounded-full bg-[#666666] border-4 border-transparent flex items-center justify-center hover:bg-[#777777] transition-colors"
+                className="w-12 h-12 sm:w-24 sm:h-24 rounded-full bg-[#666666] border-4 border-transparent flex items-center justify-center hover:bg-[#777777] transition-colors"
               >
-                <span className="text-white text-4xl">+</span>
+                <span className="text-white text-2xl sm:text-4xl">+</span>
               </button>
               <span className="text-white text-sm font-bold">ADD PLAYER</span>
             </div>

@@ -30,6 +30,8 @@ export default function SettingsModal({ isOpen, onClose, pathname = '' }: Settin
     setShowCourseName,
     playMode,
     setPlayMode,
+    cricketRules,
+    setCricketRules,
   } = useAppContext();
   const [courseNameInput, setCourseNameInput] = useState(golfCourseName);
   const [bannerImageInput, setBannerImageInput] = useState(courseBannerImage);
@@ -486,11 +488,70 @@ export default function SettingsModal({ isOpen, onClose, pathname = '' }: Settin
           {/* Cricket Tab */}
           {activeTab === 'cricket' && (
             <div>
-              <div className="bg-[#333333] rounded-lg p-12 text-center">
-                <div className="text-white text-2xl font-bold mb-4">Cricket Settings Coming Soon</div>
-                <div className="text-gray-400 text-lg">
-                  Cricket-specific settings will be available here
+              <h3 className="text-xl font-bold text-white mb-4">GAME MECHANICS</h3>
+              <div className="space-y-4">
+                {/* K.O. Cricket Toggle */}
+                <div className="bg-[#333333] rounded-lg p-4">
+                  <div className="flex items-center gap-3 mb-2">
+                    <input
+                      type="checkbox"
+                      id="enableKO"
+                      checked={cricketRules.enableKO !== false}
+                      onChange={(e) => setCricketRules({ enableKO: e.target.checked })}
+                      className="w-6 h-6 cursor-pointer"
+                    />
+                    <label htmlFor="enableKO" className="text-white text-lg font-bold cursor-pointer">
+                      K.O. Cricket
+                    </label>
+                  </div>
+                  <p className="text-gray-400 text-sm pl-9">
+                    When disabled, removes hit numbers from players and disables the skip turn mechanic. Players cannot skip opponents.
+                  </p>
                 </div>
+
+                {/* PIN Toggle */}
+                <div className="bg-[#333333] rounded-lg p-4">
+                  <div className="flex items-center gap-3 mb-2">
+                    <input
+                      type="checkbox"
+                      id="enablePIN"
+                      checked={cricketRules.enablePIN !== false}
+                      onChange={(e) => setCricketRules({ enablePIN: e.target.checked })}
+                      className="w-6 h-6 cursor-pointer"
+                    />
+                    <label htmlFor="enablePIN" className="text-white text-lg font-bold cursor-pointer">
+                      PIN
+                    </label>
+                  </div>
+                  <p className="text-gray-400 text-sm pl-9">
+                    When disabled, removes the PIN mechanic. The game is won when a player completes their board (closes all 9 targets).
+                  </p>
+                </div>
+
+                {/* 3 Darts/3 Marks Toggle */}
+                <div className="bg-[#333333] rounded-lg p-4">
+                  <div className="flex items-center gap-3 mb-2">
+                    <input
+                      type="checkbox"
+                      id="enable3Darts3Marks"
+                      checked={cricketRules.enable3Darts3Marks !== false}
+                      onChange={(e) => setCricketRules({ enable3Darts3Marks: e.target.checked })}
+                      className="w-6 h-6 cursor-pointer"
+                    />
+                    <label htmlFor="enable3Darts3Marks" className="text-white text-lg font-bold cursor-pointer">
+                      3 Darts / 3 Marks
+                    </label>
+                  </div>
+                  <p className="text-gray-400 text-sm pl-9">
+                    When disabled, players do not get their darts back if they score with all 3 darts. Bonus turns are disabled.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 p-4 bg-yellow-900/30 rounded-lg border border-yellow-600/50">
+                <p className="text-yellow-200 text-sm">
+                  <strong>Note:</strong> These settings apply to all Cricket variants. Changes will take effect for new games.
+                </p>
               </div>
             </div>
           )}

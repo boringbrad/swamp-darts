@@ -71,6 +71,11 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Game settings with defaults
+  const enableKO = rules.enableKO !== false; // Default true
+  const enablePIN = rules.enablePIN !== false; // Default true
+  const enable3Darts3Marks = rules.enable3Darts3Marks !== false; // Default true
+
   // Reconstruct full player data from localPlayers to ensure photoUrl is included
   const [players, setPlayers] = useState<Player[]>(initialPlayers);
 
@@ -387,7 +392,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
   };
 
   // Check if PIN button should be enabled
-  const isPinEnabled = isInPinPhase();
+  const isPinEnabled = enablePIN && isInPinPhase();
 
   // Save game when winner is determined
   useEffect(() => {
@@ -563,8 +568,8 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
 
       // Add a small delay so the user can see the third dart before advancing
       const timer = setTimeout(() => {
-        if (allDartsScored) {
-          // Bonus turn - reset darts without changing player
+        if (enable3Darts3Marks && allDartsScored) {
+          // Bonus turn - reset darts without changing player (only if setting enabled)
           setDartScores([null, null, null]);
           setDartMultipliers([1, 1, 1]);
           setDartPinHits([null, null, null]);
@@ -769,6 +774,19 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
 
     setPlayerScores(newPlayerScores);
 
+    // Check if board is complete and PIN is disabled - auto-win
+    if (!enablePIN) {
+      const boardComplete = CRICKET_TARGETS.every(target => playerScore.marks[target] >= 3);
+      if (boardComplete && !gameWinner) {
+        // Determine winner based on variant
+        if (variant === 'tag-team') {
+          setGameWinner(playerScore.playerId); // team-0 or team-1
+        } else {
+          setGameWinner(currentPlayer.id);
+        }
+      }
+    }
+
     // Add to history
     const historyEntry: HistoryEntry = {
       playerIndex: currentPlayerIndex,
@@ -923,6 +941,9 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
   };
 
   const handleSkipPlayer = (playerId: string) => {
+    // Skip functionality disabled if enableKO is false
+    if (!enableKO) return;
+
     // Can't skip yourself
     if (playerId === players[currentPlayerIndex].id) return;
 
@@ -1562,8 +1583,8 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
                 const isCurrent = playerIndex === currentPlayerIndex && !willBeSkipped && !isEliminated;
                 const koPoints = playerScores[playerIndex]?.koPoints || 0;
                 const isGreyedOut = willBeSkipped || wasSkipped || isEliminated;
-                // Can't skip if: currently playing, was last skipped, eliminated, or already in skip state
-                const canSkip = !isCurrent && lastSkippedPlayer !== player.id && !isEliminated && !willBeSkipped && !wasSkipped;
+                // Can't skip if: currently playing, was last skipped, eliminated, already in skip state, or KO disabled
+                const canSkip = enableKO && !isCurrent && lastSkippedPlayer !== player.id && !isEliminated && !willBeSkipped && !wasSkipped;
                 const teamColor = playerScores[playerIndex]?.color || 'blue';
 
                 return (
@@ -1577,9 +1598,11 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
                       filter: isCurrent ? 'none' : (isGreyedOut ? 'brightness(0.4)' : 'brightness(0.6)')
                     }}
                   >
-                    <div className="text-white text-4xl xl:text-7xl font-bold mb-1 xl:mb-2 leading-none">
-                      {koNumber || '00'}
-                    </div>
+                    {enableKO && (
+                      <div className="text-white text-4xl xl:text-7xl font-bold mb-1 xl:mb-2 leading-none">
+                        {koNumber || '00'}
+                      </div>
+                    )}
                     <div className="text-white text-2xl xl:text-6xl font-bold text-center flex flex-col items-center gap-1">
                       <div className="flex items-center gap-2">
                         {isCurrent && <span className="text-white text-xl xl:text-2xl hidden xl:inline">▶</span>}
@@ -1661,10 +1684,10 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
               const teamIndex = getTeamIndex(playerIndex);
               const teamColor = playerScores[teamIndex]?.color || 'blue';
 
-              // For tag-team: can't skip current player, last skipped player, teammate, or players in skip state
-              const canSkip = variant === 'tag-team'
+              // For tag-team: can't skip current player, last skipped player, teammate, players in skip state, or if KO disabled
+              const canSkip = enableKO && (variant === 'tag-team'
                 ? !isCurrent && lastSkippedPlayer !== player.id && getTeamIndex(currentPlayerIndex) !== teamIndex && !willBeSkipped && !wasSkipped
-                : !isCurrent && lastSkippedPlayer !== player.id && !willBeSkipped && !wasSkipped;
+                : !isCurrent && lastSkippedPlayer !== player.id && !willBeSkipped && !wasSkipped);
 
               return (
                 <button
@@ -1677,9 +1700,11 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
                     filter: isCurrent ? 'none' : (isGreyedOut ? 'brightness(0.4)' : 'brightness(0.6)')
                   }}
                 >
-                  <div className="text-white text-4xl xl:text-7xl font-bold mb-1 xl:mb-2 leading-none">
-                    {koNumber || '00'}
-                  </div>
+                  {enableKO && (
+                    <div className="text-white text-4xl xl:text-7xl font-bold mb-1 xl:mb-2 leading-none">
+                      {koNumber || '00'}
+                    </div>
+                  )}
                   <div className="text-white text-2xl xl:text-6xl font-bold text-center flex flex-col items-center gap-1">
                     <div className="flex items-center gap-2">
                       {isCurrent && <span className="text-white text-xl xl:text-2xl hidden xl:inline">▶</span>}
@@ -1719,10 +1744,10 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
               const teamIndex = getTeamIndex(playerIndex);
               const teamColor = playerScores[teamIndex]?.color || 'blue';
 
-              // For tag-team: can't skip current player, last skipped player, teammate, or players in skip state
-              const canSkip = variant === 'tag-team'
+              // For tag-team: can't skip current player, last skipped player, teammate, players in skip state, or if KO disabled
+              const canSkip = enableKO && (variant === 'tag-team'
                 ? !isCurrent && lastSkippedPlayer !== player.id && getTeamIndex(currentPlayerIndex) !== teamIndex && !willBeSkipped && !wasSkipped
-                : !isCurrent && lastSkippedPlayer !== player.id && !willBeSkipped && !wasSkipped;
+                : !isCurrent && lastSkippedPlayer !== player.id && !willBeSkipped && !wasSkipped);
 
               return (
                 <button
@@ -1735,9 +1760,11 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
                     filter: isCurrent ? 'none' : (isGreyedOut ? 'brightness(0.4)' : 'brightness(0.6)')
                   }}
                 >
-                  <div className="text-white text-4xl xl:text-7xl font-bold mb-1 xl:mb-2 leading-none">
-                    {koNumber || '00'}
-                  </div>
+                  {enableKO && (
+                    <div className="text-white text-4xl xl:text-7xl font-bold mb-1 xl:mb-2 leading-none">
+                      {koNumber || '00'}
+                    </div>
+                  )}
                   <div className="text-white text-2xl xl:text-6xl font-bold text-center flex flex-col items-center gap-1">
                     <div className="flex items-center gap-2">
                       {isCurrent && <span className="text-white text-xl xl:text-2xl hidden xl:inline">▶</span>}
@@ -1899,7 +1926,9 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
       {gameWinner && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
           <div className="bg-[#1a1a1a] p-12 rounded-lg border-4 border-white text-center">
-            <h2 className="text-white text-8xl font-bold mb-8">PINNED!</h2>
+            <h2 className="text-white text-8xl font-bold mb-8">
+              {enablePIN ? 'PINNED!' : 'WINNER!'}
+            </h2>
             <p className="text-white text-6xl mb-8">
               {variant === 'tag-team' && gameWinner.startsWith('team-')
                 ? playerScores.find(s => s.playerId === gameWinner)?.playerName

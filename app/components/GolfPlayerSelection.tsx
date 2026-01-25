@@ -285,7 +285,7 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
                 {player.photoUrl ? (
                   <button
                     onClick={() => handlePlayerClick(playerId)}
-                    className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 lg:w-36 lg:h-36 rounded-full border-4 sm:border-6 flex items-center justify-center overflow-hidden cursor-move hover:opacity-80 transition-opacity"
+                    className="w-12 h-12 sm:w-28 sm:h-28 md:w-32 md:h-32 lg:w-36 lg:h-36 rounded-full border-4 sm:border-6 flex items-center justify-center overflow-hidden cursor-move hover:opacity-80 transition-opacity"
                     style={{ borderColor }}
                   >
                     <img
@@ -297,7 +297,7 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
                 ) : (
                   <button
                     onClick={() => handlePlayerClick(playerId)}
-                    className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 lg:w-36 lg:h-36 rounded-full border-4 sm:border-6 flex items-center justify-center text-3xl sm:text-4xl md:text-5xl cursor-move hover:opacity-80 transition-opacity"
+                    className="w-12 h-12 sm:w-28 sm:h-28 md:w-32 md:h-32 lg:w-36 lg:h-36 rounded-full border-4 sm:border-6 flex items-center justify-center text-3xl sm:text-4xl md:text-5xl cursor-move hover:opacity-80 transition-opacity"
                     style={{ backgroundColor: avatar.color, borderColor }}
                   >
                     {avatar.emoji}
@@ -438,7 +438,7 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
           <div className="flex flex-col items-center gap-2 flex-shrink-0">
             <button
               onClick={() => setIsAddPlayerModalOpen(true)}
-              className="w-24 h-24 rounded-full bg-[#666666] border-4 border-transparent flex items-center justify-center hover:bg-[#777777] transition-colors"
+              className="w-12 h-12 sm:w-24 sm:h-24 rounded-full bg-[#666666] border-4 border-transparent flex items-center justify-center hover:bg-[#777777] transition-colors"
             >
               <span className="text-white text-4xl">+</span>
             </button>

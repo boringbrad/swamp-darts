@@ -91,7 +91,7 @@ export default function ManageLeaguePage() {
             </p>
 
             {/* League Players Grid */}
-            <div className="grid grid-cols-6 gap-6 mb-8">
+            <div className="grid grid-cols-4 sm:grid-cols-6 gap-4 sm:gap-6 mb-8">
               {leaguePlayers.map((player) => {
                 const avatar = STOCK_AVATARS.find(a => a.id === player.avatar) || STOCK_AVATARS[0];
                 const hasPhoto = !!player.photoUrl;
@@ -100,7 +100,7 @@ export default function ManageLeaguePage() {
                   <div key={player.id} className="flex flex-col items-center gap-2 relative">
                     {/* Avatar or Photo */}
                     {hasPhoto ? (
-                      <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-white/20">
+                      <div className="w-12 h-12 sm:w-24 sm:h-24 rounded-full overflow-hidden border-4 border-white/20">
                         <img
                           src={player.photoUrl}
                           alt={player.name}
@@ -109,7 +109,7 @@ export default function ManageLeaguePage() {
                       </div>
                     ) : (
                       <div
-                        className="w-24 h-24 rounded-full flex items-center justify-center text-4xl"
+                        className="w-12 h-12 sm:w-24 sm:h-24 rounded-full flex items-center justify-center text-2xl sm:text-4xl"
                         style={{ backgroundColor: avatar.color }}
                       >
                         {avatar.emoji}
@@ -117,23 +117,23 @@ export default function ManageLeaguePage() {
                     )}
 
                     {/* Name */}
-                    <span className="text-white text-sm font-bold text-center max-w-24 truncate">
+                    <span className="text-white text-xs sm:text-sm font-bold text-center max-w-full truncate px-1">
                       {player.name}
                     </span>
 
                     {/* Edit/Delete Buttons */}
-                    <div className="flex gap-2">
+                    <div className="flex flex-col sm:flex-row gap-1 sm:gap-2 w-full px-1">
                       <button
                         onClick={() => handleEditPlayer(player.id)}
-                        className="px-3 py-1 bg-[#6b1a8b] text-white text-xs font-bold rounded hover:opacity-90 transition-opacity"
+                        className="px-2 py-1 bg-[#6b1a8b] text-white text-xs font-bold rounded hover:opacity-90 transition-opacity"
                       >
                         EDIT
                       </button>
                       <button
                         onClick={() => handleDeletePlayer(player.id)}
-                        className="px-3 py-1 bg-[#9d1a1a] text-white text-xs font-bold rounded hover:opacity-90 transition-opacity"
+                        className="px-2 py-1 bg-[#9d1a1a] text-white text-xs font-bold rounded hover:opacity-90 transition-opacity"
                       >
-                        DELETE
+                        DEL
                       </button>
                     </div>
                   </div>
@@ -147,7 +147,7 @@ export default function ManageLeaguePage() {
                 onClick={() => setIsAddPlayerModalOpen(true)}
                 className="flex flex-col items-center gap-2 hover:opacity-80 transition-opacity"
               >
-                <div className="w-16 h-16 rounded-full bg-[#666666] flex items-center justify-center">
+                <div className="w-8 h-8 sm:w-16 sm:h-16 rounded-full bg-[#666666] flex items-center justify-center">
                   <span className="text-white text-4xl font-bold">+</span>
                 </div>
                 <span className="text-white text-lg font-bold">ADD PLAYER</span>
@@ -167,7 +167,7 @@ export default function ManageLeaguePage() {
             </p>
 
             {guestPlayers.length > 0 ? (
-              <div className="grid grid-cols-6 gap-6 mb-8">
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-4 sm:gap-6 mb-8">
                 {guestPlayers.map((player) => {
                   const avatar = STOCK_AVATARS.find(a => a.id === player.avatar) || STOCK_AVATARS[0];
                   const hasPhoto = !!player.photoUrl;
@@ -176,7 +176,7 @@ export default function ManageLeaguePage() {
                     <div key={player.id} className="flex flex-col items-center gap-2 relative">
                       {/* Avatar or Photo */}
                       {hasPhoto ? (
-                        <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-white/20">
+                        <div className="w-12 h-12 sm:w-24 sm:h-24 rounded-full overflow-hidden border-4 border-white/20">
                           <img
                             src={player.photoUrl}
                             alt={player.name}
@@ -185,7 +185,7 @@ export default function ManageLeaguePage() {
                         </div>
                       ) : (
                         <div
-                          className="w-24 h-24 rounded-full flex items-center justify-center text-4xl"
+                          className="w-12 h-12 sm:w-24 sm:h-24 rounded-full flex items-center justify-center text-2xl sm:text-4xl"
                           style={{ backgroundColor: avatar.color }}
                         >
                           {avatar.emoji}
@@ -193,23 +193,23 @@ export default function ManageLeaguePage() {
                       )}
 
                       {/* Name */}
-                      <span className="text-white text-sm font-bold text-center max-w-24 truncate">
+                      <span className="text-white text-xs sm:text-sm font-bold text-center max-w-full truncate px-1">
                         {player.name}
                       </span>
 
                       {/* Edit/Delete Buttons */}
-                      <div className="flex gap-2">
+                      <div className="flex flex-col sm:flex-row gap-1 sm:gap-2 w-full px-1">
                         <button
                           onClick={() => handleEditGuest(player.id)}
-                          className="px-3 py-1 bg-[#6b1a8b] text-white text-xs font-bold rounded hover:opacity-90 transition-opacity"
+                          className="px-2 py-1 bg-[#6b1a8b] text-white text-xs font-bold rounded hover:opacity-90 transition-opacity"
                         >
                           EDIT
                         </button>
                         <button
                           onClick={() => handleDeleteGuest(player.id)}
-                          className="px-3 py-1 bg-[#9d1a1a] text-white text-xs font-bold rounded hover:opacity-90 transition-opacity"
+                          className="px-2 py-1 bg-[#9d1a1a] text-white text-xs font-bold rounded hover:opacity-90 transition-opacity"
                         >
-                          DELETE
+                          DEL
                         </button>
                       </div>
                     </div>
@@ -228,7 +228,7 @@ export default function ManageLeaguePage() {
                 onClick={() => setIsAddGuestModalOpen(true)}
                 className="flex flex-col items-center gap-2 hover:opacity-80 transition-opacity"
               >
-                <div className="w-16 h-16 rounded-full bg-[#666666] flex items-center justify-center">
+                <div className="w-8 h-8 sm:w-16 sm:h-16 rounded-full bg-[#666666] flex items-center justify-center">
                   <span className="text-white text-4xl font-bold">+</span>
                 </div>
                 <span className="text-white text-lg font-bold">ADD GUEST</span>

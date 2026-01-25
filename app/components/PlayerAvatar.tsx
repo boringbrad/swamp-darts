@@ -34,7 +34,7 @@ export default function PlayerAvatar({ name, selected = false, onClick, teamColo
       <div className="relative">
         {photoUrl ? (
           <div
-            className="w-24 h-24 rounded-full border-4 overflow-hidden"
+            className="w-12 h-12 sm:w-24 sm:h-24 rounded-full border-4 overflow-hidden"
             style={borderStyle}
           >
             <img
@@ -45,7 +45,7 @@ export default function PlayerAvatar({ name, selected = false, onClick, teamColo
           </div>
         ) : (
           <div
-            className="w-24 h-24 rounded-full border-4 flex items-center justify-center text-4xl"
+            className="w-12 h-12 sm:w-24 sm:h-24 rounded-full border-4 flex items-center justify-center text-2xl sm:text-4xl"
             style={{ backgroundColor: avatarData.color, ...borderStyle }}
           >
             {avatarData.emoji}
@@ -57,7 +57,7 @@ export default function PlayerAvatar({ name, selected = false, onClick, teamColo
           </div>
         )}
       </div>
-      <span className="text-white text-sm font-bold max-w-24 truncate">{name}</span>
+      <span className="text-white text-sm font-bold max-w-12 sm:max-w-24 truncate">{name}</span>
     </button>
   );
 }
