@@ -1380,13 +1380,13 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
         )}
 
         {/* Middle Section - Turn Order and Dart Scores */}
-        <div className={`${cameraEnabled ? 'w-1/6' : 'w-1/4'} bg-[#1a1a1a] flex flex-col items-center justify-start px-6 border-l-2 border-r-2 border-white`}>
+        <div className={`${cameraEnabled ? 'w-1/6' : 'w-[30%] xl:w-1/4'} bg-[#1a1a1a] flex flex-col items-center justify-start px-2 xl:px-6 border-l-2 border-r-2 border-white`}>
           {/* Empty container above Turn Order */}
-          <div className="w-full h-16"></div>
+          <div className="w-full h-8 xl:h-16"></div>
 
           {/* Turn Order */}
-          <div className="w-full mb-6">
-            <div className="text-white text-4xl font-bold mb-6 text-center">TURN ORDER</div>
+          <div className="w-full mb-3 xl:mb-6">
+            <div className="text-white text-2xl xl:text-4xl font-bold mb-3 xl:mb-6 text-center">TURN ORDER</div>
             <div className="space-y-3">
               {players.map((player, index) => {
                 const willBeSkipped = skippedPlayers.has(player.id);
@@ -1405,12 +1405,12 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
                 return (
                   <div
                     key={player.id}
-                    className={`flex items-center justify-center gap-3 px-4 py-3 rounded ${
+                    className={`flex items-center justify-center gap-2 px-2 py-2 rounded ${
                       isCurrent ? 'bg-yellow-500/25' : ''
                     }`}
                   >
-                    {isCurrent && <span className="text-white text-4xl flex-shrink-0">▶</span>}
-                    <div className={`flex-shrink-0 ${willBeSkipped ? 'opacity-25' : ''}`}>
+                    {isCurrent && <span className="text-white text-4xl flex-shrink-0 hidden xl:block">▶</span>}
+                    <div className={`flex-shrink-0 hidden md:block ${willBeSkipped ? 'opacity-25' : ''}`}>
                       {player.photoUrl ? (
                         <div
                           className="w-12 h-12 rounded-full border-2 border-white overflow-hidden"
@@ -1430,7 +1430,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
                         </div>
                       )}
                     </div>
-                    <span className={`text-white font-bold whitespace-nowrap overflow-hidden text-ellipsis ${willBeSkipped ? 'line-through' : ''} ${isGreyedOut ? 'opacity-25' : ''}`} style={{ fontSize: 'clamp(0.875rem, 2vw, 2.5rem)' }}>
+                    <span className={`text-white font-bold whitespace-nowrap overflow-hidden text-ellipsis ${willBeSkipped ? 'line-through' : ''} ${isGreyedOut ? 'opacity-25' : ''}`} style={{ fontSize: 'clamp(0.75rem, 2vw, 2.5rem)' }}>
                       {player.name}
                     </span>
                   </div>
@@ -1440,12 +1440,12 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
           </div>
 
           {/* Separator */}
-          <div className="w-full h-16"></div>
+          <div className="w-full h-8 xl:h-16"></div>
 
           {/* Dart Scores */}
-          <div className="w-full mb-6">
-            <div className="text-white text-4xl font-bold mb-6 text-center">DARTS THIS TURN</div>
-            <div className="space-y-3">
+          <div className="w-full mb-3 xl:mb-6">
+            <div className="text-white text-2xl xl:text-4xl font-bold mb-3 xl:mb-6 text-center">DARTS THIS TURN</div>
+            <div className="space-y-2 xl:space-y-3">
               {dartScores.map((score, index) => {
                 const mult = dartMultipliers[index];
                 const pinHit = dartPinHits[index];
@@ -1476,11 +1476,11 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
                 return (
                   <div
                     key={index}
-                    className={`h-40 bg-[#333333] rounded flex items-center justify-center ${
+                    className={`h-24 xl:h-40 bg-[#333333] rounded flex items-center justify-center ${
                       index === currentDartIndex ? 'ring-2 ring-white' : ''
                     }`}
                   >
-                    <span className="text-white text-6xl font-bold">
+                    <span className="text-white text-3xl xl:text-6xl font-bold">
                       {displayText}
                     </span>
                   </div>
@@ -1490,8 +1490,8 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
 
             {/* PIN Counter Display */}
             {isPinEnabled && pinCount !== 0 && (
-              <div className="mt-6 bg-[#1a1a1a] rounded-lg p-6 flex flex-col items-center justify-center">
-                <div className="text-white text-3xl font-bold mb-3">PIN</div>
+              <div className="mt-3 xl:mt-6 bg-[#1a1a1a] rounded-lg p-3 xl:p-6 flex flex-col items-center justify-center">
+                <div className="text-white text-xl xl:text-3xl font-bold mb-2 xl:mb-3">PIN</div>
                 {(() => {
                   // Find the remaining non-eliminated players for color
                   const remainingPlayers = playerScores
@@ -1504,7 +1504,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
 
                   return (
                     <span
-                      className="text-9xl font-bold"
+                      className="text-6xl xl:text-9xl font-bold"
                       style={{ color: getPlayerColor(favoredColor) }}
                     >
                       {Math.abs(pinCount)}
@@ -1517,7 +1517,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
         </div>
 
         {/* Right Side - Scoreboard */}
-        <div className={`${cameraEnabled ? 'flex-1' : 'flex-1'} bg-[#333333] p-6 flex flex-col`}>
+        <div className={`${cameraEnabled ? 'flex-1' : 'flex-1'} bg-[#333333] p-2 xl:p-6 flex flex-col`}>
           {/* Player/Team Headers */}
           {(variant === 'triple-threat' || variant === 'fatal-4-way') ? (
             <>
@@ -1571,24 +1571,24 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
                     key={player.id}
                     onClick={() => handleSkipPlayer(player.id)}
                     disabled={!canSkip}
-                    className="p-6 rounded flex flex-col items-center justify-center min-h-[140px] transition-all hover:brightness-110 disabled:cursor-not-allowed"
+                    className="p-2 xl:p-6 rounded flex flex-col items-center justify-center min-h-[80px] xl:min-h-[140px] transition-all hover:brightness-110 disabled:cursor-not-allowed"
                     style={{
                       backgroundColor: getPlayerColor(teamColor),
                       filter: isCurrent ? 'none' : (isGreyedOut ? 'brightness(0.4)' : 'brightness(0.6)')
                     }}
                   >
-                    <div className="text-white text-7xl font-bold mb-2 leading-none">
+                    <div className="text-white text-4xl xl:text-7xl font-bold mb-1 xl:mb-2 leading-none">
                       {koNumber || '00'}
                     </div>
-                    <div className="text-white text-6xl font-bold text-center flex flex-col items-center gap-1">
+                    <div className="text-white text-2xl xl:text-6xl font-bold text-center flex flex-col items-center gap-1">
                       <div className="flex items-center gap-2">
-                        {isCurrent && <span className="text-white text-2xl">▶</span>}
+                        {isCurrent && <span className="text-white text-xl xl:text-2xl hidden xl:inline">▶</span>}
                         <span className={isEliminated || willBeSkipped ? 'line-through' : ''}>{player.name}</span>
-                        {isCurrent && <span className="text-white text-2xl">◀</span>}
+                        {isCurrent && <span className="text-white text-xl xl:text-2xl hidden xl:inline">◀</span>}
                       </div>
                       {/* Status text */}
-                      {isEliminated && <span className="text-white text-2xl">ELIMINATED</span>}
-                      {!isEliminated && isGreyedOut && <span className="text-white text-2xl">{wasSkipped ? 'Skip Served' : 'Skipped'}</span>}
+                      {isEliminated && <span className="text-white text-sm xl:text-2xl">ELIMINATED</span>}
+                      {!isEliminated && isGreyedOut && <span className="text-white text-sm xl:text-2xl">{wasSkipped ? 'Skip Served' : 'Skipped'}</span>}
                     </div>
                   </button>
                 );
@@ -1622,20 +1622,20 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
                       key={`ko-${player.id}`}
                       onClick={() => handleKOClick(playerIndex)}
                       disabled={!canClick}
-                      className="p-3 rounded flex items-center justify-center transition-all hover:brightness-110 disabled:cursor-not-allowed bg-red-900"
+                      className="p-2 xl:p-3 rounded flex items-center justify-center transition-all hover:brightness-110 disabled:cursor-not-allowed bg-red-900"
                       style={{
                         filter: canClick ? 'none' : 'brightness(0.3)',
-                        minHeight: '60px'
+                        minHeight: '40px'
                       }}
                     >
                       {koPoints > 0 ? (
-                        <div className="flex gap-1 text-3xl">
+                        <div className="flex gap-1 text-xl xl:text-3xl">
                           {Array.from({ length: koPoints }).map((_, i) => (
                             <span key={i}>💀</span>
                           ))}
                         </div>
                       ) : (
-                        <span className="text-white text-2xl font-bold">KO</span>
+                        <span className="text-white text-lg xl:text-2xl font-bold">KO</span>
                       )}
                     </button>
                   );
@@ -1671,22 +1671,22 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
                   key={player.id}
                   onClick={() => handleSkipPlayer(player.id)}
                   disabled={!canSkip}
-                  className="p-6 rounded flex flex-col items-center justify-center min-h-[140px] transition-all hover:brightness-110 disabled:cursor-not-allowed"
+                  className="p-2 xl:p-6 rounded flex flex-col items-center justify-center min-h-[80px] xl:min-h-[140px] transition-all hover:brightness-110 disabled:cursor-not-allowed"
                   style={{
                     backgroundColor: getPlayerColor(teamColor),
                     filter: isCurrent ? 'none' : (isGreyedOut ? 'brightness(0.4)' : 'brightness(0.6)')
                   }}
                 >
-                  <div className="text-white text-7xl font-bold mb-2 leading-none">
+                  <div className="text-white text-4xl xl:text-7xl font-bold mb-1 xl:mb-2 leading-none">
                     {koNumber || '00'}
                   </div>
-                  <div className="text-white text-6xl font-bold text-center flex flex-col items-center gap-1">
+                  <div className="text-white text-2xl xl:text-6xl font-bold text-center flex flex-col items-center gap-1">
                     <div className="flex items-center gap-2">
-                      {isCurrent && <span className="text-white text-2xl">▶</span>}
+                      {isCurrent && <span className="text-white text-xl xl:text-2xl hidden xl:inline">▶</span>}
                       <span className={willBeSkipped ? 'line-through' : ''}>{player.name}</span>
-                      {isCurrent && <span className="text-white text-2xl">◀</span>}
+                      {isCurrent && <span className="text-white text-xl xl:text-2xl hidden xl:inline">◀</span>}
                     </div>
-                    {isGreyedOut && <span className="text-white text-2xl">{wasSkipped ? 'Skip Served' : 'Skipped'}</span>}
+                    {isGreyedOut && <span className="text-white text-sm xl:text-2xl">{wasSkipped ? 'Skip Served' : 'Skipped'}</span>}
                   </div>
                 </button>
               );
@@ -1696,7 +1696,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
             <div className="flex items-center justify-center">
               {isPinEnabled && pinCount !== 0 && (
                 <span
-                  className="text-8xl font-bold"
+                  className="text-4xl xl:text-8xl font-bold"
                   style={{ color: pinCount > 0 ? getPlayerColor(playerScores[0].color) : getPlayerColor(playerScores[1].color) }}
                 >
                   {Math.abs(pinCount)}
@@ -1729,22 +1729,22 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
                   key={player.id}
                   onClick={() => handleSkipPlayer(player.id)}
                   disabled={!canSkip}
-                  className="p-6 rounded flex flex-col items-center justify-center min-h-[140px] transition-all hover:brightness-110 disabled:cursor-not-allowed"
+                  className="p-2 xl:p-6 rounded flex flex-col items-center justify-center min-h-[80px] xl:min-h-[140px] transition-all hover:brightness-110 disabled:cursor-not-allowed"
                   style={{
                     backgroundColor: getPlayerColor(teamColor),
                     filter: isCurrent ? 'none' : (isGreyedOut ? 'brightness(0.4)' : 'brightness(0.6)')
                   }}
                 >
-                  <div className="text-white text-7xl font-bold mb-2 leading-none">
+                  <div className="text-white text-4xl xl:text-7xl font-bold mb-1 xl:mb-2 leading-none">
                     {koNumber || '00'}
                   </div>
-                  <div className="text-white text-6xl font-bold text-center flex flex-col items-center gap-1">
+                  <div className="text-white text-2xl xl:text-6xl font-bold text-center flex flex-col items-center gap-1">
                     <div className="flex items-center gap-2">
-                      {isCurrent && <span className="text-white text-2xl">▶</span>}
+                      {isCurrent && <span className="text-white text-xl xl:text-2xl hidden xl:inline">▶</span>}
                       <span className={willBeSkipped ? 'line-through' : ''}>{player.name}</span>
-                      {isCurrent && <span className="text-white text-2xl">◀</span>}
+                      {isCurrent && <span className="text-white text-xl xl:text-2xl hidden xl:inline">◀</span>}
                     </div>
-                    {isGreyedOut && <span className="text-white text-2xl">{wasSkipped ? 'Skip Served' : 'Skipped'}</span>}
+                    {isGreyedOut && <span className="text-white text-sm xl:text-2xl">{wasSkipped ? 'Skip Served' : 'Skipped'}</span>}
                   </div>
                 </button>
               );
@@ -1770,7 +1770,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
                     className="flex items-center justify-center hover:opacity-80 transition-opacity disabled:cursor-not-allowed"
                     style={{ backgroundColor: rowIndex % 2 === 0 ? '#333333' : '#555555' }}
                   >
-                    <span className="text-white text-7xl font-bold">{target}</span>
+                    <span className="text-white text-4xl xl:text-7xl font-bold">{target}</span>
                   </button>
                 )}
 
@@ -1820,7 +1820,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
                     className="flex items-center justify-center hover:opacity-80 transition-opacity disabled:cursor-not-allowed"
                     style={{ backgroundColor: rowIndex % 2 === 0 ? '#333333' : '#555555' }}
                   >
-                    <span className="text-white text-7xl font-bold">{target}</span>
+                    <span className="text-white text-4xl xl:text-7xl font-bold">{target}</span>
                   </button>
                 )}
 
@@ -1851,12 +1851,12 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
           </div>
 
           {/* Action Buttons */}
-          <div className="grid grid-cols-5 gap-3 h-24">
+          <div className="grid grid-cols-5 gap-3 h-16 xl:h-24">
             <button
               onClick={() => setMultiplier(2)}
               className={`${
                 multiplier === 2 ? 'bg-[#9d8b1a]' : 'bg-[#666666]'
-              } text-white rounded font-bold text-5xl hover:bg-[#777777] transition-colors`}
+              } text-white rounded font-bold text-lg xl:text-5xl hover:bg-[#777777] transition-colors`}
             >
               2x
             </button>
@@ -1864,21 +1864,21 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
               onClick={() => setMultiplier(3)}
               className={`${
                 multiplier === 3 ? 'bg-[#9d8b1a]' : 'bg-[#666666]'
-              } text-white rounded font-bold text-5xl hover:bg-[#777777] transition-colors`}
+              } text-white rounded font-bold text-lg xl:text-5xl hover:bg-[#777777] transition-colors`}
             >
               3x
             </button>
             <button
               onClick={handleMiss}
               disabled={currentDartIndex >= 3}
-              className="bg-[#666666] text-white rounded font-bold text-5xl hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-[#666666] text-white rounded font-bold text-lg xl:text-5xl hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               MISS
             </button>
             <button
               onClick={handlePin}
               disabled={!isPinEnabled || gameWinner !== null}
-              className={`bg-[#666666] text-white rounded font-bold text-5xl hover:bg-[#777777] transition-colors ${
+              className={`bg-[#666666] text-white rounded font-bold text-lg xl:text-5xl hover:bg-[#777777] transition-colors ${
                 !isPinEnabled || gameWinner ? 'opacity-50 cursor-not-allowed' : ''
               }`}
             >
@@ -1887,7 +1887,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
             <button
               onClick={handleUndo}
               disabled={history.length === 0}
-              className="bg-[#666666] text-white rounded font-bold text-5xl hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-[#666666] text-white rounded font-bold text-lg xl:text-5xl hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               UNDO
             </button>
