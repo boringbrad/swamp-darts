@@ -4,6 +4,7 @@
  */
 
 import { GolfMatch, GolfPlayerStats } from '../types/stats';
+import { playerStorage } from './playerStorage';
 
 /**
  * Load all golf matches from localStorage
@@ -69,12 +70,18 @@ export function calculateGolfStats(
     });
   });
 
-  // Calculate stats for each player
+  // Get list of valid player IDs (players that still exist in the system)
+  const validPlayerIds = new Set(playerStorage.getAllPlayers().map(p => p.id));
+
+  // Calculate stats for each player, but only if they still exist
   const playerStats: GolfPlayerStats[] = [];
 
   playerMatchMap.forEach((data, playerId) => {
-    const stats = calculatePlayerStats(playerId, data.name, data.matches);
-    playerStats.push(stats);
+    // Only include stats for players that still exist in the player list
+    if (validPlayerIds.has(playerId)) {
+      const stats = calculatePlayerStats(playerId, data.name, data.matches);
+      playerStats.push(stats);
+    }
   });
 
   return playerStats.sort((a, b) => b.gamesPlayed - a.gamesPlayed);
@@ -282,4 +289,58 @@ export function getCourseRecord(courseName: string): string {
   });
 
   return `${bestPlayerName} (${bestScore})`;
+}
+
+/**
+ * Remove all golf match data for a deleted player
+ * Removes matches where the player was the only participant
+ * Removes player data from matches with multiple players
+ */
+export function cleanupPlayerGolfMatches(playerId: string): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const matches = loadGolfMatches();
+
+    // Filter out matches where player participated and remove player data from multi-player matches
+    const cleanedMatches = matches
+      .map(match => {
+        // If this player is in the match, remove their data
+        const updatedPlayers = match.players.filter(p => p.playerId !== playerId);
+
+        // If no players remain after filtering, this match will be removed
+        if (updatedPlayers.length === 0) {
+          return null;
+        }
+
+        // If players remain, update the match
+        // Also check if the deleted player was the winner - if so, recalculate winner
+        let updatedWinnerId = match.winnerId;
+        let updatedWonByTieBreaker = match.wonByTieBreaker;
+
+        if (match.winnerId === playerId && updatedPlayers.length > 0) {
+          // Find new winner (lowest score)
+          const newWinner = updatedPlayers.reduce((best, player) =>
+            player.totalScore < best.totalScore ? player : best
+          );
+          updatedWinnerId = newWinner.playerId;
+          updatedWonByTieBreaker = false; // Reset tie breaker flag since winner changed
+        }
+
+        return {
+          ...match,
+          players: updatedPlayers,
+          winnerId: updatedWinnerId,
+          wonByTieBreaker: updatedWonByTieBreaker,
+        };
+      })
+      .filter((match): match is GolfMatch => match !== null); // Remove null matches
+
+    // Save cleaned matches back to localStorage
+    localStorage.setItem('golfMatches', JSON.stringify(cleanedMatches));
+
+    console.log(`Cleaned up golf matches for player ${playerId}. Removed ${matches.length - cleanedMatches.length} matches.`);
+  } catch (error) {
+    console.error('Error cleaning up golf matches:', error);
+  }
 }

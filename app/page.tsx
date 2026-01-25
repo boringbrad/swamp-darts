@@ -13,21 +13,31 @@ export default function Home() {
       <Header showBackButton={false} />
 
       <PageWrapper>
-        {/* Main content */}
-        <main className="px-4 sm:px-6 pb-24 sm:pb-28 flex flex-col lg:flex-row gap-3 sm:gap-4 lg:gap-6">
-          {/* Left side - Game modes in grid */}
-          <div className="w-full lg:flex-1 grid grid-cols-2 gap-3 sm:gap-4">
+        {/* Header spacer for mobile */}
+        <div className="h-20 lg:hidden"></div>
+
+        {/* Main content - Always fits viewport */}
+        <main className="px-4 sm:px-6 flex flex-col landscape:flex-row lg:flex-row gap-2 landscape:gap-2 sm:gap-4 h-[calc(100vh-240px)] landscape:h-[calc(100vh-144px)] sm:h-[calc(100vh-256px)]">
+          {/* Left side - Game modes in grid - Takes 2/3 of width */}
+          {/* Portrait: 1 column (7 rows), Landscape/Desktop: 2x2 grid */}
+          <div className="w-full landscape:w-2/3 lg:w-2/3 grid grid-cols-1 landscape:grid-cols-2 lg:grid-cols-2 auto-rows-fr gap-2 landscape:gap-3 sm:gap-4 h-full">
             <GameModeCard title="CRICKET" href="/cricket" color="cricket" />
             <GameModeCard title="GOLF" href="/golf" color="golf" />
             <GameModeCard title="ROYAL RUMBLE" href="/extra/royal-rumble/setup" color="extra" />
-            <GameModeCard title="PLAY ONLINE" href="/tbd" color="tbd" disabled={true} subtitle="Coming Soon" />
+            <GameModeCard title="PLAY ONLINE" href="/tbd" color="tbd" disabled={true} />
+            {/* Portrait only - show stats buttons here */}
+            <div className="landscape:hidden lg:hidden contents">
+              <GameModeCard title="STATS" href="/stats" color="gray" />
+              <GameModeCard title="MANAGE LEAGUE" href="/league/manage" color="gray" />
+              <GameModeCard title="FRIENDS" href="/friends" color="gray" disabled={true} />
+            </div>
           </div>
 
-          {/* Right side - Stats and options */}
-          <div className="w-full lg:w-[500px] flex flex-col gap-3 sm:gap-4">
-            <GameModeCard title="STATS" href="/stats" color="gray" size="large" />
-            <GameModeCard title="MANAGE LEAGUE" href="/league/manage" color="gray" size="large" />
-            <GameModeCard title="FRIENDS" href="/friends" color="gray" size="large" disabled={true} subtitle="Coming Soon" />
+          {/* Right side - Stats and options (landscape/desktop only) - Takes 1/3 of width */}
+          <div className="hidden landscape:flex landscape:w-1/3 lg:flex lg:w-1/3 flex-col gap-2 landscape:gap-3 sm:gap-4 h-full">
+            <GameModeCard title="STATS" href="/stats" color="gray" />
+            <GameModeCard title="MANAGE LEAGUE" href="/league/manage" color="gray" />
+            <GameModeCard title="FRIENDS" href="/friends" color="gray" disabled={true} />
           </div>
         </main>
 

@@ -6,6 +6,8 @@ import { Player } from '../types/game';
 import { StoredPlayer, LocalPlayersStorage } from '../types/storage';
 import { storage } from './storage';
 import { generateUUID } from './utils';
+import { cleanupPlayerGolfMatches } from './golfStats';
+import { cleanupPlayerCricketMatches } from './cricketStats';
 
 /**
  * Default/mock players to initialize storage
@@ -78,12 +80,23 @@ export const playerStorage = {
 
   /**
    * Delete a player
+   * Also removes their golf and cricket match data from stats
    */
   deletePlayer(id: string): void {
+    // Clean up match data for this player
+    cleanupPlayerGolfMatches(id);
+    cleanupPlayerCricketMatches(id);
+
+    // Remove player from player list
     const data = storage.getLocalPlayers() as LocalPlayersStorage;
     data.players = data.players.filter(p => p.id !== id);
     data.updatedAt = new Date();
     storage.setLocalPlayers(data);
+
+    // Dispatch custom event to refresh stats (for same-tab updates)
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('statsRefresh'));
+    }
   },
 
   /**

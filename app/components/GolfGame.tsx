@@ -811,7 +811,7 @@ export default function GolfGame({ variant }: GolfGameProps) {
       <div className="flex-1 bg-[#1a1a1a] flex flex-col overflow-hidden relative" style={{ width: cameraEnabled ? `${100 - dividerPosition}%` : '100%' }}>
 
         {/* Course Header - fills available space with max limit */}
-        <div className="bg-[#5a7a4a] text-center px-4 relative flex-grow py-4 min-h-[80px] max-h-[40vh] flex flex-col">
+        <div className="bg-[#5a7a4a] text-center px-4 relative flex-grow py-4 landscape:max-lg:py-1 min-h-[120px] landscape:max-lg:min-h-[40px] max-h-[35vh] landscape:max-lg:max-h-[15vh] flex flex-col">
           {/* Background image with opacity */}
           <div
             className="absolute inset-0 bg-cover bg-center"
@@ -821,8 +821,8 @@ export default function GolfGame({ variant }: GolfGameProps) {
             }}
           ></div>
 
-          {/* Center content container - always centered */}
-          <div className="flex-grow flex flex-col items-center justify-center relative z-10">
+          {/* Center content container - centered in available space */}
+          <div className={`flex flex-col items-center justify-center relative z-10 ${!gameComplete && currentHole < TOTAL_HOLES ? 'pb-16' : 'flex-grow'}`}>
             {showCourseName && (
               <h1 className="text-white font-bold tracking-wider" style={{ fontSize: 'clamp(1.5rem, 4vw, 4rem)' }}>{golfCourseName}</h1>
             )}
@@ -927,8 +927,8 @@ export default function GolfGame({ variant }: GolfGameProps) {
           )}
         </div>
 
-        {/* Scorecard Tables - scrollable if needed */}
-        <div className="px-6 pt-2 pb-0 flex-shrink-0 max-h-[45vh] overflow-y-auto">
+        {/* Scorecard Tables - fills remaining space */}
+        <div className="px-6 landscape:max-lg:px-2 pt-2 pb-2 landscape:max-lg:pt-1 landscape:max-lg:pb-1 flex-shrink-0 overflow-y-auto">
           {/* Single unified table */}
           <table className="w-full border-collapse table-fixed">
             <colgroup>
@@ -951,10 +951,10 @@ export default function GolfGame({ variant }: GolfGameProps) {
                 {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(hole => (
                   <th
                     key={hole}
-                    className={`border border-[#1a1a1a] p-[0.1vw] text-white text-center font-bold ${
+                    className={`border border-[#1a1a1a] p-[0.1vw] text-white text-center font-bold golf-table-header ${
                       currentHole === hole - 1 ? 'bg-[#6a8a2a]' : ''
                     }`}
-                    style={{ fontSize: 'clamp(1.1rem, 2.4vw, 3.9rem)', height: 'clamp(2rem, 4vw, 6rem)' }}
+                    style={{ fontSize: 'clamp(1.1rem, 2.4vw, 3.9rem)', height: 'clamp(0.96rem, 1.92vw, 2.88rem)' }}
                   >
                     {hole}
                   </th>
@@ -999,7 +999,7 @@ export default function GolfGame({ variant }: GolfGameProps) {
                       currentPlayerIndex === playerIndex && currentHole < 9 ? 'bg-[#3d3d00]' : 'bg-[#2a2a2a]'
                     }`}
                   >
-                    <td className="border border-[#1a1a1a] p-[0.1vw] text-white font-bold" style={{ height: 'clamp(2rem, 4vw, 6rem)' }}>
+                    <td className="border border-[#1a1a1a] p-[0.1vw] text-white font-bold golf-table-row" style={{ height: 'clamp(0.96rem, 1.92vw, 2.88rem)' }}>
                       <span className="block overflow-hidden" style={{ fontSize: 'clamp(0.5rem, 1.5vw, 2.5rem)' }}>{player.name.toUpperCase()}</span>
                     </td>
                     {playerScores.slice(0, 9).map((score, holeIndex) => {
@@ -1007,28 +1007,28 @@ export default function GolfGame({ variant }: GolfGameProps) {
                       return (
                         <td
                           key={holeIndex}
-                          className="border border-[#1a1a1a] p-[0.1vw] text-center"
+                          className="border border-[#1a1a1a] p-[0.1vw] text-center golf-table-row"
                           style={{
                             fontSize: 'clamp(1.1rem, 2.4vw, 3.9rem)',
-                            height: 'clamp(2rem, 4vw, 6rem)',
+                            height: 'clamp(0.96rem, 1.92vw, 2.88rem)',
                             color: isWinner ? '#90EE90' : '#FFFFFF'
                           }}
                         >
-                          {score !== null ? score : ''}
+                          {score !== null ? score : '\u00A0'}
                         </td>
                       );
                     })}
                     <td
-                      className="border border-[#1a1a1a] p-[0.1vw] text-center font-bold"
-                      style={{ color: variant === 'stroke-play' && front9Total > 0 ? getScoreColor(front9Diff) : '#FFFFFF', fontSize: 'clamp(0.8rem, 1.6vw, 2.8rem)', height: 'clamp(2rem, 4vw, 6rem)' }}
+                      className="border border-[#1a1a1a] p-[0.1vw] text-center font-bold golf-table-row"
+                      style={{ color: variant === 'stroke-play' && front9Total > 0 ? getScoreColor(front9Diff) : '#FFFFFF', fontSize: 'clamp(0.8rem, 1.6vw, 2.8rem)', height: 'clamp(0.96rem, 1.92vw, 2.88rem)' }}
                     >
                       {variant === 'match-play' || variant === 'skins'
                         ? front9Points
                         : (front9HolesPlayed > 0 ? formatScore(front9Total, front9HolesPlayed) : '-')}
                     </td>
                     <td
-                      className="border border-[#1a1a1a] p-[0.1vw] text-center font-bold"
-                      style={{ color: variant === 'stroke-play' && overallTotal > 0 ? getScoreColor(overallDiff) : '#FFFFFF', fontSize: 'clamp(0.8rem, 1.6vw, 2.8rem)', height: 'clamp(2rem, 4vw, 6rem)' }}
+                      className="border border-[#1a1a1a] p-[0.1vw] text-center font-bold golf-table-row"
+                      style={{ color: variant === 'stroke-play' && overallTotal > 0 ? getScoreColor(overallDiff) : '#FFFFFF', fontSize: 'clamp(0.8rem, 1.6vw, 2.8rem)', height: 'clamp(0.96rem, 1.92vw, 2.88rem)' }}
                     >
                       {variant === 'match-play' || variant === 'skins'
                         ? totalPoints
@@ -1062,10 +1062,10 @@ export default function GolfGame({ variant }: GolfGameProps) {
                 {[10, 11, 12, 13, 14, 15, 16, 17, 18].map(hole => (
                   <th
                     key={hole}
-                    className={`border border-[#1a1a1a] p-[0.1vw] text-white text-center font-bold ${
+                    className={`border border-[#1a1a1a] p-[0.1vw] text-white text-center font-bold golf-table-header ${
                       currentHole === hole - 1 ? 'bg-[#6a8a2a]' : ''
                     }`}
-                    style={{ fontSize: 'clamp(1.1rem, 2.4vw, 3.9rem)', height: 'clamp(2rem, 4vw, 6rem)' }}
+                    style={{ fontSize: 'clamp(1.1rem, 2.4vw, 3.9rem)', height: 'clamp(0.96rem, 1.92vw, 2.88rem)' }}
                   >
                     {hole}
                   </th>
@@ -1110,7 +1110,7 @@ export default function GolfGame({ variant }: GolfGameProps) {
                       currentPlayerIndex === playerIndex && currentHole >= 9 ? 'bg-[#3d3d00]' : 'bg-[#2a2a2a]'
                     }`}
                   >
-                    <td className="border border-[#1a1a1a] p-[0.1vw] text-white font-bold" style={{ height: 'clamp(2rem, 4vw, 6rem)' }}>
+                    <td className="border border-[#1a1a1a] p-[0.1vw] text-white font-bold golf-table-row" style={{ height: 'clamp(0.96rem, 1.92vw, 2.88rem)' }}>
                       <span className="block overflow-hidden" style={{ fontSize: 'clamp(0.5rem, 1.5vw, 2.5rem)' }}>{player.name.toUpperCase()}</span>
                     </td>
                     {playerScores.slice(9, 18).map((score, holeIndex) => {
@@ -1119,28 +1119,28 @@ export default function GolfGame({ variant }: GolfGameProps) {
                       return (
                         <td
                           key={holeIndex}
-                          className="border border-[#1a1a1a] p-[0.1vw] text-center"
+                          className="border border-[#1a1a1a] p-[0.1vw] text-center golf-table-row"
                           style={{
                             fontSize: 'clamp(1.1rem, 2.4vw, 3.9rem)',
-                            height: 'clamp(2rem, 4vw, 6rem)',
+                            height: 'clamp(0.96rem, 1.92vw, 2.88rem)',
                             color: isWinner ? '#90EE90' : '#FFFFFF'
                           }}
                         >
-                          {score !== null ? score : ''}
+                          {score !== null ? score : '\u00A0'}
                         </td>
                       );
                     })}
                     <td
                       className="border border-[#1a1a1a] p-[0.1vw] text-center font-bold"
-                      style={{ color: variant === 'stroke-play' && back9Total > 0 ? getScoreColor(back9Diff) : '#FFFFFF', fontSize: 'clamp(0.8rem, 1.6vw, 2.8rem)', height: 'clamp(2rem, 4vw, 6rem)' }}
+                      style={{ color: variant === 'stroke-play' && back9Total > 0 ? getScoreColor(back9Diff) : '#FFFFFF', fontSize: 'clamp(0.8rem, 1.6vw, 2.8rem)', height: 'clamp(1.5rem, 3vw, 4.5rem)' }}
                     >
                       {variant === 'match-play' || variant === 'skins'
                         ? back9Points
                         : (back9HolesPlayed > 0 ? formatScore(back9Total, back9HolesPlayed) : '-')}
                     </td>
                     <td
-                      className="border border-[#1a1a1a] p-[0.1vw] text-center font-bold"
-                      style={{ color: variant === 'stroke-play' && overallTotal > 0 ? getScoreColor(overallDiff) : '#FFFFFF', fontSize: 'clamp(0.8rem, 1.6vw, 2.8rem)', height: 'clamp(2rem, 4vw, 6rem)' }}
+                      className="border border-[#1a1a1a] p-[0.1vw] text-center font-bold golf-table-row"
+                      style={{ color: variant === 'stroke-play' && overallTotal > 0 ? getScoreColor(overallDiff) : '#FFFFFF', fontSize: 'clamp(0.8rem, 1.6vw, 2.8rem)', height: 'clamp(0.96rem, 1.92vw, 2.88rem)' }}
                     >
                       {variant === 'match-play' || variant === 'skins'
                         ? (currentHole >= 9 ? totalPoints : '')
@@ -1164,10 +1164,10 @@ export default function GolfGame({ variant }: GolfGameProps) {
                 <tr className="bg-[#8B0000]">
                   <th className="border border-[#1a1a1a] p-[0.1vw] text-white text-left font-bold" style={{ fontSize: 'clamp(0.6rem, 1.5vw, 2rem)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>PLAYER</th>
                   <th
-                    className={`border border-[#1a1a1a] p-[0.1vw] text-white text-center font-bold ${
+                    className={`border border-[#1a1a1a] p-[0.1vw] text-white text-center font-bold golf-table-header ${
                       currentHole === TOTAL_HOLES ? 'bg-[#A52A2A]' : ''
                     }`}
-                    style={{ fontSize: 'clamp(1.1rem, 2.4vw, 3.9rem)', height: 'clamp(2rem, 4vw, 6rem)' }}
+                    style={{ fontSize: 'clamp(1.1rem, 2.4vw, 3.9rem)', height: 'clamp(0.96rem, 1.92vw, 2.88rem)' }}
                   >
                     19
                   </th>
@@ -1175,7 +1175,7 @@ export default function GolfGame({ variant }: GolfGameProps) {
                     className={`border border-[#1a1a1a] p-[0.1vw] text-white text-center font-bold ${
                       currentHole === TOTAL_HOLES + 1 ? 'bg-[#A52A2A]' : ''
                     }`}
-                    style={{ fontSize: 'clamp(1.1rem, 2.4vw, 3.9rem)', height: 'clamp(2rem, 4vw, 6rem)' }}
+                    style={{ fontSize: 'clamp(1.1rem, 2.4vw, 3.9rem)', height: 'clamp(0.96rem, 1.92vw, 2.88rem)' }}
                   >
                     20
                   </th>
@@ -1203,7 +1203,7 @@ export default function GolfGame({ variant }: GolfGameProps) {
                         currentPlayerIndex === playerIndex ? 'bg-[#3d3d00]' : 'bg-[#2a2a2a]'
                       }`}
                     >
-                      <td className="border border-[#1a1a1a] p-[0.1vw] text-white font-bold" style={{ height: 'clamp(2rem, 4vw, 6rem)' }}>
+                      <td className="border border-[#1a1a1a] p-[0.1vw] text-white font-bold golf-table-row" style={{ height: 'clamp(0.96rem, 1.92vw, 2.88rem)' }}>
                         <span style={{ fontSize: 'clamp(0.8rem, 1.5vw, 2.5rem)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>{player.name.toUpperCase()}</span>
                       </td>
                       <td className="border border-[#1a1a1a] p-[0.1vw] text-white text-center" style={{ fontSize: 'clamp(1.1rem, 2.4vw, 3.9rem)', height: 'clamp(2rem, 4vw, 6rem)' }}>
@@ -1220,11 +1220,8 @@ export default function GolfGame({ variant }: GolfGameProps) {
           )}
         </div>
 
-        {/* Spacer above buttons */}
-        <div className="h-4 flex-shrink-0"></div>
-
-        {/* Score Input Buttons - spacing from scorecard */}
-        <div className="px-6 pb-0 pt-0 flex-shrink-0">
+        {/* Score Input Buttons - fixed at bottom */}
+        <div className="px-6 landscape:max-lg:px-2 pb-2 landscape:max-lg:pb-1 pt-2 landscape:max-lg:pt-1 flex-shrink-0 bg-[#1a1a1a]">
           <style jsx>{`
             .golf-button {
               aspect-ratio: 1 / 1;
@@ -1232,13 +1229,13 @@ export default function GolfGame({ variant }: GolfGameProps) {
             @media (orientation: landscape) and (max-width: 1023px) {
               .golf-button {
                 aspect-ratio: auto;
-                height: 100px;
+                height: 40px;
               }
             }
             @media (min-width: 1024px) {
               .golf-button {
                 aspect-ratio: auto;
-                height: 200px;
+                height: 100px;
               }
             }
             .golf-button-grid {
@@ -1265,6 +1262,22 @@ export default function GolfGame({ variant }: GolfGameProps) {
             @media (min-width: 1024px) {
               .golf-number-text {
                 font-size: 3.75rem;
+              }
+            }
+            .golf-table-row {
+              min-height: clamp(0.96rem, 1.92vw, 2.88rem);
+            }
+            .golf-table-header {
+              min-height: clamp(0.96rem, 1.92vw, 2.88rem);
+            }
+            @media (orientation: landscape) and (max-width: 1023px) {
+              .golf-table-row {
+                height: 1.5rem !important;
+                min-height: 1.5rem !important;
+              }
+              .golf-table-header {
+                height: 1.5rem !important;
+                min-height: 1.5rem !important;
               }
             }
             .golf-undo-text {
@@ -1306,22 +1319,19 @@ export default function GolfGame({ variant }: GolfGameProps) {
             <div className="grid grid-cols-2 gap-4 mt-4">
               <button
                 onClick={handleSaveAndPlayAgain}
-                className="bg-[#2d5016] text-white text-4xl font-bold rounded hover:bg-[#3d6026] transition-colors h-[120px] flex items-center justify-center px-2"
+                className="bg-[#2d5016] text-white text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold rounded hover:bg-[#3d6026] transition-colors h-[80px] flex items-center justify-center px-2"
               >
                 PLAY AGAIN
               </button>
               <button
                 onClick={handleReturnHome}
-                className="bg-[#666666] text-white text-4xl font-bold rounded hover:bg-[#777777] transition-colors h-[120px] flex items-center justify-center px-2"
+                className="bg-[#666666] text-white text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold rounded hover:bg-[#777777] transition-colors h-[80px] flex items-center justify-center px-2"
               >
                 RETURN HOME
               </button>
             </div>
           )}
         </div>
-
-        {/* Spacer below buttons */}
-        <div className="h-4 flex-shrink-0"></div>
       </div>
     </div>
   );

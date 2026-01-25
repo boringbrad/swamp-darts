@@ -26,6 +26,17 @@ export default function StatsPage() {
 
   // Cricket stats state
   const [cricketStats, setCricketStats] = useState<CricketPlayerStats[]>([]);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // Listen for stats refresh events (when players are deleted)
+  useEffect(() => {
+    const handleRefresh = () => {
+      setRefreshTrigger(prev => prev + 1);
+    };
+
+    window.addEventListener('statsRefresh', handleRefresh);
+    return () => window.removeEventListener('statsRefresh', handleRefresh);
+  }, []);
 
   // Load and calculate cricket stats when filters change
   useEffect(() => {
@@ -36,7 +47,7 @@ export default function StatsPage() {
       });
       setCricketStats(stats);
     }
-  }, [selectedGame, playerFilter]);
+  }, [selectedGame, playerFilter, refreshTrigger]);
 
   // Get avatar data
   const currentAvatar = STOCK_AVATARS.find(a => a.id === userProfile?.avatar) || STOCK_AVATARS[0];

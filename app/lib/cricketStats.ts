@@ -5,6 +5,7 @@
 
 import { CricketMatch, CricketPlayerStats } from '../types/stats';
 import { CricketVariant } from '../types/game';
+import { playerStorage } from './playerStorage';
 
 /**
  * Load all cricket matches from localStorage
@@ -57,12 +58,18 @@ export function calculateCricketStats(
     });
   });
 
-  // Calculate stats for each player
+  // Get list of valid player IDs (players that still exist in the system)
+  const validPlayerIds = new Set(playerStorage.getAllPlayers().map(p => p.id));
+
+  // Calculate stats for each player, but only if they still exist
   const allStats: CricketPlayerStats[] = [];
 
   playerMatchesMap.forEach(({ player, matches }) => {
-    const stats = calculatePlayerStats(player.playerId, matches);
-    allStats.push(stats);
+    // Only include stats for players that still exist in the player list
+    if (validPlayerIds.has(player.playerId)) {
+      const stats = calculatePlayerStats(player.playerId, matches);
+      allStats.push(stats);
+    }
   });
 
   // Sort by games played (descending)
@@ -469,4 +476,75 @@ export function getUniquePlayers(matches: CricketMatch[]): { id: string; name: s
   return Array.from(playerMap.entries())
     .map(([id, name]) => ({ id, name }))
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Remove all cricket match data for a deleted player
+ * Removes matches where the player was the only participant
+ * Removes player data from matches with multiple players
+ */
+export function cleanupPlayerCricketMatches(playerId: string): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const matches = loadCricketMatches();
+
+    // Filter out matches where player participated and remove player data from multi-player matches
+    const cleanedMatches = matches
+      .map(match => {
+        // If this player is in the match, remove their data
+        const updatedPlayers = match.players.filter(p => p.playerId !== playerId);
+
+        // If no players remain after filtering, this match will be removed
+        if (updatedPlayers.length === 0) {
+          return null;
+        }
+
+        // If players remain, update the match
+        // Also check if the deleted player was the winner - if so, recalculate winner
+        let updatedWinnerId = match.winnerId;
+        let updatedWinnerTeamIds = match.winnerTeamIds;
+
+        if (match.winnerId === playerId && updatedPlayers.length > 0) {
+          // Find new winner (highest points)
+          const newWinner = updatedPlayers.reduce((best, player) =>
+            player.finalPoints > best.finalPoints ? player : best
+          );
+          updatedWinnerId = newWinner.playerId;
+        }
+
+        // For team games, remove team IDs if player was on winning team
+        if (match.winnerTeamIds && updatedWinnerTeamIds) {
+          const playerTeamId = match.players.find(p => p.playerId === playerId)?.teamId;
+          if (playerTeamId && updatedWinnerTeamIds.includes(playerTeamId)) {
+            // Recalculate winner team based on remaining players
+            const teamScores = new Map<string, number>();
+            updatedPlayers.forEach(p => {
+              if (p.teamId) {
+                teamScores.set(p.teamId, (teamScores.get(p.teamId) || 0) + p.finalPoints);
+              }
+            });
+            const winningTeam = Array.from(teamScores.entries()).reduce((best, [teamId, score]) =>
+              score > best[1] ? [teamId, score] : best
+            , ['', 0]);
+            updatedWinnerTeamIds = [winningTeam[0]];
+          }
+        }
+
+        return {
+          ...match,
+          players: updatedPlayers,
+          winnerId: updatedWinnerId,
+          winnerTeamIds: updatedWinnerTeamIds,
+        };
+      })
+      .filter((match): match is CricketMatch => match !== null); // Remove null matches
+
+    // Save cleaned matches back to localStorage
+    localStorage.setItem('cricketMatches', JSON.stringify(cleanedMatches));
+
+    console.log(`Cleaned up cricket matches for player ${playerId}. Removed ${matches.length - cleanedMatches.length} matches.`);
+  } catch (error) {
+    console.error('Error cleaning up cricket matches:', error);
+  }
 }

@@ -44,6 +44,17 @@ export default function StatsFilters({
   const [courseOptions, setCourseOptions] = useState<FilterOption[]>([
     { value: 'all', label: 'All Courses' },
   ]);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // Listen for stats refresh events (when players are deleted)
+  useEffect(() => {
+    const handleRefresh = () => {
+      setRefreshTrigger(prev => prev + 1);
+    };
+
+    window.addEventListener('statsRefresh', handleRefresh);
+    return () => window.removeEventListener('statsRefresh', handleRefresh);
+  }, []);
 
   useEffect(() => {
     // Load player and course options based on game type
@@ -76,7 +87,7 @@ export default function StatsFilters({
       ];
       setPlayerOptions(playerOpts);
     }
-  }, [gameType]);
+  }, [gameType, refreshTrigger]);
 
   return (
     <div className="bg-[#333333] rounded-lg p-6 mb-8">

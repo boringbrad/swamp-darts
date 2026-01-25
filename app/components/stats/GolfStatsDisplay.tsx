@@ -10,6 +10,7 @@ import LastVsBestGameChart from './LastVsBestGameChart';
 import ScoresOverGamesChart from './ScoresOverGamesChart';
 import ShotAccuracyPieChart from './ShotAccuracyPieChart';
 import DualRangeSlider from './DualRangeSlider';
+import GameHistorySection from './GameHistorySection';
 
 interface GolfStatsDisplayProps {
   playerFilter: string; // 'all' or playerId
@@ -22,6 +23,29 @@ export default function GolfStatsDisplay({ playerFilter, courseFilter, playModeF
   const [loading, setLoading] = useState(true);
   const [gameRange, setGameRange] = useState<{ start: number; end: number } | null>(null);
   const [allMatches, setAllMatches] = useState<GolfMatch[]>([]);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // Listen for storage changes (e.g., when players are deleted)
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'golfMatches' || e.key === 'localPlayers') {
+        setRefreshTrigger(prev => prev + 1);
+      }
+    };
+
+    // Listen for custom event (for same-tab updates)
+    const handleCustomRefresh = () => {
+      setRefreshTrigger(prev => prev + 1);
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('statsRefresh', handleCustomRefresh);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('statsRefresh', handleCustomRefresh);
+    };
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -45,7 +69,7 @@ export default function GolfStatsDisplay({ playerFilter, courseFilter, playModeF
     const calculatedStats = calculateGolfStats(matches, filters);
     setStats(calculatedStats);
     setLoading(false);
-  }, [playerFilter, courseFilter, playModeFilter, gameRange]);
+  }, [playerFilter, courseFilter, playModeFilter, gameRange, refreshTrigger]);
 
   if (loading) {
     return (
@@ -182,6 +206,9 @@ export default function GolfStatsDisplay({ playerFilter, courseFilter, playModeF
             </div>
           </div>
         )}
+
+        {/* Game History */}
+        <GameHistorySection matches={playerMatches} playerId={playerFilter} />
       </div>
     );
   }

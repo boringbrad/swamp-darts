@@ -5,6 +5,7 @@ import { AppProvider } from "./contexts/AppContext";
 import { PlayerProvider } from "./contexts/PlayerContext";
 import PWARegister from "./components/PWARegister";
 import GoogleAnalytics from "./components/GoogleAnalytics";
+import MobileOrientationLock from "./components/MobileOrientationLock";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -50,6 +51,7 @@ export default function RootLayout({
       >
         <GoogleAnalytics />
         <PWARegister />
+        <MobileOrientationLock />
         <AppProvider>
           <PlayerProvider>
             {children}

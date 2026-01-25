@@ -23,17 +23,13 @@ const colorClasses = {
 export default function GameModeCard({ title, href, color, size = 'large', disabled = false, subtitle }: GameModeCardProps) {
   const bgColor = colorClasses[color];
 
-  const sizeClasses = size === 'large'
-    ? 'min-h-[150px] sm:min-h-[200px]'
-    : 'min-h-[120px] sm:min-h-[150px]';
-
   const content = (
     <div className="flex flex-col items-center justify-center gap-2 px-4 w-full h-full">
-      <span className="text-white text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold tracking-wider text-center leading-tight">
+      <span className="text-white text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold tracking-wider text-center leading-tight">
         {title}
       </span>
       {subtitle && (
-        <span className="text-white text-sm sm:text-base md:text-lg opacity-70 text-center">
+        <span className="text-white text-xs sm:text-sm md:text-base opacity-70 text-center">
           {subtitle}
         </span>
       )}
@@ -43,7 +39,7 @@ export default function GameModeCard({ title, href, color, size = 'large', disab
   if (disabled) {
     return (
       <div
-        className={`${bgColor} ${sizeClasses} rounded-lg flex items-center justify-center opacity-50 cursor-not-allowed shadow-lg overflow-hidden`}
+        className={`${bgColor} h-full rounded-lg flex items-center justify-center opacity-50 cursor-not-allowed shadow-lg overflow-hidden`}
         style={{ WebkitBackfaceVisibility: 'hidden', backfaceVisibility: 'hidden' }}
       >
         {content}
@@ -54,7 +50,7 @@ export default function GameModeCard({ title, href, color, size = 'large', disab
   return (
     <Link
       href={href}
-      className={`${bgColor} ${sizeClasses} rounded-lg flex items-center justify-center hover:opacity-90 transition-opacity cursor-pointer shadow-lg overflow-hidden`}
+      className={`${bgColor} h-full rounded-lg flex items-center justify-center hover:opacity-90 transition-opacity cursor-pointer shadow-lg overflow-hidden`}
       style={{ WebkitBackfaceVisibility: 'hidden', backfaceVisibility: 'hidden' }}
     >
       {content}
