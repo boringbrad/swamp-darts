@@ -8,6 +8,7 @@ import { usePlayerContext } from '../contexts/PlayerContext';
 import { useAppContext } from '../contexts/AppContext';
 import { getCourseRecord } from '../lib/golfStats';
 import { getGhostPlayerHistory } from '../lib/ghostPlayer';
+import { trackGolfGame } from '../lib/analytics';
 
 interface GolfGameProps {
   variant: GolfVariant;
@@ -591,6 +592,20 @@ export default function GolfGame({ variant }: GolfGameProps) {
       const realPlayers = players.filter(p => !p.isGhost);
       realPlayers.forEach(player => {
         updateLocalPlayer(player.id, { lastUsed: new Date() });
+      });
+
+      // Track analytics (send to Google Sheets)
+      trackGolfGame({
+        playerNames: realPlayersData.map(p => p.playerName),
+        courseName: golfCourseName,
+        variant,
+        holeScores: realPlayersData.map(p => ({
+          playerName: p.playerName,
+          holes: p.holeScores,
+          totalScore: p.totalScore,
+        })),
+        winner: players.find(p => p.id === winnerId)?.name || 'Unknown',
+        wonByTieBreaker,
       });
     } catch (error) {
       console.error('Error saving match:', error);

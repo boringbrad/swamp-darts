@@ -538,7 +538,7 @@ export function cleanupPlayerCricketMatches(playerId: string): void {
           winnerTeamIds: updatedWinnerTeamIds,
         };
       })
-      .filter((match): match is CricketMatch => match !== null); // Remove null matches
+      .filter((match) => match !== null) as CricketMatch[]; // Remove null matches
 
     // Save cleaned matches back to localStorage
     localStorage.setItem('cricketMatches', JSON.stringify(cleanedMatches));
