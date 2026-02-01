@@ -24,7 +24,7 @@ export default function UserQRCode({ size = 256 }: UserQRCodeProps) {
     ? `${window.location.protocol}//${window.location.host}`
     : 'http://localhost:3001';
 
-  const qrData = `${baseUrl}/add-friend?u=${userProfile.id}&n=${encodeURIComponent(userProfile.display_name || userProfile.username)}`;
+  const qrData = `${baseUrl}/add-friend?u=${userProfile.id}&n=${encodeURIComponent(userProfile.displayName || userProfile.username)}`;
 
   return (
     <div className="flex flex-col items-center gap-4">
@@ -37,7 +37,7 @@ export default function UserQRCode({ size = 256 }: UserQRCodeProps) {
         />
       </div>
       <div className="text-center">
-        <div className="text-white font-bold text-lg">{userProfile.display_name}</div>
+        <div className="text-white font-bold text-lg">{userProfile.displayName}</div>
         <div className="text-gray-400 text-sm">@{userProfile.username}</div>
       </div>
 
