@@ -120,6 +120,8 @@ export interface UserProfile {
   username: string;
   displayName: string;
   avatar?: string;
+  photoUrl?: string | null;
+  accountType?: string;
   friends: string[]; // User IDs
   clubs: string[]; // Club IDs
   stats: UserStats;
