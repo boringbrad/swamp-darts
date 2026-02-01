@@ -220,7 +220,12 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
 
     // Then check session players
     const sessionPlayer = sessionPlayers.find(p => p.id === playerId);
-    if (sessionPlayer) return sessionPlayer as StoredPlayer;
+    if (sessionPlayer) {
+      return {
+        ...sessionPlayer,
+        addedDate: new Date(), // Session players don't have addedDate, use current date
+      };
+    }
 
     // Then check venue players
     const venuePlayer = venuePlayers.find(p => p.id === playerId);

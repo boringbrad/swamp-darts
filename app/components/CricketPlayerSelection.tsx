@@ -148,7 +148,12 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
 
     // Then check session players
     const sessionPlayer = sessionPlayers.find(p => p.id === id);
-    if (sessionPlayer) return sessionPlayer as StoredPlayer;
+    if (sessionPlayer) {
+      return {
+        ...sessionPlayer,
+        addedDate: new Date(), // Session players don't have addedDate, use current date
+      };
+    }
 
     // Then check venue players
     const venuePlayer = venuePlayers.find(p => p.id === id);
