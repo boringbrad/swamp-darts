@@ -6,8 +6,10 @@ export interface GameSession {
   id: string;
   roomCode: string;
   hostUserId: string;
+  gameMode: string | null;
   status: 'lobby' | 'in_game' | 'completed' | 'expired';
   maxParticipants: number | null;
+  gameId: string | null;
   gamesPlayed: number;
   expiresAt: string;
   createdAt: string;
