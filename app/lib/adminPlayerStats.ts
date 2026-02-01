@@ -291,6 +291,28 @@ function calculateGolfStatsForPlayer(
   let wins = 0;
   let validGamesCount = 0;
 
+  // Initialize variant stats tracking
+  const variantStats = {
+    'stroke-play': {
+      gamesPlayed: 0,
+      wins: 0,
+      totalScore: 0,
+      averageScore: 0,
+    },
+    'match-play': {
+      gamesPlayed: 0,
+      wins: 0,
+      totalPoints: 0,
+      averagePoints: 0,
+    },
+    skins: {
+      gamesPlayed: 0,
+      wins: 0,
+      totalPoints: 0,
+      averagePoints: 0,
+    },
+  };
+
   // Initialize hole tracking
   for (let i = 1; i <= 18; i++) {
     holeScores[i] = [];
@@ -312,8 +334,31 @@ function calculateGolfStatsForPlayer(
     validGamesCount++;
 
     // Check if this player won (match by playerId since winnerId uses playerId)
-    if (match.winnerId === player.playerId) {
+    const didWin = match.winnerId === player.playerId;
+    if (didWin) {
       wins++;
+    }
+
+    // Track variant-specific stats
+    const variant = match.variant;
+    if (variant === 'stroke-play') {
+      variantStats['stroke-play'].gamesPlayed++;
+      if (didWin) variantStats['stroke-play'].wins++;
+      if (player.totalScore && player.totalScore > 0) {
+        variantStats['stroke-play'].totalScore += player.totalScore;
+      }
+    } else if (variant === 'match-play') {
+      variantStats['match-play'].gamesPlayed++;
+      if (didWin) variantStats['match-play'].wins++;
+      if (player.matchPlayPoints !== undefined) {
+        variantStats['match-play'].totalPoints += player.matchPlayPoints;
+      }
+    } else if (variant === 'skins') {
+      variantStats.skins.gamesPlayed++;
+      if (didWin) variantStats.skins.wins++;
+      if (player.skinsPoints !== undefined) {
+        variantStats.skins.totalPoints += player.skinsPoints;
+      }
     }
 
     // Only include valid scores (> 0)
@@ -338,7 +383,7 @@ function calculateGolfStatsForPlayer(
     });
 
     // Check for tie breaker win
-    if (match.tieBreaker && match.winnerId === player.playerId) {
+    if (match.wonByTieBreaker && match.winnerId === player.playerId) {
       tieBreakerWins++;
     }
   });
@@ -408,6 +453,22 @@ function calculateGolfStatsForPlayer(
     stats.averageScore = stats.totalScore / stats.gamesPlayed;
   });
 
+  // Calculate variant averages
+  variantStats['stroke-play'].averageScore =
+    variantStats['stroke-play'].gamesPlayed > 0
+      ? variantStats['stroke-play'].totalScore / variantStats['stroke-play'].gamesPlayed
+      : 0;
+
+  variantStats['match-play'].averagePoints =
+    variantStats['match-play'].gamesPlayed > 0
+      ? variantStats['match-play'].totalPoints / variantStats['match-play'].gamesPlayed
+      : 0;
+
+  variantStats.skins.averagePoints =
+    variantStats.skins.gamesPlayed > 0
+      ? variantStats.skins.totalPoints / variantStats.skins.gamesPlayed
+      : 0;
+
   return {
     playerId,
     playerName,
@@ -421,6 +482,23 @@ function calculateGolfStatsForPlayer(
     holeScoreDistribution,
     tieBreakerWins,
     courseStats,
+    variantStats: {
+      'stroke-play': {
+        gamesPlayed: variantStats['stroke-play'].gamesPlayed,
+        wins: variantStats['stroke-play'].wins,
+        averageScore: variantStats['stroke-play'].averageScore,
+      },
+      'match-play': {
+        gamesPlayed: variantStats['match-play'].gamesPlayed,
+        wins: variantStats['match-play'].wins,
+        averagePoints: variantStats['match-play'].averagePoints,
+      },
+      skins: {
+        gamesPlayed: variantStats.skins.gamesPlayed,
+        wins: variantStats.skins.wins,
+        averagePoints: variantStats.skins.averagePoints,
+      },
+    },
   };
 }
 
@@ -479,6 +557,12 @@ function calculateCricketStatsForPlayer(
   let longestLossStreak = 0;
   let currentWinStreak = 0;
   let currentLossStreak = 0;
+  let losses = 0;
+  let ties = 0;
+  const skipGivenByGame: { matchId: string; date: string; count: number }[] = [];
+  const skipReceivedByGame: { matchId: string; date: string; count: number }[] = [];
+  const targetStats: { [target: string]: { dartsThrown: number; marksScored: number; accuracy: number; avgMarksPerGame: number } } = {};
+  const headToHead: { [opponentId: string]: { opponentName: string; gamesPlayed: number; wins: number; losses: number; ties: number } } = {};
 
   const variantStats: any = {
     '4-way': { gamesPlayed: 0, wins: 0, totalMPR: 0, averageMPR: 0 },
@@ -512,21 +596,81 @@ function calculateCricketStatsForPlayer(
 
     // Win tracking
     const won = matchData.winnerId === player.playerId;
+    const isTie = matchData.winnerId === null;
     if (won) {
       wins++;
       variantStats[gameMode].wins++;
       currentWinStreak++;
       currentLossStreak = 0;
       longestWinStreak = Math.max(longestWinStreak, currentWinStreak);
+    } else if (isTie) {
+      ties++;
+      currentWinStreak = 0;
+      currentLossStreak = 0;
     } else {
+      losses++;
       currentLossStreak++;
       currentWinStreak = 0;
       longestLossStreak = Math.max(longestLossStreak, currentLossStreak);
     }
 
     // Skip stats
-    totalPlayersSkipped += player.playersSkipped || 0;
-    totalTimesSkipped += player.timesSkipped || 0;
+    const playersSkippedCount = player.playersSkipped || 0;
+    const timesSkippedCount = player.timesSkipped || 0;
+    totalPlayersSkipped += playersSkippedCount;
+    totalTimesSkipped += timesSkippedCount;
+
+    // Track skip stats by game
+    if (playersSkippedCount > 0) {
+      skipGivenByGame.push({
+        matchId: match.id,
+        date: match.created_at,
+        count: playersSkippedCount,
+      });
+    }
+    if (timesSkippedCount > 0) {
+      skipReceivedByGame.push({
+        matchId: match.id,
+        date: match.created_at,
+        count: timesSkippedCount,
+      });
+    }
+
+    // Track target stats
+    if (player.targetStats) {
+      Object.keys(player.targetStats).forEach(target => {
+        if (!targetStats[target]) {
+          targetStats[target] = {
+            dartsThrown: 0,
+            marksScored: 0,
+            accuracy: 0,
+            avgMarksPerGame: 0,
+          };
+        }
+        const stats = player.targetStats[target];
+        targetStats[target].dartsThrown += stats.dartsThrown || 0;
+        targetStats[target].marksScored += stats.marksScored || 0;
+      });
+    }
+
+    // Track head-to-head records
+    matchData.players?.forEach((opponent: any) => {
+      if (opponent.playerId !== playerId && opponent.playerId) {
+        if (!headToHead[opponent.playerId]) {
+          headToHead[opponent.playerId] = {
+            opponentName: opponent.playerName || 'Unknown',
+            gamesPlayed: 0,
+            wins: 0,
+            losses: 0,
+            ties: 0,
+          };
+        }
+        headToHead[opponent.playerId].gamesPlayed++;
+        if (won) headToHead[opponent.playerId].wins++;
+        else if (isTie) headToHead[opponent.playerId].ties++;
+        else headToHead[opponent.playerId].losses++;
+      }
+    });
 
     // PIN stats
     totalPinAttempts += player.pinAttempts || 0;
@@ -547,6 +691,7 @@ function calculateCricketStatsForPlayer(
   const averageAccuracy = totalDarts > 0 ? (totalMarks / totalDarts) * 100 : 0;
   const winRate = gamesPlayed > 0 ? (wins / gamesPlayed) * 100 : 0;
   const pinSuccessRate = totalPinAttempts > 0 ? (totalPinCloseouts / totalPinAttempts) * 100 : 0;
+  const avgPinAttemptsPerGame = gamesPlayed > 0 ? totalPinAttempts / gamesPlayed : 0;
 
   // Calculate variant averages
   Object.keys(variantStats).forEach(variant => {
@@ -554,11 +699,34 @@ function calculateCricketStatsForPlayer(
     stats.averageMPR = stats.gamesPlayed > 0 ? stats.totalMPR / stats.gamesPlayed : 0;
   });
 
+  // Calculate target stats
+  let favoriteTarget = '';
+  let weakestTarget = '';
+  let highestAccuracy = 0;
+  let lowestAccuracy = 100;
+
+  Object.keys(targetStats).forEach(target => {
+    const stats = targetStats[target];
+    stats.accuracy = stats.dartsThrown > 0 ? (stats.marksScored / stats.dartsThrown) * 100 : 0;
+    stats.avgMarksPerGame = gamesPlayed > 0 ? stats.marksScored / gamesPlayed : 0;
+
+    if (stats.accuracy > highestAccuracy) {
+      highestAccuracy = stats.accuracy;
+      favoriteTarget = target;
+    }
+    if (stats.accuracy < lowestAccuracy && stats.dartsThrown > 0) {
+      lowestAccuracy = stats.accuracy;
+      weakestTarget = target;
+    }
+  });
+
   return {
     playerId,
     playerName,
     gamesPlayed,
     wins,
+    losses,
+    ties,
     winRate,
     averageMPR,
     bestMPR,
@@ -571,14 +739,20 @@ function calculateCricketStatsForPlayer(
     totalTimesSkipped,
     avgPlayersSkippedPerGame: gamesPlayed > 0 ? totalPlayersSkipped / gamesPlayed : 0,
     avgTimesSkippedPerGame: gamesPlayed > 0 ? totalTimesSkipped / gamesPlayed : 0,
+    skipGivenByGame,
+    skipReceivedByGame,
     totalPinAttempts,
     totalPinKickouts,
     totalPinCloseouts,
     pinSuccessRate,
+    avgPinAttemptsPerGame,
     totalKOPointsGiven,
     totalKOEliminationsCaused,
     timesEliminated,
     avgKOPointsPerGame: gamesPlayed > 0 ? totalKOPointsGiven / gamesPlayed : 0,
+    targetStats,
+    favoriteTarget: favoriteTarget || 'None',
+    weakestTarget: weakestTarget || 'None',
     comebackWins,
     longestDartStreak,
     longestWinStreak,
@@ -587,6 +761,8 @@ function calculateCricketStatsForPlayer(
       type: currentWinStreak > 0 ? 'win' : 'loss',
       count: currentWinStreak > 0 ? currentWinStreak : currentLossStreak,
     },
+    headToHead,
+    avgRoundsToCloseTarget: 0, // TODO: Calculate from match history
     variantStats,
     biggestRivalry: null,
     bestPartner: null,
