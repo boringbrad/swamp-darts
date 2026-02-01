@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Header from '../components/Header';
 import PageWrapper from '../components/PageWrapper';
 import { useAppContext } from '../contexts/AppContext';
 import { joinSession, validateRoomCode } from '../lib/sessions';
 
-export default function JoinSessionPage() {
+function JoinSessionContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { userProfile } = useAppContext();
@@ -188,5 +188,17 @@ export default function JoinSessionPage() {
         </main>
       </PageWrapper>
     </div>
+  );
+}
+
+export default function JoinSessionPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center">
+        <div className="text-white">Loading...</div>
+      </div>
+    }>
+      <JoinSessionContent />
+    </Suspense>
   );
 }

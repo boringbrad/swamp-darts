@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Header from '../components/Header';
 import PageWrapper from '../components/PageWrapper';
 import { useAppContext } from '../contexts/AppContext';
 import { sendFriendRequest } from '../lib/friends';
 
-export default function AddFriendPage() {
+function AddFriendContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { userProfile } = useAppContext();
@@ -169,5 +169,17 @@ export default function AddFriendPage() {
         </main>
       </PageWrapper>
     </div>
+  );
+}
+
+export default function AddFriendPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center">
+        <div className="text-white">Loading...</div>
+      </div>
+    }>
+      <AddFriendContent />
+    </Suspense>
   );
 }
