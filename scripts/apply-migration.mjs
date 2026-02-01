@@ -6,12 +6,21 @@
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { config } from 'dotenv';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const SUPABASE_URL = 'https://tregewscspnjfqgsjki.supabase.co';
-const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyZWdld3Njc3BuamZscWdzamtpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2OTM0NDI4NSwiZXhwIjoyMDg0OTIwMjg1fQ.e3Hb2uZ4qLpOQphOvatTdux7xhuDvSew-TORCKc0gRA';
+// Load environment variables from .env.local
+config({ path: join(__dirname, '..', '.env.local') });
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://tregewscspnjfqgsjki.supabase.co';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!SUPABASE_SERVICE_KEY) {
+  console.error('Error: SUPABASE_SERVICE_ROLE_KEY not found in environment variables');
+  process.exit(1);
+}
 
 async function applyMigration() {
   try {

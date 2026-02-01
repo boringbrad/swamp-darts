@@ -4,9 +4,19 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { config } from 'dotenv';
+import { join } from 'path';
 
-const supabaseUrl = 'https://tregewscspnjfqgsjki.supabase.co';
-const supabaseServiceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyZWdld3Njc3BuamZscWdzamtpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2OTM0NDI4NSwiZXhwIjoyMDg0OTIwMjg1fQ.e3Hb2uZ4qLpOQphOvatTdux7xhuDvSew-TORCKc0gRA';
+// Load environment variables from .env.local
+config({ path: join(process.cwd(), '.env.local') });
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://tregewscspnjfqgsjki.supabase.co';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseServiceKey) {
+  console.error('Error: SUPABASE_SERVICE_ROLE_KEY not found in environment variables');
+  process.exit(1);
+}
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey, {
   auth: {
