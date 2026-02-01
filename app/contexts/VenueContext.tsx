@@ -85,7 +85,7 @@ export function VenueProvider({ children }: { children: ReactNode }) {
           avatar: p.avatar || 'avatar-1',
           photoUrl: p.photoUrl,
           isGuest: false,
-          addedDate: new Date(), // Venue participants don't have addedDate, use current date
+          addedDate: new Date(p.joinedAt), // Use actual join date from venue participant
         };
         console.log('[VenueContext] Mapped to user player:', player);
         return player;
@@ -97,7 +97,7 @@ export function VenueProvider({ children }: { children: ReactNode }) {
           avatar: p.guestAvatar || 'avatar-1',
           photoUrl: p.guestPhotoUrl,
           isGuest: true,
-          addedDate: new Date(), // Venue participants don't have addedDate, use current date
+          addedDate: new Date(p.joinedAt), // Use actual join date from venue participant
         };
         console.log('[VenueContext] Mapped to guest player:', player);
         return player;

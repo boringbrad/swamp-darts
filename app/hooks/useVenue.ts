@@ -133,14 +133,14 @@ export function useVenueInfo() {
     if (!venueInfo?.id) return;
 
     const channel = supabase
-      .channel(`venue-boards:${venueInfo.venueId}`)
+      .channel(`venue-boards:${venueInfo.id}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'venue_boards',
-          filter: `venue_id=eq.${venueInfo.venueId}`,
+          filter: `venue_id=eq.${venueInfo.id}`,
         },
         () => {
           // Refresh venue info when boards change
@@ -413,7 +413,7 @@ export function useVenueGuests(venueId: string | null) {
         (data || []).map((g) => ({
           id: g.id,
           venueId: g.venue_id,
-          name: g.name,
+          name: g.guest_name,
           avatar: g.avatar,
           photoUrl: g.photo_url,
           createdAt: g.created_at,
