@@ -45,7 +45,7 @@ function JoinVenueContent() {
     try {
       const venue = await getVenueByRoomCode(code);
       if (venue) {
-        setVenueInfo({ venueName: venue.venueName, roomCode: venue.roomCode });
+        setVenueInfo({ venueName: venue.venueName, roomCode: code });
         setError('');
       } else {
         setVenueInfo(null);

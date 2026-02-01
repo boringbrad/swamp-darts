@@ -413,10 +413,12 @@ export function useVenueGuests(venueId: string | null) {
         (data || []).map((g) => ({
           id: g.id,
           venueId: g.venue_id,
-          name: g.guest_name,
+          guestName: g.guest_name,
           avatar: g.avatar,
           photoUrl: g.photo_url,
+          totalGames: g.total_games || 0,
           createdAt: g.created_at,
+          updatedAt: g.updated_at,
         }))
       );
     } catch (err) {

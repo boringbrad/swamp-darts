@@ -71,7 +71,7 @@ export default function VenueDashboardPage() {
 
     setIsCreatingBoard(true);
     try {
-      await createBoard(venueInfo.venueId, newBoardName.trim());
+      await createBoard(venueInfo.id, newBoardName.trim());
       setNewBoardName('');
       await refreshBoards();
     } catch (error) {
