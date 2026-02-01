@@ -1,12 +1,33 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Header from './components/Header';
 import PageWrapper from './components/PageWrapper';
 import GameModeCard from './components/GameModeCard';
 import { useAppContext } from './contexts/AppContext';
+import { checkIsAdmin } from './lib/adminAnalytics';
+import { useFriendRequests } from './hooks/useFriendRequests';
+import { useUserPresence } from './hooks/useUserPresence';
+import { useVenueMode } from './hooks/useVenue';
 
 export default function Home() {
-  const { playMode, setPlayMode } = useAppContext();
+  const { playMode, setPlayMode, userProfile } = useAppContext();
+  const [isAdmin, setIsAdmin] = useState(false);
+  const { requestCount } = useFriendRequests();
+  const { venueMode } = useVenueMode();
+
+  // Update user presence to track online status
+  useUserPresence();
+
+  // Check if user is admin whenever page loads or user changes
+  useEffect(() => {
+    const checkAdmin = async () => {
+      const adminStatus = await checkIsAdmin();
+      console.log('Home: Admin status:', adminStatus);
+      setIsAdmin(adminStatus);
+    };
+    checkAdmin();
+  }, [userProfile]);
 
   return (
     <div className="min-h-screen bg-[#1a1a1a]">
@@ -23,21 +44,37 @@ export default function Home() {
           <div className="w-full landscape:w-2/3 lg:w-2/3 grid grid-cols-1 landscape:grid-cols-2 lg:grid-cols-2 auto-rows-fr gap-2 landscape:gap-3 sm:gap-4 h-full">
             <GameModeCard title="CRICKET" href="/cricket" color="cricket" />
             <GameModeCard title="GOLF" href="/golf" color="golf" />
-            <GameModeCard title="ROYAL RUMBLE" href="/extra/royal-rumble/setup" color="extra" />
+            <GameModeCard title="EXTRA GAMES" href="/extra" color="extra" />
             <GameModeCard title="PLAY ONLINE" href="/tbd" color="tbd" disabled={true} />
-            {/* Portrait only - show stats buttons here */}
+            {/* Portrait only - show profile buttons or venue hub */}
             <div className="landscape:hidden lg:hidden contents">
-              <GameModeCard title="STATS" href="/stats" color="gray" />
-              <GameModeCard title="MANAGE LEAGUE" href="/league/manage" color="gray" />
-              <GameModeCard title="FRIENDS" href="/friends" color="gray" disabled={true} />
+              {venueMode ? (
+                <GameModeCard title="VENUE HUB" href="/venue" color="purple" />
+              ) : (
+                <>
+                  <GameModeCard title="PROFILE" href="/stats" color="gray" />
+                  <GameModeCard title="FRIENDS" href="/friends" color="gray" badgeCount={requestCount} />
+                  {isAdmin && (
+                    <GameModeCard title="ADMIN" href="/admin" color="purple" />
+                  )}
+                </>
+              )}
             </div>
           </div>
 
-          {/* Right side - Stats and options (landscape/desktop only) - Takes 1/3 of width */}
+          {/* Right side - Profile and options (landscape/desktop only) - Takes 1/3 of width */}
           <div className="hidden landscape:flex landscape:w-1/3 lg:flex lg:w-1/3 flex-col gap-2 landscape:gap-3 sm:gap-4 h-full">
-            <GameModeCard title="STATS" href="/stats" color="gray" />
-            <GameModeCard title="MANAGE LEAGUE" href="/league/manage" color="gray" />
-            <GameModeCard title="FRIENDS" href="/friends" color="gray" disabled={true} />
+            {venueMode ? (
+              <GameModeCard title="VENUE HUB" href="/venue" color="purple" />
+            ) : (
+              <>
+                <GameModeCard title="PROFILE" href="/stats" color="gray" />
+                <GameModeCard title="FRIENDS" href="/friends" color="gray" badgeCount={requestCount} />
+                {isAdmin && (
+                  <GameModeCard title="ADMIN" href="/admin" color="purple" />
+                )}
+              </>
+            )}
           </div>
         </main>
 

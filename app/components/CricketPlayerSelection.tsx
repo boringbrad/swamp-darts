@@ -9,6 +9,9 @@ import { useAppContext } from '../contexts/AppContext';
 import { useKONumbers } from '../hooks/useKONumbers';
 import { StoredPlayer } from '../types/storage';
 import { STOCK_AVATARS } from '../lib/avatars';
+import { useSessionPlayers } from '../contexts/SessionContext';
+import { useVenueContext } from '../contexts/VenueContext';
+import { createVenueGuest } from '../lib/venue';
 
 export type CricketVariant = 'singles' | 'tag-team' | 'triple-threat' | 'fatal-4-way';
 
@@ -54,6 +57,16 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
   const config = VARIANT_CONFIGS[variant];
   const { localPlayers, addGuestPlayer, updateLocalPlayer } = usePlayerContext();
   const { selectedPlayers, setSelectedPlayers, cricketRules } = useAppContext();
+  const sessionPlayers = useSessionPlayers();
+  const { venueId, venuePlayersForSelection: venuePlayers, refreshParticipants } = useVenueContext();
+
+  // Refresh venue participants when entering venue mode
+  useEffect(() => {
+    if (venueId) {
+      console.log('[CricketPlayerSelection] In venue mode, refreshing participants');
+      refreshParticipants();
+    }
+  }, [venueId]); // Run when venueId changes
 
   // Check if KO is enabled (default true)
   const enableKO = cricketRules.enableKO !== false;
@@ -129,7 +142,19 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
   };
 
   const getPlayerById = (id: string): StoredPlayer | undefined => {
-    return localPlayers.find(p => p.id === id);
+    // First check local players
+    const localPlayer = localPlayers.find(p => p.id === id);
+    if (localPlayer) return localPlayer;
+
+    // Then check session players
+    const sessionPlayer = sessionPlayers.find(p => p.id === id);
+    if (sessionPlayer) return sessionPlayer as StoredPlayer;
+
+    // Then check venue players
+    const venuePlayer = venuePlayers.find(p => p.id === id);
+    if (venuePlayer) return venuePlayer;
+
+    return undefined;
   };
 
   const getTeamColor = (playerId: string): PlayerColor => {
@@ -153,10 +178,27 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
     return config.teamColors?.[teamIndex] || '#666666';
   };
 
-  const handleAddGuestPlayer = (name: string, avatar: string, photoUrl?: string) => {
-    const player = addGuestPlayer(name, avatar);
-    if (photoUrl) {
-      updateLocalPlayer(player.id, { photoUrl });
+  const handleAddGuestPlayer = async (name: string, avatar: string, photoUrl?: string) => {
+    if (venueId) {
+      // In venue mode: create a venue guest (will automatically add to participants)
+      try {
+        const result = await createVenueGuest(venueId, name, avatar, photoUrl);
+        if (result.success) {
+          // Refresh participants to show new guest in player pool
+          refreshParticipants();
+        } else {
+          alert(result.error || 'Failed to create guest');
+        }
+      } catch (error) {
+        console.error('Error creating venue guest:', error);
+        alert('Failed to create guest');
+      }
+    } else {
+      // Normal mode: add to local storage
+      const player = addGuestPlayer(name, avatar);
+      if (photoUrl) {
+        updateLocalPlayer(player.id, { photoUrl });
+      }
     }
   };
 
@@ -570,28 +612,50 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
 
   // Filter and sort players for the player pool
   const getFilteredAndSortedPlayers = () => {
-    let filtered = localPlayers;
+    let allPlayers;
+
+    // Create sets for quick lookup
+    const sessionPlayerIds = new Set(sessionPlayers.map(p => p.id));
+    const venuePlayerIds = new Set(venuePlayers.map(p => p.id));
+
+    if (sessionPlayers.length > 0) {
+      // When in a session: show session participants + local temp guests only
+      // This prevents duplicates and ensures we see everyone's Supabase profiles
+      const localGuests = localPlayers.filter(p => p.isGuest);
+      allPlayers = [...sessionPlayers, ...localGuests];
+    } else if (venuePlayers.length > 0) {
+      // When at a venue: show venue participants + local players not already in venue
+      // This ensures the venue owner and any local players still appear
+      const localPlayersNotInVenue = localPlayers.filter(p => !venuePlayerIds.has(p.id));
+      allPlayers = [...venuePlayers, ...localPlayersNotInVenue];
+    } else {
+      // When not in a session or venue: show all local players
+      allPlayers = [...localPlayers];
+    }
 
     // Apply filter
     if (playerFilter === 'league') {
-      filtered = localPlayers.filter(p => !p.isGuest);
+      allPlayers = allPlayers.filter(p => !p.isGuest);
     } else if (playerFilter === 'guests') {
-      filtered = localPlayers.filter(p => p.isGuest);
+      allPlayers = allPlayers.filter(p => p.isGuest);
     }
 
-    // Apply sort
+    // Apply sort (keep session/venue players first within their category)
     if (playerSort === 'alphabetical') {
-      filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+      const priorityPlayers = allPlayers.filter(p => sessionPlayerIds.has(p.id) || venuePlayerIds.has(p.id)).sort((a, b) => a.name.localeCompare(b.name));
+      const otherPlayers = allPlayers.filter(p => !sessionPlayerIds.has(p.id) && !venuePlayerIds.has(p.id)).sort((a, b) => a.name.localeCompare(b.name));
+      return [...priorityPlayers, ...otherPlayers];
     } else {
-      // Sort by lastUsed (most recent first), then by addedDate for ties
-      filtered = [...filtered].sort((a, b) => {
-        const aDate = a.lastUsed || a.addedDate;
-        const bDate = b.lastUsed || b.addedDate;
+      // Sort by lastUsed (most recent first), but session/venue players always first
+      const priorityPlayers = allPlayers.filter(p => sessionPlayerIds.has(p.id) || venuePlayerIds.has(p.id));
+      const otherPlayers = allPlayers.filter(p => !sessionPlayerIds.has(p.id) && !venuePlayerIds.has(p.id)).sort((a, b) => {
+        // Session/venue members don't have lastUsed/addedDate, so handle safely
+        const aDate = ('lastUsed' in a ? a.lastUsed : null) || ('addedDate' in a ? a.addedDate : null) || new Date(0).toISOString();
+        const bDate = ('lastUsed' in b ? b.lastUsed : null) || ('addedDate' in b ? b.addedDate : null) || new Date(0).toISOString();
         return new Date(bDate).getTime() - new Date(aDate).getTime();
       });
+      return [...priorityPlayers, ...otherPlayers];
     }
-
-    return filtered;
   };
 
   const filteredPlayers = getFilteredAndSortedPlayers();
@@ -651,39 +715,43 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
         {/* Filter and Sort Controls */}
         <div className="px-8 mb-3">
           <div className="flex justify-between items-center gap-4">
-            {/* Filter */}
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPlayerFilter('all')}
-                className={`px-3 py-1 text-xs font-bold rounded transition-colors ${
-                  playerFilter === 'all'
-                    ? 'bg-white text-[#8b1a1a]'
-                    : 'bg-[#666666] text-white hover:bg-[#777777]'
-                }`}
-              >
-                ALL
-              </button>
-              <button
-                onClick={() => setPlayerFilter('league')}
-                className={`px-3 py-1 text-xs font-bold rounded transition-colors ${
-                  playerFilter === 'league'
-                    ? 'bg-white text-[#8b1a1a]'
-                    : 'bg-[#666666] text-white hover:bg-[#777777]'
-                }`}
-              >
-                LEAGUE
-              </button>
-              <button
-                onClick={() => setPlayerFilter('guests')}
-                className={`px-3 py-1 text-xs font-bold rounded transition-colors ${
-                  playerFilter === 'guests'
-                    ? 'bg-white text-[#8b1a1a]'
-                    : 'bg-[#666666] text-white hover:bg-[#777777]'
-                }`}
-              >
-                GUESTS
-              </button>
-            </div>
+            {/* Filter - Show in venue mode */}
+            {venuePlayers.length > 0 ? (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPlayerFilter('all')}
+                  className={`px-3 py-1 text-xs font-bold rounded transition-colors ${
+                    playerFilter === 'all'
+                      ? 'bg-white text-[#8b1a1a]'
+                      : 'bg-[#666666] text-white hover:bg-[#777777]'
+                  }`}
+                >
+                  ALL
+                </button>
+                <button
+                  onClick={() => setPlayerFilter('league')}
+                  className={`px-3 py-1 text-xs font-bold rounded transition-colors ${
+                    playerFilter === 'league'
+                      ? 'bg-white text-[#8b1a1a]'
+                      : 'bg-[#666666] text-white hover:bg-[#777777]'
+                  }`}
+                >
+                  PLAYERS
+                </button>
+                <button
+                  onClick={() => setPlayerFilter('guests')}
+                  className={`px-3 py-1 text-xs font-bold rounded transition-colors ${
+                    playerFilter === 'guests'
+                      ? 'bg-white text-[#8b1a1a]'
+                      : 'bg-[#666666] text-white hover:bg-[#777777]'
+                  }`}
+                >
+                  GUESTS
+                </button>
+              </div>
+            ) : (
+              <div></div> /* Spacer for layout */
+            )}
 
             {/* Sort */}
             <div className="flex gap-2">
@@ -723,6 +791,7 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
                 teamColor={getTeamColor(player.id)}
                 avatar={player.avatar}
                 photoUrl={player.photoUrl}
+                isSessionMember={(player as any).isSessionMember || false}
               />
             ))}
             <div className="flex flex-col items-center gap-2">
@@ -732,7 +801,7 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
               >
                 <span className="text-white text-2xl sm:text-4xl">+</span>
               </button>
-              <span className="text-white text-sm font-bold">ADD PLAYER</span>
+              <span className="text-white text-sm font-bold">{venueId ? 'ADD GUEST' : 'ADD PLAYER'}</span>
             </div>
           </div>
         </div>
@@ -745,6 +814,7 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
           isOpen={isAddPlayerModalOpen}
           onClose={() => setIsAddPlayerModalOpen(false)}
           onAdd={handleAddGuestPlayer}
+          title={venueId ? 'ADD VENUE GUEST' : 'ADD GUEST PLAYER'}
         />
       </main>
     </>

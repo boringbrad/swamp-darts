@@ -6,6 +6,7 @@ import { UserProfile, CricketRules, PlayMode } from '../types/game';
 import { SelectedPlayersStorage } from '../types/storage';
 import { storage, initializeApp } from '../lib/storage';
 import { playerStorage } from '../lib/playerStorage';
+import { createClient } from '../lib/supabase/client';
 
 const AppContext = createContext<AppContextValue | undefined>(undefined);
 
@@ -32,45 +33,227 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [showCourseRecord, setShowCourseRecordState] = useState(true);
   const [showCourseName, setShowCourseNameState] = useState(true);
 
-  // Load initial state from storage on mount
+  // Load initial state from storage on mount and listen for auth changes
   useEffect(() => {
-    // Check if this is first time initialization
-    const isFirstTime = initializeApp();
+    const supabase = createClient();
 
-    if (isFirstTime) {
-      // No default players - users start with empty league
+    const loadUserProfile = async (userId: string) => {
+      console.log('AppContext: Loading profile for user', userId);
 
-      // Create default user profile
-      const defaultProfile: UserProfile = {
-        id: 'default-user',
-        username: 'the-mayor',
-        displayName: 'THE MAYOR',
-        avatar: 'avatar-1',
-        friends: [],
-        clubs: [],
-        stats: {
-          gamesPlayed: 142,
-          gamesWon: 89,
-          cricketStats: {
-            gamesPlayed: 85,
-            gamesWon: 52,
-            averageMPR: 2.3,
+      try {
+        // Fetch user profile from Supabase
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .single();
+
+        console.log('AppContext: Profile fetch result', {
+          hasProfile: !!profile,
+          profileData: profile,
+          error: error,
+          errorMessage: error?.message,
+          errorDetails: error?.details
+        });
+
+        if (profile && !error) {
+        // Convert Supabase profile to UserProfile format
+        const userProfile: UserProfile = {
+          id: profile.id,
+          username: profile.username || profile.display_name.toLowerCase().replace(/\s+/g, '-'),
+          displayName: profile.display_name,
+          avatar: profile.avatar || 'avatar-1',
+          photoUrl: profile.photo_url || null,
+          accountType: profile.account_type || 'player',
+          friends: [],
+          clubs: [],
+          stats: {
+            gamesPlayed: 0,
+            gamesWon: 0,
+            cricketStats: {
+              gamesPlayed: 0,
+              gamesWon: 0,
+              averageMPR: 0,
+            },
+            golfStats: {
+              gamesPlayed: 0,
+              gamesWon: 0,
+              averageScore: 0,
+            },
           },
-          golfStats: {
-            gamesPlayed: 57,
-            gamesWon: 37,
-            averageScore: 32,
-          },
-        },
-      };
+        } as any;
 
-      storage.setUserProfile(defaultProfile);
-      setUserProfile(defaultProfile);
-    } else {
-      // Load existing data
-      const profile = storage.getUserProfile();
-      setUserProfile(profile);
-    }
+        console.log('AppContext: Setting user profile', userProfile);
+        storage.setUserProfile(userProfile);
+        setUserProfile(userProfile);
+
+        // Check if a player with this display name already exists
+        const allPlayers = playerStorage.getAllPlayers();
+        const existingPlayer = allPlayers.find(
+          p => p.name.toLowerCase() === userProfile.displayName.toLowerCase()
+        );
+
+        // Migration: Assign any existing players without createdBy to this user
+        const playersToMigrate = allPlayers.filter(p => !p.createdBy);
+        if (playersToMigrate.length > 0) {
+          console.log('AppContext: Migrating existing players to user', userId);
+          playersToMigrate.forEach(player => {
+            // Only migrate if it matches the user's display name or is a guest player
+            if (player.name.toLowerCase() === userProfile.displayName.toLowerCase() || player.isGuest) {
+              playerStorage.updatePlayer(player.id, { createdBy: userId });
+            }
+          });
+        }
+
+        if (!existingPlayer) {
+          // Create a new player with the user's display name and avatar
+          console.log('AppContext: Creating player for user', userProfile.displayName);
+          const newPlayer = playerStorage.addPlayer(
+            userProfile.displayName,
+            userProfile.avatar,
+            false, // Not a guest player
+            userId // User ID of the owner
+          );
+
+          // Update with photoUrl if present
+          if (userProfile.photoUrl) {
+            playerStorage.updatePlayer(newPlayer.id, { photoUrl: userProfile.photoUrl });
+          }
+
+          // Dispatch event to notify PlayerContext to refresh
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new Event('playersChanged'));
+          }
+          } else {
+            console.log('AppContext: Player already exists', existingPlayer.name);
+            // Update existing player's photoUrl if it has changed
+            if (userProfile.photoUrl && existingPlayer.photoUrl !== userProfile.photoUrl) {
+              console.log('AppContext: Updating existing player photoUrl');
+              playerStorage.updatePlayer(existingPlayer.id, {
+                photoUrl: userProfile.photoUrl,
+                avatar: userProfile.avatar
+              });
+              // Dispatch event to notify PlayerContext to refresh
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new Event('playersChanged'));
+              }
+            }
+          }
+        } else if (error) {
+          console.error('AppContext: Error fetching profile', error);
+        } else {
+          console.warn('AppContext: No profile found and no error', { userId });
+        }
+      } catch (err) {
+        console.error('AppContext: Exception loading profile', err);
+      }
+    };
+
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('AppContext: Auth state changed', { event, hasSession: !!session, userId: session?.user?.id });
+
+      if (session?.user) {
+        // User is logged in, fetch their profile
+        await loadUserProfile(session.user.id);
+      } else {
+        // User is not logged in, use default profile
+        console.log('AppContext: No session, using default profile');
+
+        // Clean up guest players from localStorage on logout
+        // Note: Guest data persists in Supabase for admin analytics
+        // This just clears the local cache to keep UI clean for logged-out users
+        console.log('AppContext: Clearing guest players from localStorage');
+        playerStorage.cleanupGuestPlayers();
+
+        // Dispatch event to notify PlayerContext to refresh
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('playersChanged'));
+        }
+
+        const isFirstTime = initializeApp();
+
+        if (isFirstTime) {
+          // Create default user profile
+          const defaultProfile: UserProfile = {
+            id: 'default-user',
+            username: 'the-mayor',
+            displayName: 'THE MAYOR',
+            avatar: 'avatar-1',
+            friends: [],
+            clubs: [],
+            stats: {
+              gamesPlayed: 0,
+              gamesWon: 0,
+              cricketStats: {
+                gamesPlayed: 0,
+                gamesWon: 0,
+                averageMPR: 0,
+              },
+              golfStats: {
+                gamesPlayed: 0,
+                gamesWon: 0,
+                averageScore: 0,
+              },
+            },
+          };
+
+          storage.setUserProfile(defaultProfile);
+          setUserProfile(defaultProfile);
+        } else {
+          // Load existing data from localStorage
+          const profile = storage.getUserProfile();
+          setUserProfile(profile);
+        }
+      }
+    });
+
+    // Also check current session on mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('AppContext: Initial session check', { hasSession: !!session, userId: session?.user?.id });
+
+      if (session?.user) {
+        loadUserProfile(session.user.id);
+      } else {
+        console.log('AppContext: No session found on mount, loading from localStorage');
+        // Fallback to localStorage
+        const isFirstTime = initializeApp();
+
+        if (isFirstTime) {
+          // Create default user profile
+          const defaultProfile: UserProfile = {
+            id: 'default-user',
+            username: 'the-mayor',
+            displayName: 'THE MAYOR',
+            avatar: 'avatar-1',
+            friends: [],
+            clubs: [],
+            stats: {
+              gamesPlayed: 0,
+              gamesWon: 0,
+              cricketStats: {
+                gamesPlayed: 0,
+                gamesWon: 0,
+                averageMPR: 0,
+              },
+              golfStats: {
+                gamesPlayed: 0,
+                gamesWon: 0,
+                averageScore: 0,
+              },
+            },
+          };
+
+          storage.setUserProfile(defaultProfile);
+          setUserProfile(defaultProfile);
+        } else {
+          // Load existing data from localStorage
+          const profile = storage.getUserProfile();
+          console.log('AppContext: Loaded profile from localStorage', profile);
+          setUserProfile(profile);
+        }
+      }
+    });
 
     // Load other state
     setHeaderVisible(storage.getHeaderVisible());
@@ -112,6 +295,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (savedShowCourseName !== null) {
       setShowCourseNameState(savedShowCourseName === 'true');
     }
+
+    // Cleanup subscription on unmount
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   // Save header visibility to storage when it changes
@@ -135,13 +323,101 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [playMode]);
 
   // Context methods
-  const updateUserProfile = (updates: Partial<UserProfile>) => {
-    setUserProfile(prev => {
-      if (!prev) return null;
-      const updated = { ...prev, ...updates };
+  const updateUserProfile = async (updates: Partial<UserProfile>) => {
+    if (!userProfile) {
+      console.error('AppContext: No user profile to update');
+      return;
+    }
+
+    const supabase = createClient();
+    const prevProfile = userProfile;
+
+    console.log('AppContext: Starting profile update', { userId: prevProfile.id, updates });
+
+    try {
+      // 1. Update Supabase first if user is logged in
+      if (prevProfile.id !== 'default-user') {
+        console.log('AppContext: Updating Supabase profile');
+
+        const supabaseUpdates: any = {
+          display_name: updates.displayName || prevProfile.displayName,
+        };
+
+        // Handle avatar vs photo_url
+        if ((updates as any).photoUrl !== undefined) {
+          supabaseUpdates.photo_url = (updates as any).photoUrl;
+          supabaseUpdates.avatar = (updates as any).avatar || null;
+        } else if (updates.avatar !== undefined) {
+          supabaseUpdates.avatar = updates.avatar;
+          // Only clear photo_url if explicitly set to null in updates
+          if ((updates as any).photoUrl === null) {
+            supabaseUpdates.photo_url = null;
+          }
+        }
+
+        const { error } = await supabase
+          .from('profiles')
+          .update(supabaseUpdates)
+          .eq('id', prevProfile.id);
+
+        if (error) {
+          console.error('AppContext: Error updating profile in Supabase', error);
+          throw error;
+        }
+
+        console.log('AppContext: Supabase profile updated successfully');
+      }
+
+      // 2. Update local player if display name, avatar, or photoUrl changed
+      if (updates.displayName || updates.avatar || (updates as any).photoUrl !== undefined) {
+        const allPlayers = playerStorage.getAllPlayers();
+        const oldPlayer = allPlayers.find(
+          p => p.name.toLowerCase() === prevProfile.displayName.toLowerCase()
+        );
+
+        if (oldPlayer) {
+          const playerUpdates: any = {};
+
+          if (updates.displayName) {
+            playerUpdates.name = updates.displayName;
+          }
+
+          if (updates.avatar) {
+            playerUpdates.avatar = updates.avatar;
+          }
+
+          if ((updates as any).photoUrl !== undefined) {
+            playerUpdates.photoUrl = (updates as any).photoUrl;
+          }
+
+          console.log('AppContext: Updating local player', {
+            oldName: oldPlayer.name,
+            updates: playerUpdates
+          });
+
+          playerStorage.updatePlayer(oldPlayer.id, playerUpdates);
+
+          console.log('AppContext: Local player updated successfully');
+        } else {
+          console.warn('AppContext: Could not find local player to update', prevProfile.displayName);
+        }
+      }
+
+      // 3. Update local state and storage last
+      const updated = { ...prevProfile, ...updates };
       storage.setUserProfile(updated);
-      return updated;
-    });
+      setUserProfile(updated);
+
+      // 4. Dispatch event to refresh player list
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('playersChanged'));
+      }
+
+      console.log('AppContext: Profile update complete', updated);
+    } catch (error) {
+      console.error('AppContext: Failed to update profile', error);
+      // Don't update local state if Supabase update failed
+    }
   };
 
   const toggleHeaderVisibility = () => {

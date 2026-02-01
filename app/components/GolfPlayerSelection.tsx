@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import PlayerAvatar, { PlayerColor } from './PlayerAvatar';
 import AddGuestPlayerModal from './AddGuestPlayerModal';
@@ -10,6 +10,12 @@ import { StoredPlayer } from '../types/storage';
 import { STOCK_AVATARS } from '../lib/avatars';
 import { GolfVariant, Player } from '../types/game';
 import { playerHasGames, createGhostPlayer } from '../lib/ghostPlayer';
+import { createClient } from '../lib/supabase/client';
+import { useSessionPlayers } from '../contexts/SessionContext';
+import { useVenueContext } from '../contexts/VenueContext';
+import { createVenueGuest } from '../lib/venue';
+
+const supabase = createClient();
 
 interface GolfPlayerSelectionProps {
   variant: GolfVariant;
@@ -25,6 +31,27 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
   const router = useRouter();
   const { localPlayers, addGuestPlayer, updateLocalPlayer } = usePlayerContext();
   const { setSelectedPlayers: setGlobalSelectedPlayers, playMode } = useAppContext();
+  const sessionPlayers = useSessionPlayers();
+  const { venueId, venuePlayersForSelection: venuePlayers, refreshParticipants } = useVenueContext();
+
+  // Refresh venue participants when entering venue mode
+  useEffect(() => {
+    if (venueId) {
+      console.log('[GolfPlayerSelection] In venue mode, refreshing participants');
+      refreshParticipants();
+    }
+  }, [venueId]); // Run when venueId changes
+
+  // Debug logging
+  useEffect(() => {
+    console.log('[GolfPlayerSelection] Player pools:', {
+      localPlayersCount: localPlayers.length,
+      sessionPlayersCount: sessionPlayers.length,
+      venuePlayersCount: venuePlayers.length,
+      venuePlayers: venuePlayers
+    });
+  }, [localPlayers.length, sessionPlayers.length, venuePlayers.length]);
+
   const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
   const [isAddPlayerModalOpen, setIsAddPlayerModalOpen] = useState(false);
   const [draggedPlayerIndex, setDraggedPlayerIndex] = useState<number | null>(null);
@@ -32,8 +59,34 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
   const [playerSort, setPlayerSort] = useState<'alphabetical' | 'recent'>('recent');
   const [ghostMode, setGhostMode] = useState(false);
   const [ghostPlayers, setGhostPlayers] = useState<Map<string, Player>>(new Map()); // Store ghost player objects
+  const [availableGhostPlayers, setAvailableGhostPlayers] = useState<Set<string>>(new Set()); // Players who have games
 
-  const handlePlayerClick = (playerId: string) => {
+  // Load available ghost players when ghost mode changes
+  useEffect(() => {
+    const loadAvailableGhostPlayers = async () => {
+      if (!ghostMode) {
+        setAvailableGhostPlayers(new Set());
+        return;
+      }
+
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id;
+
+      const available = new Set<string>();
+      for (const player of localPlayers) {
+        const hasGames = await playerHasGames(player.id, 'golf', variant, userId);
+        if (hasGames) {
+          available.add(player.id);
+        }
+      }
+
+      setAvailableGhostPlayers(available);
+    };
+
+    loadAvailableGhostPlayers();
+  }, [ghostMode, localPlayers, variant]);
+
+  const handlePlayerClick = async (playerId: string) => {
     if (ghostMode) {
       // Ghost mode: create and add ghost player
       // Check if there's a ghost player for this base player ID
@@ -53,7 +106,10 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
         const basePlayer = localPlayers.find(p => p.id === playerId);
         if (!basePlayer) return;
 
-        const ghostPlayer = createGhostPlayer(basePlayer, 'golf', variant);
+        const { data: { user } } = await supabase.auth.getUser();
+        const userId = user?.id;
+
+        const ghostPlayer = await createGhostPlayer(basePlayer, 'golf', variant, userId);
         if (!ghostPlayer) {
           alert(`${basePlayer.name} has no games recorded in ${variant.replace(/-/g, ' ')} mode.`);
           return;
@@ -74,42 +130,81 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
     }
   };
 
-  const handleAddGuestPlayer = (name: string, avatar: string, photoUrl?: string) => {
-    const player = addGuestPlayer(name, avatar);
-    if (photoUrl) {
-      updateLocalPlayer(player.id, { photoUrl });
+  const handleAddGuestPlayer = async (name: string, avatar: string, photoUrl?: string) => {
+    if (venueId) {
+      // In venue mode: create a venue guest (will automatically add to participants)
+      try {
+        const result = await createVenueGuest(venueId, name, avatar, photoUrl);
+        if (result.success) {
+          // Refresh participants to show new guest in player pool
+          refreshParticipants();
+        } else {
+          alert(result.error || 'Failed to create guest');
+        }
+      } catch (error) {
+        console.error('Error creating venue guest:', error);
+        alert('Failed to create guest');
+      }
+    } else {
+      // Normal mode: add to local storage
+      const player = addGuestPlayer(name, avatar);
+      if (photoUrl) {
+        updateLocalPlayer(player.id, { photoUrl });
+      }
     }
   };
 
   const getFilteredAndSortedPlayers = () => {
-    let filtered = localPlayers;
+    let allPlayers;
+
+    // Create sets for quick lookup
+    const sessionPlayerIds = new Set(sessionPlayers.map(p => p.id));
+    const venuePlayerIds = new Set(venuePlayers.map(p => p.id));
+
+    if (sessionPlayers.length > 0) {
+      // When in a session: show session participants + local temp guests only
+      // This prevents duplicates and ensures we see everyone's Supabase profiles
+      const localGuests = localPlayers.filter(p => p.isGuest);
+      allPlayers = [...sessionPlayers, ...localGuests];
+    } else if (venuePlayers.length > 0) {
+      // When at a venue: show venue participants + local players not already in venue
+      // This ensures the venue owner and any local players still appear
+      const localPlayersNotInVenue = localPlayers.filter(p => !venuePlayerIds.has(p.id));
+      allPlayers = [...venuePlayers, ...localPlayersNotInVenue];
+    } else {
+      // When not in a session or venue: show all local players
+      allPlayers = [...localPlayers];
+    }
 
     // Apply ghost mode filter first
     if (ghostMode) {
-      // Only show players who have games in this variant
-      filtered = localPlayers.filter(p => playerHasGames(p.id, 'golf', variant));
+      // Only show players who have games in this variant (from pre-loaded state)
+      allPlayers = allPlayers.filter(p => availableGhostPlayers.has(p.id));
     }
 
     // Apply filter
     if (playerFilter === 'league') {
-      filtered = filtered.filter(p => !p.isGuest);
+      allPlayers = allPlayers.filter(p => !p.isGuest);
     } else if (playerFilter === 'guests') {
-      filtered = filtered.filter(p => p.isGuest);
+      allPlayers = allPlayers.filter(p => p.isGuest);
     }
 
-    // Apply sort
+    // Apply sort (keep session/venue players first within their category)
     if (playerSort === 'alphabetical') {
-      filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+      const priorityPlayers = allPlayers.filter(p => sessionPlayerIds.has(p.id) || venuePlayerIds.has(p.id)).sort((a, b) => a.name.localeCompare(b.name));
+      const otherPlayers = allPlayers.filter(p => !sessionPlayerIds.has(p.id) && !venuePlayerIds.has(p.id)).sort((a, b) => a.name.localeCompare(b.name));
+      return [...priorityPlayers, ...otherPlayers];
     } else {
-      // Sort by recently played (most recent first)
-      filtered = [...filtered].sort((a, b) => {
-        const aDate = a.lastUsed || a.addedDate;
-        const bDate = b.lastUsed || b.addedDate;
+      // Sort by recently played, but session players always first
+      const sessionPlayersFiltered = allPlayers.filter(p => sessionPlayerIds.has(p.id));
+      const otherPlayersFiltered = allPlayers.filter(p => !sessionPlayerIds.has(p.id)).sort((a, b) => {
+        // Session members don't have lastUsed/addedDate, so handle safely
+        const aDate = ('lastUsed' in a ? a.lastUsed : null) || ('addedDate' in a ? a.addedDate : null) || new Date(0).toISOString();
+        const bDate = ('lastUsed' in b ? b.lastUsed : null) || ('addedDate' in b ? b.addedDate : null) || new Date(0).toISOString();
         return new Date(bDate).getTime() - new Date(aDate).getTime();
       });
+      return [...sessionPlayersFiltered, ...otherPlayersFiltered];
     }
-
-    return filtered;
   };
 
   const filteredPlayers = getFilteredAndSortedPlayers();
@@ -118,7 +213,20 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
   const getPlayer = (playerId: string): Player | StoredPlayer | null => {
     const ghostPlayer = ghostPlayers.get(playerId);
     if (ghostPlayer) return ghostPlayer;
-    return localPlayers.find(p => p.id === playerId) || null;
+
+    // Check local players first
+    const localPlayer = localPlayers.find(p => p.id === playerId);
+    if (localPlayer) return localPlayer;
+
+    // Then check session players
+    const sessionPlayer = sessionPlayers.find(p => p.id === playerId);
+    if (sessionPlayer) return sessionPlayer as StoredPlayer;
+
+    // Then check venue players
+    const venuePlayer = venuePlayers.find(p => p.id === playerId);
+    if (venuePlayer) return venuePlayer;
+
+    return null;
   };
 
   // Helper to check if a base player is selected (including as a ghost)
@@ -343,39 +451,43 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
       {/* Filter and Sort Controls */}
       <div className="px-8 mb-3">
         <div className="flex justify-between items-center gap-4">
-          {/* Filter buttons */}
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPlayerFilter('all')}
-              className={`px-4 py-2 font-bold rounded transition-colors ${
-                playerFilter === 'all'
-                  ? 'bg-[#6b1a8b] text-white'
-                  : 'bg-[#666666] text-white hover:bg-[#777777]'
-              }`}
-            >
-              ALL
-            </button>
-            <button
-              onClick={() => setPlayerFilter('league')}
-              className={`px-4 py-2 font-bold rounded transition-colors ${
-                playerFilter === 'league'
-                  ? 'bg-[#6b1a8b] text-white'
-                  : 'bg-[#666666] text-white hover:bg-[#777777]'
-              }`}
-            >
-              LEAGUE
-            </button>
-            <button
-              onClick={() => setPlayerFilter('guests')}
-              className={`px-4 py-2 font-bold rounded transition-colors ${
-                playerFilter === 'guests'
-                  ? 'bg-[#6b1a8b] text-white'
-                  : 'bg-[#666666] text-white hover:bg-[#777777]'
-              }`}
-            >
-              GUESTS
-            </button>
-          </div>
+          {/* Filter buttons - Show in venue mode */}
+          {venuePlayers.length > 0 ? (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPlayerFilter('all')}
+                className={`px-4 py-2 font-bold rounded transition-colors ${
+                  playerFilter === 'all'
+                    ? 'bg-[#6b1a8b] text-white'
+                    : 'bg-[#666666] text-white hover:bg-[#777777]'
+                }`}
+              >
+                ALL
+              </button>
+              <button
+                onClick={() => setPlayerFilter('league')}
+                className={`px-4 py-2 font-bold rounded transition-colors ${
+                  playerFilter === 'league'
+                    ? 'bg-[#6b1a8b] text-white'
+                    : 'bg-[#666666] text-white hover:bg-[#777777]'
+                }`}
+              >
+                PLAYERS
+              </button>
+              <button
+                onClick={() => setPlayerFilter('guests')}
+                className={`px-4 py-2 font-bold rounded transition-colors ${
+                  playerFilter === 'guests'
+                    ? 'bg-[#6b1a8b] text-white'
+                    : 'bg-[#666666] text-white hover:bg-[#777777]'
+                }`}
+              >
+                GUESTS
+              </button>
+            </div>
+          ) : (
+            <div></div> /* Spacer for layout */
+          )}
 
           {/* Ghost Mode Toggle (Practice Mode Only) */}
           {playMode === 'practice' && (
@@ -432,6 +544,7 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
                 teamColor={getPlayerColor(player.id)}
                 avatar={player.avatar}
                 photoUrl={player.photoUrl}
+                isSessionMember={(player as any).isSessionMember || false}
               />
             </div>
           ))}
@@ -442,7 +555,7 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
             >
               <span className="text-white text-4xl">+</span>
             </button>
-            <span className="text-white text-sm font-bold">ADD PLAYER</span>
+            <span className="text-white text-sm font-bold">{venueId ? 'ADD GUEST' : 'ADD PLAYER'}</span>
           </div>
         </div>
       </div>
@@ -455,6 +568,7 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
         isOpen={isAddPlayerModalOpen}
         onClose={() => setIsAddPlayerModalOpen(false)}
         onAdd={handleAddGuestPlayer}
+        title={venueId ? 'ADD VENUE GUEST' : 'ADD GUEST PLAYER'}
       />
     </main>
   );

@@ -6,10 +6,11 @@ import Link from 'next/link';
 interface GameModeCardProps {
   title: string;
   href: string;
-  color: 'cricket' | 'golf' | 'extra' | 'tbd' | 'gray';
+  color: 'cricket' | 'golf' | 'extra' | 'tbd' | 'gray' | 'purple';
   size?: 'large' | 'small';
   disabled?: boolean;
   subtitle?: string;
+  badgeCount?: number;
 }
 
 const colorClasses = {
@@ -18,13 +19,19 @@ const colorClasses = {
   extra: 'bg-[#1a5a5a]',
   tbd: 'bg-[#9d8b1a]',
   gray: 'bg-[#666666]',
+  purple: 'bg-[#6b1a8b]',
 };
 
-export default function GameModeCard({ title, href, color, size = 'large', disabled = false, subtitle }: GameModeCardProps) {
+export default function GameModeCard({ title, href, color, size = 'large', disabled = false, subtitle, badgeCount }: GameModeCardProps) {
   const bgColor = colorClasses[color];
 
   const content = (
-    <div className="flex flex-col items-center justify-center gap-2 px-4 w-full h-full">
+    <div className="flex flex-col items-center justify-center gap-2 px-4 w-full h-full relative">
+      {badgeCount !== undefined && badgeCount > 0 && (
+        <div className="absolute top-2 right-2 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center shadow-lg">
+          {badgeCount > 99 ? '99+' : badgeCount}
+        </div>
+      )}
       <span className="text-white text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold tracking-wider text-center leading-tight">
         {title}
       </span>

@@ -6,9 +6,15 @@ import { GolfVariant } from '../types/game';
 import { StoredPlayer } from '../types/storage';
 import { usePlayerContext } from '../contexts/PlayerContext';
 import { useAppContext } from '../contexts/AppContext';
+import { useVenueContext } from '../contexts/VenueContext';
 import { getCourseRecord } from '../lib/golfStats';
 import { getGhostPlayerHistory } from '../lib/ghostPlayer';
 import { trackGolfGame } from '../lib/analytics';
+import { syncGolfMatch, syncVenueMatchResults, canSyncToSupabase } from '../lib/supabaseSync';
+import { findOrCreateBoardByName } from '../lib/venue';
+import { createClient } from '../lib/supabase/client';
+
+const supabase = createClient();
 
 interface GolfGameProps {
   variant: GolfVariant;
@@ -26,11 +32,12 @@ export default function GolfGame({ variant }: GolfGameProps) {
   const router = useRouter();
   const { localPlayers, updateLocalPlayer } = usePlayerContext();
   const { selectedPlayers, tieBreakerEnabled, golfCourseName, playMode, courseBannerImage, courseBannerOpacity, cameraEnabled, setCameraEnabled, showCourseRecord, showCourseName } = useAppContext();
+  const { venueId, venuePlayersForSelection: venuePlayers } = useVenueContext();
   const [players, setPlayers] = useState<StoredPlayer[]>([]);
   const [scores, setScores] = useState<PlayerScore[]>([]);
   const [currentHole, setCurrentHole] = useState(0); // 0-17 for holes 1-18, 18+ for tie breaker
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0);
-  const [courseRecord, setCourseRecord] = useState(getCourseRecord(golfCourseName));
+  const [courseRecord, setCourseRecord] = useState('Loading...');
   const [dividerPosition, setDividerPosition] = useState(() => {
     // Load saved divider position from localStorage
     if (typeof window !== 'undefined') {
@@ -63,6 +70,15 @@ export default function GolfGame({ variant }: GolfGameProps) {
   const [inTieBreaker, setInTieBreaker] = useState(false);
   const [tieBreakerHoles, setTieBreakerHoles] = useState<(number | null)[][]>([]); // [playerIndex][holeIndex]
   const [tieBreakerRound, setTieBreakerRound] = useState(0); // 0 = first round (holes 19-20), 1 = second round, etc.
+
+  // Load course record
+  useEffect(() => {
+    const loadRecord = async () => {
+      const record = await getCourseRecord(golfCourseName);
+      setCourseRecord(record);
+    };
+    loadRecord();
+  }, [golfCourseName]);
 
   // Initialize players and scores from selected players
   useEffect(() => {
@@ -256,32 +272,50 @@ export default function GolfGame({ variant }: GolfGameProps) {
     // Check if this hole hasn't been scored yet
     if (scores[currentPlayerIndex]?.holes[currentHole] !== null) return;
 
-    // Get ghost player's best game history
-    const history = getGhostPlayerHistory(
-      currentPlayer.id,
-      'golf',
-      variant,
-      currentPlayer.ghostBasePlayerId
-    );
+    let isCancelled = false;
+    let timer: NodeJS.Timeout;
 
-    if (history.length === 0) {
-      console.warn(`No history found for ghost player ${currentPlayer.name}`);
-      return;
-    }
+    // Get ghost player's best game history (async)
+    const loadAndScoreGhost = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id;
 
-    // Get the score for the current hole (holes are 0-indexed in history)
-    const holeScore = history[currentHole];
-    if (!holeScore || typeof holeScore.score !== 'number') {
-      console.warn(`No score found for ghost player ${currentPlayer.name} on hole ${currentHole + 1}`);
-      return;
-    }
+      const history = await getGhostPlayerHistory(
+        currentPlayer.id,
+        'golf',
+        variant,
+        currentPlayer.ghostBasePlayerId!,
+        userId
+      );
 
-    // Auto-score after a brief delay (500ms) to make it visible
-    const timer = setTimeout(() => {
-      handleScoreInput(holeScore.score);
-    }, 500);
+      if (isCancelled) return;
 
-    return () => clearTimeout(timer);
+      if (history.length === 0) {
+        console.warn(`No history found for ghost player ${currentPlayer.name}`);
+        return;
+      }
+
+      // Get the score for the current hole (holes are 0-indexed in history)
+      const holeScore = history[currentHole];
+      if (!holeScore || typeof holeScore.score !== 'number') {
+        console.warn(`No score found for ghost player ${currentPlayer.name} on hole ${currentHole + 1}`);
+        return;
+      }
+
+      // Auto-score after a brief delay (500ms) to make it visible
+      timer = setTimeout(() => {
+        if (!isCancelled) {
+          handleScoreInput(holeScore.score);
+        }
+      }, 500);
+    };
+
+    loadAndScoreGhost();
+
+    return () => {
+      isCancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [currentPlayerIndex, currentHole, players, scores, gameComplete, inTieBreaker, variant]);
 
   // Check if there's a tie for first place
@@ -548,6 +582,10 @@ export default function GolfGame({ variant }: GolfGameProps) {
     const matchPlayPoints = variant === 'match-play' ? calculateMatchPlayPoints(0, 18) : undefined;
     const skinsPoints = variant === 'skins' ? calculateSkinsPoints(0, 18) : undefined;
 
+    // Get current user ID to link their player data
+    const { data: { user } } = await supabase.auth.getUser();
+    const currentUserId = user?.id;
+
     // Filter out ghost players - we don't want to save their stats
     const realPlayersData = players
       .map((player, index) => ({
@@ -556,15 +594,36 @@ export default function GolfGame({ variant }: GolfGameProps) {
         isGhost: player.isGhost || false,
       }))
       .filter(p => !p.isGhost)
-      .map(({ player, index }) => ({
-        playerId: player.id,
-        playerName: player.name,
-        holeScores: scores[index].holes, // Only first 18 holes (tie breaker excluded)
-        totalScore: calculateTotal(scores[index].holes, 0, 18), // Only count first 18 holes
-        tieBreakerScores: inTieBreaker ? tieBreakerHoles[index] : undefined,
-        matchPlayPoints: matchPlayPoints ? matchPlayPoints[index] : undefined,
-        skinsPoints: skinsPoints ? skinsPoints[index] : undefined,
-      }));
+      .map(({ player, index }) => {
+        // Check if this player belongs to the logged-in user
+        // First check if it's a venue participant (they have userId in their id field)
+        const venuePlayer = venuePlayers.find(p => p.id === player.id);
+
+        let playerUserId: string | undefined;
+
+        if (venuePlayer) {
+          // Venue participant - use their actual userId (already in the id field)
+          playerUserId = venuePlayer.id;
+        } else {
+          // Local player - check if they belong to the current user
+          const storedPlayer = localPlayers.find(p => p.id === player.id);
+          const isCurrentUser = currentUserId && storedPlayer && storedPlayer.createdBy === currentUserId;
+          playerUserId = isCurrentUser ? currentUserId : undefined;
+        }
+
+        return {
+          playerId: player.id,
+          playerName: player.name,
+          userId: playerUserId, // Link to Supabase user
+          avatar: player.avatar,
+          photoUrl: player.photoUrl,
+          holeScores: scores[index].holes, // Only first 18 holes (tie breaker excluded)
+          totalScore: calculateTotal(scores[index].holes, 0, 18), // Only count first 18 holes
+          tieBreakerScores: inTieBreaker ? tieBreakerHoles[index] : undefined,
+          matchPlayPoints: matchPlayPoints ? matchPlayPoints[index] : undefined,
+          skinsPoints: skinsPoints ? skinsPoints[index] : undefined,
+        };
+      });
 
     // Prepare match data
     const matchData = {
@@ -587,6 +646,50 @@ export default function GolfGame({ variant }: GolfGameProps) {
       existingMatches.push(matchData);
       localStorage.setItem('golfMatches', JSON.stringify(existingMatches));
       console.log('Match saved successfully!');
+
+      // Sync to Supabase for analytics and cross-device stats
+      const canSync = await canSyncToSupabase();
+      console.log('[GolfGame] venueId at save time:', venueId);
+      console.log('[GolfGame] venuePlayers count:', venuePlayers.length);
+      if (canSync) {
+        console.log('🔄 Starting Supabase sync for golf match...');
+
+        // Auto-assign board based on course name for venue games
+        let boardId: string | undefined = undefined;
+        if (venueId && golfCourseName) {
+          console.log(`🎯 Finding or creating board for course: "${golfCourseName}"`);
+          const boardResult = await findOrCreateBoardByName(venueId, golfCourseName);
+          if (boardResult.success && boardResult.boardId) {
+            boardId = boardResult.boardId;
+            console.log(`✅ Board assigned: ${boardId}`);
+          } else {
+            console.error(`⚠️ Failed to assign board: ${boardResult.error}`);
+          }
+        }
+
+        await syncGolfMatch({
+          matchId: matchData.matchId,
+          matchData: matchData,
+          players: matchData.players,
+          courseId: matchData.courseName,
+          gameMode: matchData.variant,
+          completedAt: new Date(matchData.date),
+          venueId: venueId || undefined,
+          boardId: boardId,
+        });
+        console.log('✅ Supabase sync complete!');
+
+        // If this is a venue game, sync to all venue participants
+        if (venueId) {
+          console.log('🏢 Syncing match to all venue participants...');
+          await syncVenueMatchResults(venueId, matchData.matchId, 'golf_matches');
+          console.log('✅ Venue participant sync complete!');
+        } else {
+          console.log('⏭️ No venueId - skipping venue participant sync');
+        }
+      } else {
+        console.log('⏭️ Not authenticated, skipping Supabase sync');
+      }
 
       // Update lastUsed timestamp for all real players (not ghosts)
       const realPlayers = players.filter(p => !p.isGhost);

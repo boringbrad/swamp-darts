@@ -6,9 +6,10 @@ interface LastVsBestGameChartProps {
   lastGame: GolfMatch | null;
   bestGame: GolfMatch | null;
   playerId: string;
+  userId?: string;
 }
 
-export default function LastVsBestGameChart({ lastGame, bestGame, playerId }: LastVsBestGameChartProps) {
+export default function LastVsBestGameChart({ lastGame, bestGame, playerId, userId }: LastVsBestGameChartProps) {
   if (!lastGame || !bestGame) {
     return (
       <div className="bg-[#333333] rounded-lg p-6 mb-8">
@@ -20,10 +21,33 @@ export default function LastVsBestGameChart({ lastGame, bestGame, playerId }: La
     );
   }
 
-  const lastGamePlayer = lastGame.players.find(p => p.playerId === playerId);
-  const bestGamePlayer = bestGame.players.find(p => p.playerId === playerId);
+  // Try to find player - prioritize userId for admin stats
+  let lastGamePlayer;
+  if (userId) {
+    lastGamePlayer = lastGame.players.find(p => (p as any).userId === userId);
+  }
+  if (!lastGamePlayer) {
+    lastGamePlayer = lastGame.players.find(p => p.playerId === playerId);
+  }
+  if (!lastGamePlayer && lastGame.players.length === 1) {
+    lastGamePlayer = lastGame.players[0];
+  }
 
-  if (!lastGamePlayer || !bestGamePlayer) return null;
+  let bestGamePlayer;
+  if (userId) {
+    bestGamePlayer = bestGame.players.find(p => (p as any).userId === userId);
+  }
+  if (!bestGamePlayer) {
+    bestGamePlayer = bestGame.players.find(p => p.playerId === playerId);
+  }
+  if (!bestGamePlayer && bestGame.players.length === 1) {
+    bestGamePlayer = bestGame.players[0];
+  }
+
+  if (!lastGamePlayer || !bestGamePlayer) {
+    console.warn('LastVsBestGameChart: Could not find player', { playerId, lastGame, bestGame });
+    return null;
+  }
 
   const lastGameScores = lastGamePlayer.holeScores.filter((s): s is number => s !== null);
   const bestGameScores = bestGamePlayer.holeScores.filter((s): s is number => s !== null);

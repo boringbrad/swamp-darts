@@ -6,6 +6,9 @@
 import { CricketMatch, CricketPlayerStats } from '../types/stats';
 import { CricketVariant } from '../types/game';
 import { playerStorage } from './playerStorage';
+import { createClient } from './supabase/client';
+
+const supabase = createClient();
 
 /**
  * Load all cricket matches from localStorage
@@ -24,13 +27,15 @@ export function loadCricketMatches(): CricketMatch[] {
 /**
  * Calculate comprehensive cricket stats for all players or filtered by player/variant
  */
-export function calculateCricketStats(
+export async function calculateCricketStats(
   matches: CricketMatch[],
   filters?: {
     playerId?: string;
     variant?: string;
+    userId?: string; // User ID for matching player data across devices
   }
-): CricketPlayerStats[] {
+): Promise<CricketPlayerStats[]> {
+  const currentUserId = filters?.userId;
   // Filter matches
   let filteredMatches = matches;
 
@@ -38,36 +43,55 @@ export function calculateCricketStats(
     filteredMatches = filteredMatches.filter(m => m.variant === filters.variant);
   }
 
+  // Get the filtered player's name for matching (if filtering by specific player)
+  let filteredPlayerName: string | undefined;
+  if (filters?.playerId) {
+    const player = playerStorage.getPlayer(filters.playerId);
+    filteredPlayerName = player?.name;
+  }
+
   // Group matches by player
   const playerMatchesMap = new Map<string, { player: any; matches: CricketMatch[] }>();
 
   filteredMatches.forEach(match => {
     match.players.forEach(player => {
-      if (filters?.playerId && player.playerId !== filters.playerId) {
-        return;
+      // Apply player filter - match by playerId, userId, OR playerName (for cross-device/legacy stats)
+      if (filters?.playerId) {
+        const matchesByPlayerId = player.playerId === filters.playerId;
+        const matchesByUserId = currentUserId && (player as any).userId === currentUserId;
+        const matchesByName = filteredPlayerName &&
+          player.playerName.toLowerCase() === filteredPlayerName.toLowerCase();
+
+        if (!matchesByPlayerId && !matchesByUserId && !matchesByName) {
+          return;
+        }
       }
 
-      if (!playerMatchesMap.has(player.playerId)) {
-        playerMatchesMap.set(player.playerId, {
+      // Use a consistent key - prefer the filter's playerId if it matches the user
+      const mapKey = filters?.playerId ? filters.playerId : player.playerId;
+
+      if (!playerMatchesMap.has(mapKey)) {
+        playerMatchesMap.set(mapKey, {
           player: player,
           matches: []
         });
       }
 
-      playerMatchesMap.get(player.playerId)!.matches.push(match);
+      playerMatchesMap.get(mapKey)!.matches.push(match);
     });
   });
 
   // Get list of valid player IDs (players that still exist in the system)
   const validPlayerIds = new Set(playerStorage.getAllPlayers().map(p => p.id));
 
-  // Calculate stats for each player, but only if they still exist
+  // Calculate stats for each player
   const allStats: CricketPlayerStats[] = [];
 
   playerMatchesMap.forEach(({ player, matches }) => {
-    // Only include stats for players that still exist in the player list
-    if (validPlayerIds.has(player.playerId)) {
-      const stats = calculatePlayerStats(player.playerId, matches);
+    // If filtering by a specific player, always include them (cross-device stats)
+    // Otherwise, only include players that still exist in the player list
+    if (filters?.playerId || validPlayerIds.has(player.playerId)) {
+      const stats = calculatePlayerStats(player.playerId, matches, currentUserId);
       allStats.push(stats);
     }
   });
@@ -79,7 +103,7 @@ export function calculateCricketStats(
 /**
  * Calculate stats for a single player across their matches
  */
-function calculatePlayerStats(playerId: string, matches: CricketMatch[]): CricketPlayerStats {
+function calculatePlayerStats(playerId: string, matches: CricketMatch[], userId?: string): CricketPlayerStats {
   const gamesPlayed = matches.length;
   let wins = 0;
   let losses = 0;
@@ -118,13 +142,30 @@ function calculatePlayerStats(playerId: string, matches: CricketMatch[]): Cricke
     'fatal-4-way': { gamesPlayed: 0, wins: 0, averageMPR: 0 },
   };
 
+  // Helper function to check if a match was won by this player (by playerId or userId)
+  const isWinner = (match: CricketMatch) => {
+    if (match.winnerId === playerId) return true;
+    if (userId) {
+      const winnerData = match.players.find(p => p.playerId === match.winnerId);
+      return winnerData && (winnerData as any).userId === userId;
+    }
+    return false;
+  };
+
   // Process each match
   matches.forEach(match => {
-    const playerData = match.players.find(p => p.playerId === playerId);
+    // Try to find player by playerId first, then by userId if available
+    let playerData = match.players.find(p => p.playerId === playerId);
+
+    // If not found by playerId and userId is available, try matching by userId
+    if (!playerData && userId) {
+      playerData = match.players.find(p => (p as any).userId === userId);
+    }
+
     if (!playerData) return;
 
     // Win/loss/tie
-    if (match.winnerId === playerId) {
+    if (isWinner(match)) {
       wins++;
     } else if (match.winnerId === null) {
       ties++;

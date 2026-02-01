@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { GolfPlayerStats, GolfMatch } from '@/app/types/stats';
 import { loadGolfMatches, calculateGolfStats } from '@/app/lib/golfStats';
+import { loadGolfMatchesFromSupabase } from '@/app/lib/supabaseSync';
+import { createClient } from '@/app/lib/supabase/client';
 import StatsSummaryCards from './StatsSummaryCards';
 import HoleAverageChart from './HoleAverageChart';
 import ScoreProbabilityHeatmap from './ScoreProbabilityHeatmap';
@@ -12,18 +14,22 @@ import ShotAccuracyPieChart from './ShotAccuracyPieChart';
 import DualRangeSlider from './DualRangeSlider';
 import GameHistorySection from './GameHistorySection';
 
+const supabase = createClient();
+
 interface GolfStatsDisplayProps {
   playerFilter: string; // 'all' or playerId
-  courseFilter: string; // 'all' or course name
-  playModeFilter: string; // 'all', 'practice', 'casual', or 'league'
+  courseFilter?: string; // 'all' or course name
+  playModeFilter?: string; // 'all', 'practice', 'casual', or 'league'
+  matches?: GolfMatch[]; // Optional pre-loaded matches (for FriendStats/VenueStats)
 }
 
-export default function GolfStatsDisplay({ playerFilter, courseFilter, playModeFilter }: GolfStatsDisplayProps) {
+export default function GolfStatsDisplay({ playerFilter, courseFilter = 'all', playModeFilter = 'all', matches: providedMatches }: GolfStatsDisplayProps) {
   const [stats, setStats] = useState<GolfPlayerStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [gameRange, setGameRange] = useState<{ start: number; end: number } | null>(null);
   const [allMatches, setAllMatches] = useState<GolfMatch[]>([]);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [currentUserId, setCurrentUserId] = useState<string | undefined>();
 
   // Listen for storage changes (e.g., when players are deleted)
   useEffect(() => {
@@ -48,28 +54,69 @@ export default function GolfStatsDisplay({ playerFilter, courseFilter, playModeF
   }, []);
 
   useEffect(() => {
-    setLoading(true);
+    const loadStatsData = async () => {
+      setLoading(true);
 
-    // Load matches
-    const matches = loadGolfMatches();
-    setAllMatches(matches);
+      // Check if user is logged in
+      const { data: { user } } = await supabase.auth.getUser();
 
-    // Initialize game range to all games
-    if (gameRange === null && matches.length > 0) {
-      setGameRange({ start: 0, end: matches.length - 1 });
-    }
+      let matches: GolfMatch[] = [];
 
-    const filters = {
-      playerId: playerFilter !== 'all' ? playerFilter : undefined,
-      courseName: courseFilter !== 'all' ? courseFilter : undefined,
-      playMode: playModeFilter !== 'all' ? playModeFilter : undefined,
-      gameRange: gameRange || undefined,
+      // Use provided matches if available (from FriendStats/VenueStats)
+      if (providedMatches) {
+        console.log('Using provided matches:', providedMatches.length);
+        matches = providedMatches;
+        if (user) {
+          setCurrentUserId(user.id);
+        }
+      } else if (user) {
+        // For logged-in users, query Supabase directly by user_id
+        console.log('Loading golf matches from Supabase for user:', user.id);
+        setCurrentUserId(user.id); // Store userId for filtering playerMatches
+        const { data: supabaseMatches, error } = await supabase
+          .from('golf_matches')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          console.error('Error loading golf matches:', error);
+        } else {
+          // Extract match_data from each row
+          matches = (supabaseMatches || []).map(m => m.match_data as GolfMatch);
+          console.log('Loaded matches from Supabase:', matches.length);
+        }
+      } else {
+        // Fallback to localStorage for non-logged-in users
+        console.log('Loading golf matches from localStorage');
+        matches = loadGolfMatches();
+      }
+
+      setAllMatches(matches);
+
+      // Initialize game range to all games
+      if (gameRange === null && matches.length > 0) {
+        setGameRange({ start: 0, end: matches.length - 1 });
+      }
+
+      // If filtering by specific player, only pass userId if viewing YOUR OWN stats (not friends)
+      // When provided matches from FriendStats/VenueStats, don't pass userId
+      const filters = {
+        playerId: playerFilter !== 'all' ? playerFilter : undefined,
+        courseName: courseFilter !== 'all' ? courseFilter : undefined,
+        playMode: playModeFilter !== 'all' ? playModeFilter : undefined,
+        gameRange: gameRange || undefined,
+        // Only pass userId when NOT using provided matches (i.e., viewing your own stats)
+        userId: (user && playerFilter !== 'all' && !providedMatches) ? user.id : undefined,
+      };
+
+      const calculatedStats = await calculateGolfStats(matches, filters);
+      setStats(calculatedStats);
+      setLoading(false);
     };
 
-    const calculatedStats = calculateGolfStats(matches, filters);
-    setStats(calculatedStats);
-    setLoading(false);
-  }, [playerFilter, courseFilter, playModeFilter, gameRange, refreshTrigger]);
+    loadStatsData();
+  }, [playerFilter, courseFilter, playModeFilter, gameRange, refreshTrigger, providedMatches]);
 
   if (loading) {
     return (
@@ -95,20 +142,47 @@ export default function GolfStatsDisplay({ playerFilter, courseFilter, playModeF
     const playerStats = stats[0];
 
     // Get player-specific matches for new charts
+    // Match by playerId, userId, OR playerName (for cross-device/legacy stats)
     const playerMatches = allMatches.filter(match =>
-      match.players.some(p => p.playerId === playerFilter)
+      match.players.some(p =>
+        p.playerId === playerFilter ||
+        (currentUserId && (p as any).userId === currentUserId) ||
+        p.playerName.toLowerCase() === playerStats.playerName.toLowerCase()
+      )
     );
 
-    // Get last game and best game
-    const lastGame = playerMatches.length > 0 ? playerMatches[playerMatches.length - 1] : null;
-    const bestGame = playerMatches.length > 0
-      ? playerMatches.reduce((best, match) => {
-          const playerData = match.players.find(p => p.playerId === playerFilter);
-          const bestPlayerData = best.players.find(p => p.playerId === playerFilter);
-          if (!playerData || !bestPlayerData) return best;
-          return playerData.totalScore < bestPlayerData.totalScore ? match : best;
-        })
-      : null;
+    console.log('[GolfStatsDisplay] Player matches filtered:', {
+      allMatchesCount: allMatches.length,
+      playerMatchesCount: playerMatches.length,
+      playerFilter,
+      currentUserId,
+      playerName: playerStats.playerName
+    });
+
+    // Get last game (most recent - first in array since sorted descending)
+    const lastGame = playerMatches.length > 0 ? playerMatches[0] : null;
+
+    // Get best game (lowest score)
+    let bestGame: GolfMatch | null = null;
+    if (playerMatches.length > 0) {
+      let lowestScore = Infinity;
+
+      for (const match of playerMatches) {
+        // Try to find player by playerId, userId, or name
+        let playerData = match.players.find(p => p.playerId === playerFilter);
+        if (!playerData && currentUserId) {
+          playerData = match.players.find(p => (p as any).userId === currentUserId);
+        }
+        if (!playerData) {
+          playerData = match.players.find(p => p.playerName.toLowerCase() === playerStats.playerName.toLowerCase());
+        }
+
+        if (playerData && playerData.totalScore < lowestScore) {
+          lowestScore = playerData.totalScore;
+          bestGame = match;
+        }
+      }
+    }
 
     return (
       <div>
@@ -150,13 +224,13 @@ export default function GolfStatsDisplay({ playerFilter, courseFilter, playModeF
         <StatsSummaryCards stats={playerStats} />
 
         {/* Last vs Best Game */}
-        <LastVsBestGameChart lastGame={lastGame} bestGame={bestGame} playerId={playerFilter} />
+        <LastVsBestGameChart lastGame={lastGame} bestGame={bestGame} playerId={playerFilter} userId={currentUserId} />
 
         {/* Scores Over Games */}
-        <ScoresOverGamesChart matches={playerMatches} playerId={playerFilter} />
+        <ScoresOverGamesChart matches={playerMatches} playerId={playerFilter} userId={currentUserId} playerName={playerStats.playerName} />
 
         {/* Shot Accuracy Pie Chart */}
-        <ShotAccuracyPieChart matches={playerMatches} playerId={playerFilter} />
+        <ShotAccuracyPieChart matches={playerMatches} playerId={playerFilter} userId={currentUserId} />
 
         {/* Hole averages */}
         <HoleAverageChart stats={playerStats} />
@@ -208,7 +282,7 @@ export default function GolfStatsDisplay({ playerFilter, courseFilter, playModeF
         )}
 
         {/* Game History */}
-        <GameHistorySection matches={playerMatches} playerId={playerFilter} />
+        <GameHistorySection matches={playerMatches} playerId={playerFilter} userId={currentUserId} />
       </div>
     );
   }

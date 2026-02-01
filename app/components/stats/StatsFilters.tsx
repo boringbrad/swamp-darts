@@ -14,6 +14,7 @@ interface StatsFiltersProps {
   onCourseFilterChange?: (courseName: string) => void;
   playModeFilter?: string;
   onPlayModeFilterChange?: (playMode: string) => void;
+  hidePlayerFilter?: boolean;
 }
 
 const GAME_TYPE_OPTIONS: FilterOption[] = [
@@ -37,6 +38,7 @@ export default function StatsFilters({
   onCourseFilterChange,
   playModeFilter,
   onPlayModeFilterChange,
+  hidePlayerFilter = false,
 }: StatsFiltersProps) {
   const [playerOptions, setPlayerOptions] = useState<FilterOption[]>([
     { value: 'all', label: 'All Players' },
@@ -110,13 +112,15 @@ export default function StatsFilters({
           />
         )}
 
-        {/* Player Filter */}
-        <StatsFilterDropdown
-          label="PLAYER"
-          options={playerOptions}
-          value={playerFilter}
-          onChange={onPlayerFilterChange}
-        />
+        {/* Player Filter - Hidden for regular player accounts */}
+        {!hidePlayerFilter && (
+          <StatsFilterDropdown
+            label="PLAYER"
+            options={playerOptions}
+            value={playerFilter}
+            onChange={onPlayerFilterChange}
+          />
+        )}
 
         {/* Course Filter (Golf only) */}
         {gameType === 'golf' && onCourseFilterChange && (

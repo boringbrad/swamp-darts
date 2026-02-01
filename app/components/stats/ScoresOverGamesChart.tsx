@@ -5,9 +5,11 @@ import { GolfMatch } from '@/app/types/stats';
 interface ScoresOverGamesChartProps {
   matches: GolfMatch[];
   playerId: string;
+  userId?: string;
+  playerName?: string;
 }
 
-export default function ScoresOverGamesChart({ matches, playerId }: ScoresOverGamesChartProps) {
+export default function ScoresOverGamesChart({ matches, playerId, userId, playerName }: ScoresOverGamesChartProps) {
   if (matches.length === 0) {
     return (
       <div className="bg-[#333333] rounded-lg p-6 mb-8">
@@ -19,11 +21,48 @@ export default function ScoresOverGamesChart({ matches, playerId }: ScoresOverGa
     );
   }
 
-  // Extract player scores from matches (in chronological order)
-  const scores = matches.map(match => {
-    const player = match.players.find(p => p.playerId === playerId);
-    return player?.totalScore || 0;
-  });
+  // Extract player scores from matches
+  // Note: matches come in descending order (newest first), so we reverse to show chronological progression
+  const scores = matches
+    .map(match => {
+      let player;
+
+      // Try userId first (most reliable for admin stats)
+      if (userId) {
+        player = match.players.find(p => (p as any).userId === userId);
+      }
+
+      // Try playerId if not found by userId
+      if (!player) {
+        player = match.players.find(p => p.playerId === playerId);
+      }
+
+      // Try playerName if not found by playerId
+      if (!player && playerName) {
+        player = match.players.find(p => p.playerName.toLowerCase() === playerName.toLowerCase());
+      }
+
+      // If still not found and there's only one player, use that player
+      if (!player && match.players.length === 1) {
+        player = match.players[0];
+      }
+
+      return player?.totalScore;
+    })
+    .filter((score): score is number => score !== undefined && score !== null && score > 0) // Filter out invalid scores
+    .reverse(); // Reverse to show oldest → newest (left to right)
+
+  // If no valid scores found, show empty state
+  if (scores.length === 0) {
+    return (
+      <div className="bg-[#333333] rounded-lg p-6 mb-8">
+        <h2 className="text-white text-2xl font-bold mb-6">SCORES OVER TIME</h2>
+        <div className="text-gray-400 text-center py-8">
+          No valid scores found
+        </div>
+      </div>
+    );
+  }
 
   // Calculate average
   const average = scores.reduce((sum, s) => sum + s, 0) / scores.length;

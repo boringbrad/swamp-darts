@@ -5,9 +5,10 @@ import { GolfMatch } from '@/app/types/stats';
 interface ShotAccuracyPieChartProps {
   matches: GolfMatch[];
   playerId: string;
+  userId?: string;
 }
 
-export default function ShotAccuracyPieChart({ matches, playerId }: ShotAccuracyPieChartProps) {
+export default function ShotAccuracyPieChart({ matches, playerId, userId }: ShotAccuracyPieChartProps) {
   if (matches.length === 0) {
     return (
       <div className="bg-[#333333] rounded-lg p-6 mb-8">
@@ -24,7 +25,23 @@ export default function ShotAccuracyPieChart({ matches, playerId }: ShotAccuracy
   let totalShots = 0;
 
   matches.forEach(match => {
-    const player = match.players.find(p => p.playerId === playerId);
+    let player;
+
+    // Try userId first (most reliable for admin stats)
+    if (userId) {
+      player = match.players.find(p => (p as any).userId === userId);
+    }
+
+    // Try playerId if not found by userId
+    if (!player) {
+      player = match.players.find(p => p.playerId === playerId);
+    }
+
+    // If still not found and there's only one player, use that player
+    if (!player && match.players.length === 1) {
+      player = match.players[0];
+    }
+
     if (player) {
       player.holeScores.forEach(score => {
         if (score !== null) {

@@ -5,6 +5,9 @@
 
 import { GolfMatch, GolfPlayerStats } from '../types/stats';
 import { playerStorage } from './playerStorage';
+import { createClient } from './supabase/client';
+
+const supabase = createClient();
 
 /**
  * Load all golf matches from localStorage
@@ -24,15 +27,17 @@ export function loadGolfMatches(): GolfMatch[] {
 /**
  * Calculate comprehensive golf statistics for all players or a specific player
  */
-export function calculateGolfStats(
+export async function calculateGolfStats(
   matches: GolfMatch[],
   filters?: {
     playerId?: string;
     courseName?: string;
     playMode?: string;
     gameRange?: { start: number; end: number }; // Game indices (0-based)
+    userId?: string; // User ID for matching player data across devices
   }
-): GolfPlayerStats[] {
+): Promise<GolfPlayerStats[]> {
+  const currentUserId = filters?.userId;
   // Apply filters
   let filteredMatches = matches;
 
@@ -50,36 +55,91 @@ export function calculateGolfStats(
     filteredMatches = filteredMatches.filter(m => m.playMode === filters.playMode);
   }
 
+  // Get the filtered player's name for matching (if filtering by specific player)
+  let filteredPlayerName: string | undefined;
+  if (filters?.playerId && filters.playerId !== 'all') {
+    const player = playerStorage.getPlayer(filters.playerId);
+    filteredPlayerName = player?.name;
+  }
+
   // Group matches by player
   const playerMatchMap = new Map<string, { name: string; matches: GolfMatch[] }>();
 
-  filteredMatches.forEach(match => {
+  console.log('[calculateGolfStats] Processing matches:', {
+    totalMatches: filteredMatches.length,
+    filters,
+    currentUserId,
+    filteredPlayerName
+  });
+
+  filteredMatches.forEach((match, matchIndex) => {
+    console.log(`[calculateGolfStats] Match ${matchIndex + 1}:`, {
+      players: match.players.map(p => ({
+        playerId: p.playerId,
+        userId: (p as any).userId,
+        playerName: p.playerName
+      }))
+    });
+
     match.players.forEach(player => {
-      // Apply player filter
-      if (filters?.playerId && filters.playerId !== 'all' && player.playerId !== filters.playerId) {
-        return;
+      // Apply player filter - match by playerId, userId, OR playerName (for cross-device/legacy stats)
+      if (filters?.playerId && filters.playerId !== 'all') {
+        const matchesByPlayerId = player.playerId === filters.playerId;
+        const matchesByUserId = currentUserId && (player as any).userId === currentUserId;
+        const matchesByName = filteredPlayerName &&
+          player.playerName.toLowerCase() === filteredPlayerName.toLowerCase();
+
+        console.log('[calculateGolfStats] Checking player:', {
+          playerId: player.playerId,
+          userId: (player as any).userId,
+          playerName: player.playerName,
+          matchesByPlayerId,
+          matchesByUserId,
+          matchesByName,
+          willInclude: matchesByPlayerId || matchesByUserId || matchesByName
+        });
+
+        if (!matchesByPlayerId && !matchesByUserId && !matchesByName) {
+          return;
+        }
       }
 
-      if (!playerMatchMap.has(player.playerId)) {
-        playerMatchMap.set(player.playerId, {
+      // Use a consistent key - prefer the filter's playerId if it matches the user
+      const mapKey = (filters?.playerId && filters.playerId !== 'all') ? filters.playerId : player.playerId;
+
+      console.log('[calculateGolfStats] Adding match to playerMatchMap with key:', mapKey);
+
+      if (!playerMatchMap.has(mapKey)) {
+        playerMatchMap.set(mapKey, {
           name: player.playerName,
           matches: []
         });
       }
-      playerMatchMap.get(player.playerId)!.matches.push(match);
+      playerMatchMap.get(mapKey)!.matches.push(match);
+
+      console.log('[calculateGolfStats] Current match count for player:', playerMatchMap.get(mapKey)!.matches.length);
     });
   });
+
+  console.log('[calculateGolfStats] Final playerMatchMap:',
+    Array.from(playerMatchMap.entries()).map(([key, data]) => ({
+      key,
+      name: data.name,
+      matchCount: data.matches.length
+    }))
+  );
 
   // Get list of valid player IDs (players that still exist in the system)
   const validPlayerIds = new Set(playerStorage.getAllPlayers().map(p => p.id));
 
-  // Calculate stats for each player, but only if they still exist
+  // Calculate stats for each player
   const playerStats: GolfPlayerStats[] = [];
 
   playerMatchMap.forEach((data, playerId) => {
-    // Only include stats for players that still exist in the player list
-    if (validPlayerIds.has(playerId)) {
-      const stats = calculatePlayerStats(playerId, data.name, data.matches);
+    // If filtering by a specific player, always include them (cross-device stats)
+    // Otherwise, only include players that still exist in the player list
+    if (filters?.playerId || validPlayerIds.has(playerId)) {
+      const stats = calculatePlayerStats(playerId, data.name, data.matches, currentUserId);
       playerStats.push(stats);
     }
   });
@@ -93,16 +153,28 @@ export function calculateGolfStats(
 function calculatePlayerStats(
   playerId: string,
   playerName: string,
-  matches: GolfMatch[]
+  matches: GolfMatch[],
+  userId?: string
 ): GolfPlayerStats {
   const gamesPlayed = matches.length;
-  const wins = matches.filter(m => m.winnerId === playerId).length;
+
+  // Helper function to check if a match was won by this player (by playerId or userId)
+  const isWinner = (match: GolfMatch) => {
+    if (match.winnerId === playerId) return true;
+    if (userId) {
+      const winnerData = match.players.find(p => p.playerId === match.winnerId);
+      return winnerData && (winnerData as any).userId === userId;
+    }
+    return false;
+  };
+
+  const wins = matches.filter(isWinner).length;
   const winRate = gamesPlayed > 0 ? (wins / gamesPlayed) * 100 : 0;
 
   // Calculate score statistics
   const allScores: number[] = [];
   const tieBreakerWins = matches.filter(
-    m => m.winnerId === playerId && m.wonByTieBreaker
+    m => isWinner(m) && m.wonByTieBreaker
   ).length;
 
   // Initialize hole statistics
@@ -120,7 +192,14 @@ function calculatePlayerStats(
   };
 
   matches.forEach(match => {
-    const playerData = match.players.find(p => p.playerId === playerId);
+    // Try to find player by playerId first, then by userId if available
+    let playerData = match.players.find(p => p.playerId === playerId);
+
+    // If not found by playerId and userId is available, try matching by userId
+    if (!playerData && userId) {
+      playerData = match.players.find(p => (p as any).userId === userId);
+    }
+
     if (!playerData) return;
 
     // Collect scores
@@ -142,7 +221,7 @@ function calculatePlayerStats(
     // Variant stats
     const variant = match.variant;
     variantStatsMap[variant].games++;
-    if (match.winnerId === playerId) {
+    if (isWinner(match)) {
       variantStatsMap[variant].wins++;
     }
 
@@ -265,8 +344,26 @@ export function getUniquePlayers(matches: GolfMatch[]): { id: string; name: stri
  * Get the course record (best score) for a specific course
  * Returns string like "PLAYER NAME (51)" or "NO RECORD" if no matches
  */
-export function getCourseRecord(courseName: string): string {
-  const matches = loadGolfMatches();
+export async function getCourseRecord(courseName: string): Promise<string> {
+  // Check if user is logged in
+  const { data: { user } } = await supabase.auth.getUser();
+
+  let matches: GolfMatch[] = [];
+
+  if (user) {
+    // Load from Supabase for logged-in users
+    const { data: supabaseMatches, error } = await supabase
+      .from('golf_matches')
+      .select('*')
+      .eq('user_id', user.id);
+
+    if (!error && supabaseMatches) {
+      matches = supabaseMatches.map(m => m.match_data as GolfMatch);
+    }
+  } else {
+    // Fallback to localStorage
+    matches = loadGolfMatches();
+  }
 
   // Filter matches for this specific course
   const courseMatches = matches.filter(m => m.courseName === courseName);

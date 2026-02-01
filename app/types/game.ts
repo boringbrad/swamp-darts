@@ -24,6 +24,7 @@ export interface CricketRules {
   enableKO?: boolean; // Enable K.O. Cricket (hit numbers and skip turn mechanic)
   enablePIN?: boolean; // Enable PIN mechanic (default win condition)
   enable3Darts3Marks?: boolean; // Enable 3 Darts/3 Marks bonus turn mechanic
+  enableLadder?: boolean; // Enable Ladder Match (2 marks on all targets before clearing in order)
 }
 
 // Cricket scoring

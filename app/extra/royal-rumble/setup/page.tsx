@@ -609,8 +609,8 @@ export default function RoyalRumbleSetup() {
         {/* Filter and Sort Controls - Fixed at bottom */}
         <div className="mb-3">
           <div className="flex justify-between items-center gap-4">
-            {/* Filter */}
-            <div className="flex gap-2">
+            {/* Filter - Hidden for player accounts, kept for future venue accounts */}
+            {/* <div className="flex gap-2">
               <button
                 onClick={() => setPlayerFilter('all')}
                 className={`px-3 py-1 text-xs font-bold rounded transition-colors ${
@@ -641,7 +641,8 @@ export default function RoyalRumbleSetup() {
               >
                 GUESTS
               </button>
-            </div>
+            </div> */}
+            <div></div> {/* Spacer for layout */}
 
             {/* Sort */}
             <div className="flex gap-2">

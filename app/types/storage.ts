@@ -10,6 +10,7 @@ export interface StoredPlayer extends Player {
   avatar?: string;
   photoUrl?: string; // Custom photo uploaded or taken by camera
   isGuest: boolean;
+  createdBy?: string; // User ID of the player who created this player/guest
   addedDate: Date;
   lastUsed?: Date;
 }

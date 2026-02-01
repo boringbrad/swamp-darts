@@ -6,9 +6,10 @@ import { GolfMatch } from '@/app/types/stats';
 interface GameHistorySectionProps {
   matches: GolfMatch[];
   playerId: string;
+  userId?: string;
 }
 
-export default function GameHistorySection({ matches, playerId }: GameHistorySectionProps) {
+export default function GameHistorySection({ matches, playerId, userId }: GameHistorySectionProps) {
   const [currentPage, setCurrentPage] = useState(0);
   const [expandedGame, setExpandedGame] = useState<string | null>(null);
   const gamesPerPage = 10;
@@ -57,10 +58,26 @@ export default function GameHistorySection({ matches, playerId }: GameHistorySec
       {/* Games list */}
       <div className="space-y-3">
         {currentGames.map((match) => {
-          const playerData = match.players.find(p => p.playerId === playerId);
+          let playerData;
+
+          // Try userId first (most reliable for admin stats)
+          if (userId) {
+            playerData = match.players.find(p => (p as any).userId === userId);
+          }
+
+          // Try playerId if not found by userId
+          if (!playerData) {
+            playerData = match.players.find(p => p.playerId === playerId);
+          }
+
+          // If still not found and there's only one player, use that player
+          if (!playerData && match.players.length === 1) {
+            playerData = match.players[0];
+          }
+
           if (!playerData) return null;
 
-          const isWinner = match.winnerId === playerId;
+          const isWinner = match.winnerId === playerId || (userId && match.players.find(p => p.playerId === match.winnerId && (p as any).userId === userId));
           const isExpanded = expandedGame === match.matchId;
 
           return (

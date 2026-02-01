@@ -3,6 +3,9 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AppProvider } from "./contexts/AppContext";
 import { PlayerProvider } from "./contexts/PlayerContext";
+import { AuthProvider } from "./contexts/AuthContext";
+import { SessionProvider } from "./contexts/SessionContext";
+import { VenueProvider } from "./contexts/VenueContext";
 import PWARegister from "./components/PWARegister";
 import GoogleAnalytics from "./components/GoogleAnalytics";
 import MobileOrientationLock from "./components/MobileOrientationLock";
@@ -21,8 +24,6 @@ export const metadata: Metadata = {
   title: "Swamp Darts",
   description: "Professional dart scoring app with Cricket, Golf, and custom game modes",
   manifest: "/manifest.json",
-  themeColor: "#1a1a1a",
-  viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
   icons: {
     icon: [
       { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
@@ -32,12 +33,15 @@ export const metadata: Metadata = {
       { url: "/icon-180.png", sizes: "180x180", type: "image/png" },
     ],
   },
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "black-translucent",
-    title: "Swamp Darts",
-  },
 };
+
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: '#1a1a1a',
+}
 
 export default function RootLayout({
   children,
@@ -52,11 +56,17 @@ export default function RootLayout({
         <GoogleAnalytics />
         <PWARegister />
         <MobileOrientationLock />
-        <AppProvider>
-          <PlayerProvider>
-            {children}
-          </PlayerProvider>
-        </AppProvider>
+        <AuthProvider>
+          <AppProvider>
+            <PlayerProvider>
+              <SessionProvider>
+                <VenueProvider>
+                  {children}
+                </VenueProvider>
+              </SessionProvider>
+            </PlayerProvider>
+          </AppProvider>
+        </AuthProvider>
       </body>
     </html>
   );

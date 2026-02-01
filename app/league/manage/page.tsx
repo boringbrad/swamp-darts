@@ -5,10 +5,12 @@ import Header from '@/app/components/Header';
 import PageWrapper from '@/app/components/PageWrapper';
 import AddGuestPlayerModal from '@/app/components/AddGuestPlayerModal';
 import { usePlayerContext } from '@/app/contexts/PlayerContext';
+import { useAppContext } from '@/app/contexts/AppContext';
 import { STOCK_AVATARS } from '@/app/lib/avatars';
 
 export default function ManageLeaguePage() {
   const { localPlayers, addLocalPlayer, updateLocalPlayer, deleteLocalPlayer, addGuestPlayer } = usePlayerContext();
+  const { userProfile } = useAppContext();
   const [isAddPlayerModalOpen, setIsAddPlayerModalOpen] = useState(false);
   const [isAddGuestModalOpen, setIsAddGuestModalOpen] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<{ id: string; name: string; avatar: string; photoUrl?: string } | null>(null);
@@ -95,6 +97,8 @@ export default function ManageLeaguePage() {
               {leaguePlayers.map((player) => {
                 const avatar = STOCK_AVATARS.find(a => a.id === player.avatar) || STOCK_AVATARS[0];
                 const hasPhoto = !!player.photoUrl;
+                // Check if this player is the logged-in user by matching display name
+                const isUserProfile = userProfile && player.name.toLowerCase() === userProfile.displayName.toLowerCase();
 
                 return (
                   <div key={player.id} className="flex flex-col items-center gap-2 relative">
@@ -121,21 +125,27 @@ export default function ManageLeaguePage() {
                       {player.name}
                     </span>
 
-                    {/* Edit/Delete Buttons */}
-                    <div className="flex flex-col sm:flex-row gap-1 sm:gap-2 w-full px-1">
-                      <button
-                        onClick={() => handleEditPlayer(player.id)}
-                        className="px-2 py-1 bg-[#6b1a8b] text-white text-xs font-bold rounded hover:opacity-90 transition-opacity"
-                      >
-                        EDIT
-                      </button>
-                      <button
-                        onClick={() => handleDeletePlayer(player.id)}
-                        className="px-2 py-1 bg-[#9d1a1a] text-white text-xs font-bold rounded hover:opacity-90 transition-opacity"
-                      >
-                        DEL
-                      </button>
-                    </div>
+                    {/* Edit/Delete Buttons - Only show for non-user players */}
+                    {!isUserProfile ? (
+                      <div className="flex flex-col sm:flex-row gap-1 sm:gap-2 w-full px-1">
+                        <button
+                          onClick={() => handleEditPlayer(player.id)}
+                          className="px-2 py-1 bg-[#6b1a8b] text-white text-xs font-bold rounded hover:opacity-90 transition-opacity"
+                        >
+                          EDIT
+                        </button>
+                        <button
+                          onClick={() => handleDeletePlayer(player.id)}
+                          className="px-2 py-1 bg-[#9d1a1a] text-white text-xs font-bold rounded hover:opacity-90 transition-opacity"
+                        >
+                          DEL
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="text-[#6b1a8b] text-xs font-bold text-center px-1">
+                        (YOUR PROFILE)
+                      </div>
+                    )}
                   </div>
                 );
               })}

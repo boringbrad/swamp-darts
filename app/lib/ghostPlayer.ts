@@ -8,20 +8,45 @@ import { loadGolfMatches } from './golfStats';
 import { CricketMatch, GolfMatch } from '../types/stats';
 import { CricketVariant } from '../types/game';
 import { Player } from '../types/game';
+import { createClient } from './supabase/client';
+
+const supabase = createClient();
 
 /**
  * Get a player's best Cricket game for a specific variant
  */
-export function getPlayerBestCricketGame(
+export async function getPlayerBestCricketGame(
   playerId: string,
-  variant: CricketVariant
-): CricketMatch | null {
-  const matches = loadCricketMatches();
+  variant: CricketVariant,
+  userId?: string
+): Promise<CricketMatch | null> {
+  // Check if user is logged in
+  const { data: { user } } = await supabase.auth.getUser();
 
-  // Filter matches by variant and player
+  let matches: any[] = [];
+
+  if (user) {
+    // Load from Supabase for logged-in users
+    const { data: supabaseMatches, error } = await supabase
+      .from('cricket_matches')
+      .select('*')
+      .eq('user_id', user.id);
+
+    if (!error && supabaseMatches) {
+      matches = supabaseMatches.map(m => m.match_data);
+    }
+  } else {
+    // Fallback to localStorage
+    matches = loadCricketMatches();
+  }
+
+  // Filter matches by variant and player (match by playerId OR userId)
   const playerMatches = matches.filter(match =>
     match.variant === variant &&
-    match.players.some(p => p.playerId === playerId)
+    match.players.some((p: any) =>
+      p.playerId === playerId ||
+      (userId && p.userId === userId)
+    )
   );
 
   if (playerMatches.length === 0) return null;
@@ -31,7 +56,11 @@ export function getPlayerBestCricketGame(
   let bestMPR = 0;
 
   playerMatches.forEach(match => {
-    const playerData = match.players.find(p => p.playerId === playerId);
+    let playerData = match.players.find((p: any) => p.playerId === playerId);
+    if (!playerData && userId) {
+      playerData = match.players.find((p: any) => p.userId === userId);
+    }
+
     if (playerData && playerData.mpr > bestMPR) {
       bestMPR = playerData.mpr;
       bestMatch = match;
@@ -44,16 +73,38 @@ export function getPlayerBestCricketGame(
 /**
  * Get a player's best Golf game for a specific variant
  */
-export function getPlayerBestGolfGame(
+export async function getPlayerBestGolfGame(
   playerId: string,
-  variant: 'stroke-play' | 'match-play' | 'skins'
-): GolfMatch | null {
-  const matches = loadGolfMatches();
+  variant: 'stroke-play' | 'match-play' | 'skins',
+  userId?: string
+): Promise<GolfMatch | null> {
+  // Check if user is logged in
+  const { data: { user } } = await supabase.auth.getUser();
 
-  // Filter matches by variant and player
+  let matches: GolfMatch[] = [];
+
+  if (user) {
+    // Load from Supabase for logged-in users
+    const { data: supabaseMatches, error } = await supabase
+      .from('golf_matches')
+      .select('*')
+      .eq('user_id', user.id);
+
+    if (!error && supabaseMatches) {
+      matches = supabaseMatches.map(m => m.match_data as GolfMatch);
+    }
+  } else {
+    // Fallback to localStorage
+    matches = loadGolfMatches();
+  }
+
+  // Filter matches by variant and player (match by playerId OR userId)
   const playerMatches = matches.filter(match =>
     match.variant === variant &&
-    match.players.some(p => p.playerId === playerId)
+    match.players.some(p =>
+      p.playerId === playerId ||
+      (userId && (p as any).userId === userId)
+    )
   );
 
   if (playerMatches.length === 0) return null;
@@ -63,7 +114,11 @@ export function getPlayerBestGolfGame(
   let bestScore = Infinity;
 
   playerMatches.forEach(match => {
-    const playerData = match.players.find(p => p.playerId === playerId);
+    let playerData = match.players.find(p => p.playerId === playerId);
+    if (!playerData && userId) {
+      playerData = match.players.find(p => (p as any).userId === userId);
+    }
+
     if (playerData && playerData.totalScore < bestScore) {
       bestScore = playerData.totalScore;
       bestMatch = match;
@@ -76,19 +131,20 @@ export function getPlayerBestGolfGame(
 /**
  * Create a ghost player from an existing player
  */
-export function createGhostPlayer(
+export async function createGhostPlayer(
   basePlayer: Player,
   gameMode: 'cricket' | 'golf',
-  variant: CricketVariant | 'stroke-play' | 'match-play' | 'skins'
-): Player | null {
+  variant: CricketVariant | 'stroke-play' | 'match-play' | 'skins',
+  userId?: string
+): Promise<Player | null> {
   // Check if player has any games in this mode/variant
   let hasGames = false;
 
   if (gameMode === 'cricket') {
-    const bestGame = getPlayerBestCricketGame(basePlayer.id, variant as CricketVariant);
+    const bestGame = await getPlayerBestCricketGame(basePlayer.id, variant as CricketVariant, userId);
     hasGames = bestGame !== null;
   } else if (gameMode === 'golf') {
-    const bestGame = getPlayerBestGolfGame(basePlayer.id, variant as 'stroke-play' | 'match-play' | 'skins');
+    const bestGame = await getPlayerBestGolfGame(basePlayer.id, variant as 'stroke-play' | 'match-play' | 'skins', userId);
     hasGames = bestGame !== null;
   }
 
@@ -111,28 +167,35 @@ export function createGhostPlayer(
 /**
  * Get the history from a player's best game (for auto-scoring)
  */
-export function getGhostPlayerHistory(
+export async function getGhostPlayerHistory(
   ghostPlayerId: string,
   gameMode: 'cricket' | 'golf',
   variant: CricketVariant | 'stroke-play' | 'match-play' | 'skins',
-  ghostBasePlayerId: string
-): any[] {
+  ghostBasePlayerId: string,
+  userId?: string
+): Promise<any[]> {
   if (gameMode === 'cricket') {
-    const bestGame = getPlayerBestCricketGame(ghostBasePlayerId, variant as CricketVariant);
+    const bestGame = await getPlayerBestCricketGame(ghostBasePlayerId, variant as CricketVariant, userId);
     if (!bestGame) return [];
 
-    // Find the player's data in the match
-    const playerData = bestGame.players.find(p => p.playerId === ghostBasePlayerId);
+    // Find the player's data in the match (match by playerId OR userId)
+    let playerData = bestGame.players.find(p => p.playerId === ghostBasePlayerId);
+    if (!playerData && userId) {
+      playerData = bestGame.players.find((p: any) => p.userId === userId);
+    }
     if (!playerData) return [];
 
     // Filter history to only this player's turns
     return bestGame.history.filter((entry: any) => entry.playerId === ghostBasePlayerId);
   } else if (gameMode === 'golf') {
-    const bestGame = getPlayerBestGolfGame(ghostBasePlayerId, variant as 'stroke-play' | 'match-play' | 'skins');
+    const bestGame = await getPlayerBestGolfGame(ghostBasePlayerId, variant as 'stroke-play' | 'match-play' | 'skins', userId);
     if (!bestGame) return [];
 
-    // For golf, return the hole scores
-    const playerData = bestGame.players.find(p => p.playerId === ghostBasePlayerId);
+    // For golf, return the hole scores (match by playerId OR userId)
+    let playerData = bestGame.players.find(p => p.playerId === ghostBasePlayerId);
+    if (!playerData && userId) {
+      playerData = bestGame.players.find(p => (p as any).userId === userId);
+    }
     if (!playerData) return [];
 
     return playerData.holeScores.map((score, index) => ({
@@ -147,16 +210,17 @@ export function getGhostPlayerHistory(
 /**
  * Check if a player has any games in a specific mode/variant
  */
-export function playerHasGames(
+export async function playerHasGames(
   playerId: string,
   gameMode: 'cricket' | 'golf',
-  variant: CricketVariant | 'stroke-play' | 'match-play' | 'skins'
-): boolean {
+  variant: CricketVariant | 'stroke-play' | 'match-play' | 'skins',
+  userId?: string
+): Promise<boolean> {
   if (gameMode === 'cricket') {
-    const bestGame = getPlayerBestCricketGame(playerId, variant as CricketVariant);
+    const bestGame = await getPlayerBestCricketGame(playerId, variant as CricketVariant, userId);
     return bestGame !== null;
   } else if (gameMode === 'golf') {
-    const bestGame = getPlayerBestGolfGame(playerId, variant as 'stroke-play' | 'match-play' | 'skins');
+    const bestGame = await getPlayerBestGolfGame(playerId, variant as 'stroke-play' | 'match-play' | 'skins', userId);
     return bestGame !== null;
   }
   return false;

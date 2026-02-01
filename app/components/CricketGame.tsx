@@ -4,8 +4,13 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppContext } from '../contexts/AppContext';
 import { usePlayerContext } from '../contexts/PlayerContext';
+import { useVenueContext } from '../contexts/VenueContext';
 import { CricketNumber, CricketVariant, CricketRules, Player } from '../types/game';
 import { STOCK_AVATARS } from '../lib/avatars';
+import { syncCricketMatch, syncVenueMatchResults, canSyncToSupabase } from '../lib/supabaseSync';
+import { createClient } from '../lib/supabase/client';
+
+const supabase = createClient();
 
 interface CricketGameProps {
   variant: CricketVariant;
@@ -68,6 +73,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
   const router = useRouter();
   const { cameraEnabled, selectedPlayers } = useAppContext();
   const { updateLocalPlayer, localPlayers } = usePlayerContext();
+  const { venueId, venuePlayersForSelection: venuePlayers } = useVenueContext();
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -75,6 +81,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
   const enableKO = rules.enableKO !== false; // Default true
   const enablePIN = rules.enablePIN !== false; // Default true
   const enable3Darts3Marks = rules.enable3Darts3Marks !== false; // Default true
+  const enableLadder = rules.enableLadder === true; // Default false
 
   // Reconstruct full player data from localPlayers to ensure photoUrl is included
   const [players, setPlayers] = useState<Player[]>(initialPlayers);
@@ -312,8 +319,12 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
   };
 
   // Save game to database (localStorage)
-  const saveGameToDatabase = () => {
+  const saveGameToDatabase = async () => {
     try {
+      // Get current user ID to link their player data
+      const { data: { user } } = await supabase.auth.getUser();
+      const currentUserId = user?.id;
+
       // Calculate detailed stats from history and playerScores
       const matchData = {
         matchId: `CRICKET_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -326,9 +337,34 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
             playerScores[h.playerIndex]?.playerId === player.playerId
           );
 
+          // Check if this player belongs to the logged-in user
+          // First check if it's a venue participant (they have userId in their id field)
+          const venuePlayer = venuePlayers.find(p => p.id === player.playerId);
+
+          let playerUserId: string | undefined;
+          let playerAvatar: string | undefined;
+          let playerPhotoUrl: string | undefined;
+
+          if (venuePlayer) {
+            // Venue participant - use their actual userId (already in the id field)
+            playerUserId = venuePlayer.id;
+            playerAvatar = venuePlayer.avatar;
+            playerPhotoUrl = venuePlayer.photoUrl;
+          } else {
+            // Local player - check if they belong to the current user
+            const storedPlayer = localPlayers.find(p => p.id === player.playerId);
+            const isCurrentUser = currentUserId && storedPlayer && storedPlayer.createdBy === currentUserId;
+            playerUserId = isCurrentUser ? currentUserId : undefined;
+            playerAvatar = storedPlayer?.avatar;
+            playerPhotoUrl = storedPlayer?.photoUrl;
+          }
+
           return {
             playerId: player.playerId,
             playerName: player.playerName,
+            userId: playerUserId, // Link to Supabase user
+            avatar: playerAvatar,
+            photoUrl: playerPhotoUrl,
             teamId: variant === 'tag-team' ? player.playerId : undefined,
             finalMarks: player.marks,
             finalPoints: player.points,
@@ -365,6 +401,34 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
       localStorage.setItem('cricketMatches', JSON.stringify(existingMatches));
 
       console.log('Cricket match saved:', matchData.matchId);
+
+      // Sync to Supabase for analytics and cross-device stats
+      const canSync = await canSyncToSupabase();
+      console.log('[CricketGame] venueId at save time:', venueId);
+      console.log('[CricketGame] venuePlayers count:', venuePlayers.length);
+      if (canSync) {
+        console.log('🔄 Starting Supabase sync for cricket match...');
+        await syncCricketMatch({
+          matchId: matchData.matchId,
+          matchData: matchData,
+          players: matchData.players,
+          gameMode: matchData.variant,
+          completedAt: new Date(matchData.date),
+          venueId: venueId || undefined,
+        });
+        console.log('✅ Supabase sync complete!');
+
+        // If this is a venue game, sync to all venue participants
+        if (venueId) {
+          console.log('🏢 Syncing match to all venue participants...');
+          await syncVenueMatchResults(venueId, matchData.matchId, 'cricket_matches');
+          console.log('✅ Venue participant sync complete!');
+        } else {
+          console.log('⏭️ No venueId - skipping venue participant sync');
+        }
+      } else {
+        console.log('⏭️ Not authenticated, skipping Supabase sync');
+      }
 
       // Update lastUsed timestamp for all players
       players.forEach(player => {
@@ -728,6 +792,38 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
       return;
     }
 
+    // Ladder Match logic
+    if (enableLadder) {
+      const currentMarks = currentPlayerScore.marks[target];
+
+      // Check if player has completed Phase 1 (2 marks on all targets)
+      const hasCompletedPhase1 = CRICKET_TARGETS.every(t => currentPlayerScore.marks[t] >= 2);
+
+      if (!hasCompletedPhase1) {
+        // Phase 1: Building the ladder - can only get up to 2 marks
+        if (currentMarks >= 2) {
+          // Already has 2 marks, can't add more until Phase 2
+          return;
+        }
+      } else {
+        // Phase 2: Clearing in order - must follow D → T → B → 15 → 16 → 17 → 18 → 19 → 20
+        const clearingOrder: CricketNumber[] = ['D', 'T', 'B', 15, 16, 17, 18, 19, 20];
+
+        // Find the first target that doesn't have 3 marks yet
+        const nextTarget = clearingOrder.find(t => currentPlayerScore.marks[t] < 3);
+
+        if (nextTarget && target !== nextTarget) {
+          // Player must hit the next target in order, not this one
+          return;
+        }
+
+        if (currentMarks < 2) {
+          // In Phase 2 but this target doesn't have 2 marks yet (shouldn't happen, but safety check)
+          return;
+        }
+      }
+    }
+
     // Create snapshot before changes
     const playerScoresSnapshot = JSON.parse(JSON.stringify(playerScores)) as PlayerScore[];
 
@@ -746,10 +842,18 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
 
     const marksToAdd = multiplier;
     const currentMarks = playerScore.marks[target];
-    const actualMarksAdded = Math.min(currentMarks + marksToAdd, 3) - currentMarks;
 
-    // Cap marks at 3 maximum
-    playerScore.marks[target] = Math.min(currentMarks + marksToAdd, 3);
+    // For Ladder Match, determine max marks based on phase
+    let maxMarks = 3;
+    if (enableLadder) {
+      const hasCompletedPhase1 = CRICKET_TARGETS.every(t => playerScore.marks[t] >= 2);
+      maxMarks = hasCompletedPhase1 ? 3 : 2; // Phase 1: max 2, Phase 2: max 3
+    }
+
+    const actualMarksAdded = Math.min(currentMarks + marksToAdd, maxMarks) - currentMarks;
+
+    // Cap marks at maximum (3 for normal, 2 for Ladder Phase 1)
+    playerScore.marks[target] = Math.min(currentMarks + marksToAdd, maxMarks);
 
     let pointsAdded = 0;
     // Calculate points if applicable (Swamp Rules or Point Cricket)
@@ -775,7 +879,8 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
     setPlayerScores(newPlayerScores);
 
     // Check if board is complete and PIN is disabled - auto-win
-    if (!enablePIN) {
+    // For Ladder Match, also check if board is complete (all 3 marks) since PIN is mutually exclusive
+    if (!enablePIN || enableLadder) {
       const boardComplete = CRICKET_TARGETS.every(target => playerScore.marks[target] >= 3);
       if (boardComplete && !gameWinner) {
         // Determine winner based on variant

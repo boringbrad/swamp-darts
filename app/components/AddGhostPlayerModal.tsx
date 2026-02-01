@@ -1,10 +1,13 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { usePlayerContext } from '../contexts/PlayerContext';
 import { playerHasGames } from '../lib/ghostPlayer';
 import { CricketVariant } from '../types/game';
 import { STOCK_AVATARS } from '../lib/avatars';
+import { createClient } from '../lib/supabase/client';
+
+const supabase = createClient();
 
 interface AddGhostPlayerModalProps {
   isOpen: boolean;
@@ -25,13 +28,35 @@ export default function AddGhostPlayerModal({
 }: AddGhostPlayerModalProps) {
   const { localPlayers } = usePlayerContext();
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+  const [availablePlayers, setAvailablePlayers] = useState<typeof localPlayers>([]);
+  const [loading, setLoading] = useState(true);
 
   // Filter players who have games in this mode/variant
-  const availablePlayers = useMemo(() => {
-    return localPlayers.filter(player =>
-      playerHasGames(player.id, gameMode, variant)
-    );
-  }, [localPlayers, gameMode, variant]);
+  useEffect(() => {
+    const loadAvailablePlayers = async () => {
+      setLoading(true);
+
+      // Get userId for cross-device matching
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id;
+
+      const playersWithGames = [];
+
+      for (const player of localPlayers) {
+        const hasGames = await playerHasGames(player.id, gameMode, variant, userId);
+        if (hasGames) {
+          playersWithGames.push(player);
+        }
+      }
+
+      setAvailablePlayers(playersWithGames);
+      setLoading(false);
+    };
+
+    if (isOpen) {
+      loadAvailablePlayers();
+    }
+  }, [localPlayers, gameMode, variant, isOpen]);
 
   const handleAdd = () => {
     if (!selectedPlayerId) {
@@ -77,7 +102,13 @@ export default function AddGhostPlayerModal({
           )}
         </p>
 
-        {availablePlayers.length === 0 ? (
+        {loading ? (
+          <div className="bg-[#1a1a1a] rounded-lg p-8 mb-6">
+            <p className="text-white text-center text-lg">
+              Loading available players...
+            </p>
+          </div>
+        ) : availablePlayers.length === 0 ? (
           <div className="bg-[#1a1a1a] rounded-lg p-8 mb-6">
             <p className="text-white text-center text-lg">
               No players have games recorded in <span className="font-bold">{gameMode.toUpperCase()} - {variant.toUpperCase().replace(/-/g, ' ')}</span>.

@@ -6,6 +6,9 @@ import { usePlayerContext } from '../contexts/PlayerContext';
 import { useAppContext } from '../contexts/AppContext';
 import { getUniqueCourseNames, loadGolfMatches } from '../lib/golfStats';
 import { RoyalRumbleGameState } from '../types/royalRumble';
+import { createClient } from '../lib/supabase/client';
+import { useVenueMode, useVenueInfo } from '../hooks/useVenue';
+import { requestVenueStatus } from '../lib/venue';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -14,6 +17,8 @@ interface SettingsModalProps {
 }
 
 export default function SettingsModal({ isOpen, onClose, pathname = '' }: SettingsModalProps) {
+  const router = useRouter();
+  const supabase = createClient();
   const { deleteLocalPlayer, getGuestPlayers, refreshPlayers } = usePlayerContext();
   const {
     golfCourseName,
@@ -32,20 +37,27 @@ export default function SettingsModal({ isOpen, onClose, pathname = '' }: Settin
     setPlayMode,
     cricketRules,
     setCricketRules,
+    userProfile,
   } = useAppContext();
   const [courseNameInput, setCourseNameInput] = useState(golfCourseName);
   const [bannerImageInput, setBannerImageInput] = useState(courseBannerImage);
   const [bannerOpacityInput, setBannerOpacityInput] = useState(courseBannerOpacity);
   const [existingCourses, setExistingCourses] = useState<string[]>([]);
   const [showCustomInput, setShowCustomInput] = useState(false);
-  const [activeTab, setActiveTab] = useState<'system' | 'golf' | 'cricket' | 'royal-rumble'>('system');
+  const [activeTab, setActiveTab] = useState<'system' | 'golf' | 'cricket' | 'venue' | 'royal-rumble'>('system');
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Check if we're in Royal Rumble game
   const isRoyalRumbleGame = pathname.includes('/extra/royal-rumble/game');
 
   // Royal Rumble state
-  const router = useRouter();
   const [royalRumbleGameState, setRoyalRumbleGameState] = useState<RoyalRumbleGameState | null>(null);
+
+  // Venue mode state
+  const { venueMode, setVenueMode, isLoading: venueModeLoading } = useVenueMode();
+  const { venueInfo, isVenue, refresh: refreshVenueInfo } = useVenueInfo();
+  const [requestingVenue, setRequestingVenue] = useState(false);
+  const [venueName, setVenueName] = useState('');
 
   // Load Royal Rumble game state when modal opens
   useEffect(() => {
@@ -122,6 +134,38 @@ export default function SettingsModal({ isOpen, onClose, pathname = '' }: Settin
 
       refreshPlayers();
       alert('All guest players and their stats have been removed');
+    }
+  };
+
+  const handleLogout = async () => {
+    if (confirm('Are you sure you want to log out?')) {
+      setIsLoggingOut(true);
+
+      try {
+        console.log('Starting logout...');
+
+        // Leave any active game session first
+        const { leaveActiveSession } = await import('../lib/sessions');
+        await leaveActiveSession();
+        console.log('Left active session');
+
+        // Sign out from Supabase and wait for it
+        await supabase.auth.signOut();
+        console.log('Signed out from Supabase');
+
+        // Longer delay to ensure session cookies are fully cleared
+        // This prevents race conditions with the middleware
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        console.log('Redirecting to welcome page');
+        // Redirect to welcome page
+        window.location.href = '/welcome';
+      } catch (error) {
+        console.error('Error during logout:', error);
+        // Even if there's an error, wait a bit then redirect
+        await new Promise(resolve => setTimeout(resolve, 500));
+        window.location.href = '/welcome';
+      }
     }
   };
 
@@ -234,6 +278,16 @@ export default function SettingsModal({ isOpen, onClose, pathname = '' }: Settin
           >
             CRICKET
           </button>
+          <button
+            onClick={() => setActiveTab('venue')}
+            className={`px-6 py-3 font-bold transition-colors ${
+              activeTab === 'venue'
+                ? 'text-white border-b-4 border-[#90EE90]'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            VENUE
+          </button>
           {isRoyalRumbleGame && (
             <button
               onClick={() => setActiveTab('royal-rumble')}
@@ -306,6 +360,26 @@ export default function SettingsModal({ isOpen, onClose, pathname = '' }: Settin
                   </label>
                 </div>
               </div>
+
+              {/* Logout Section - Only show if user is logged in */}
+              {userProfile && userProfile.id !== 'default-user' && (
+                <div className="mb-6 pt-6 border-t-2 border-[#666666]">
+                  <h3 className="text-xl font-bold text-white mb-4">ACCOUNT</h3>
+                  <div className="flex items-center justify-between bg-[#1a1a1a] p-4 rounded">
+                    <div>
+                      <div className="text-white font-bold">{userProfile.displayName}</div>
+                      <div className="text-gray-400 text-sm">{(userProfile as any).email || 'Logged in'}</div>
+                    </div>
+                    <button
+                      onClick={handleLogout}
+                      disabled={isLoggingOut}
+                      className="px-6 py-2 bg-red-600 text-white font-bold rounded hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isLoggingOut ? 'LOGGING OUT...' : 'LOG OUT'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -516,7 +590,14 @@ export default function SettingsModal({ isOpen, onClose, pathname = '' }: Settin
                       type="checkbox"
                       id="enablePIN"
                       checked={cricketRules.enablePIN !== false}
-                      onChange={(e) => setCricketRules({ enablePIN: e.target.checked })}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          // If enabling PIN, disable Ladder
+                          setCricketRules({ enablePIN: true, enableLadder: false });
+                        } else {
+                          setCricketRules({ enablePIN: false });
+                        }
+                      }}
                       className="w-6 h-6 cursor-pointer"
                     />
                     <label htmlFor="enablePIN" className="text-white text-lg font-bold cursor-pointer">
@@ -525,6 +606,32 @@ export default function SettingsModal({ isOpen, onClose, pathname = '' }: Settin
                   </div>
                   <p className="text-gray-400 text-sm pl-9">
                     When disabled, removes the PIN mechanic. The game is won when a player completes their board (closes all 9 targets).
+                  </p>
+                </div>
+
+                {/* Ladder Match Toggle */}
+                <div className="bg-[#333333] rounded-lg p-4">
+                  <div className="flex items-center gap-3 mb-2">
+                    <input
+                      type="checkbox"
+                      id="enableLadder"
+                      checked={cricketRules.enableLadder === true}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          // If enabling Ladder, disable PIN
+                          setCricketRules({ enableLadder: true, enablePIN: false });
+                        } else {
+                          setCricketRules({ enableLadder: false });
+                        }
+                      }}
+                      className="w-6 h-6 cursor-pointer"
+                    />
+                    <label htmlFor="enableLadder" className="text-white text-lg font-bold cursor-pointer">
+                      Ladder Match
+                    </label>
+                  </div>
+                  <p className="text-gray-400 text-sm pl-9">
+                    Two-phase game: First, get 2 marks on all 9 targets. Then clear them in order: D → T → B → 15 → 16 → 17 → 18 → 19 → 20. Mutually exclusive with PIN.
                   </p>
                 </div>
 
@@ -553,6 +660,178 @@ export default function SettingsModal({ isOpen, onClose, pathname = '' }: Settin
                   <strong>Note:</strong> These settings apply to all Cricket variants. Changes will take effect for new games.
                 </p>
               </div>
+            </div>
+          )}
+
+          {/* Venue Tab */}
+          {activeTab === 'venue' && (
+            <div>
+              <h3 className="text-xl font-bold text-white mb-4">VENUE MODE</h3>
+
+              {venueModeLoading ? (
+                <div className="text-gray-400">Loading...</div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between mb-6 bg-[#333333] rounded-lg p-4">
+                    <div className="flex-1">
+                      <p className="text-white font-semibold mb-1">Enable Venue Mode on this device</p>
+                      <p className="text-sm text-gray-400">
+                        Switch between player mode and venue mode. This setting is per-device.
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer ml-4">
+                      <input
+                        type="checkbox"
+                        checked={venueMode}
+                        onChange={(e) => setVenueMode(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-14 h-7 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-green-600"></div>
+                    </label>
+                  </div>
+
+                  {/* Venue Setup */}
+                  {venueMode && (
+                    <div className="mt-4">
+                      {isVenue ? (
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-2">
+                            <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            <span className="text-green-500 font-semibold">Venue Account Active</span>
+                          </div>
+                          <div className="bg-[#1a1a1a] rounded p-4 space-y-3">
+                            {/* Editable Venue Name */}
+                            <div>
+                              <label className="block text-gray-400 text-sm mb-2">Venue Name:</label>
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  value={venueName || venueInfo?.venueName || ''}
+                                  onChange={(e) => setVenueName(e.target.value)}
+                                  placeholder="Enter venue name"
+                                  className="flex-1 bg-[#2a2a2a] border border-gray-700 rounded px-4 py-2 text-white text-lg font-semibold placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-600"
+                                  disabled={requestingVenue}
+                                />
+                                {venueName && venueName !== venueInfo?.venueName && (
+                                  <button
+                                    onClick={async () => {
+                                      if (!venueName.trim()) {
+                                        alert('Venue name cannot be empty');
+                                        return;
+                                      }
+                                      setRequestingVenue(true);
+                                      try {
+                                        const { updateVenueName } = await import('../lib/venue');
+                                        await updateVenueName(venueName.trim());
+                                        await refreshVenueInfo();
+                                      } catch (error) {
+                                        console.error('Error updating venue name:', error);
+                                        alert('Failed to update venue name');
+                                      } finally {
+                                        setRequestingVenue(false);
+                                      }
+                                    }}
+                                    disabled={requestingVenue}
+                                    className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white font-bold rounded"
+                                  >
+                                    Save
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            <div>
+                              <span className="text-gray-400 text-sm">Room Code:</span>
+                              <p className="text-white font-mono text-2xl tracking-wider">{venueInfo?.roomCode || 'Not set'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-400 text-sm">Active Boards:</span>
+                              <p className="text-white font-semibold">{venueInfo?.boards?.length || 0}</p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              router.push('/venue');
+                              onClose();
+                            }}
+                            className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded transition-colors"
+                          >
+                            Go to Venue Dashboard
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-2">
+                            <svg className="w-5 h-5 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                            </svg>
+                            <span className="text-blue-400 font-semibold">Set up your venue</span>
+                          </div>
+                          <p className="text-sm text-gray-400">
+                            Enter your venue name to activate venue features: multi-board hosting and unlimited players.
+                          </p>
+
+                          {/* Venue Setup Form */}
+                          <div className="bg-[#1a1a1a] rounded p-4 space-y-3">
+                            <div>
+                              <label className="block text-white text-sm font-semibold mb-2">
+                                Venue Name
+                              </label>
+                              <input
+                                type="text"
+                                value={venueName}
+                                onChange={(e) => setVenueName(e.target.value)}
+                                placeholder="e.g., Swampy's Dart Bar"
+                                className="w-full bg-[#2a2a2a] border border-gray-700 rounded px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-600"
+                                disabled={requestingVenue}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' && venueName.trim()) {
+                                    document.getElementById('activate-venue-btn')?.click();
+                                  }
+                                }}
+                              />
+                            </div>
+                            <button
+                              id="activate-venue-btn"
+                              onClick={async () => {
+                                if (!venueName.trim()) {
+                                  alert('Please enter a venue name');
+                                  return;
+                                }
+                                setRequestingVenue(true);
+                                try {
+                                  await requestVenueStatus(venueName.trim());
+                                  await refreshVenueInfo();
+                                  setVenueName('');
+                                } catch (error) {
+                                  console.error('Error activating venue:', error);
+                                  alert('Failed to activate venue. Please try again.');
+                                } finally {
+                                  setRequestingVenue(false);
+                                }
+                              }}
+                              disabled={requestingVenue || !venueName.trim()}
+                              className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded transition-colors"
+                            >
+                              {requestingVenue ? 'Activating...' : 'Activate Venue'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Info box when venue mode is off */}
+                  {!venueMode && (
+                    <div className="mt-4 p-4 bg-[#333333] rounded">
+                      <p className="text-sm text-gray-400">
+                        Enable venue mode to access multi-board hosting, unlimited players, and venue-specific features.
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
 

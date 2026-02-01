@@ -12,6 +12,7 @@ interface PlayerAvatarProps {
   teamColor?: PlayerColor;
   avatar?: string;
   photoUrl?: string;
+  isSessionMember?: boolean;
 }
 
 // Player color mappings
@@ -22,7 +23,7 @@ const PLAYER_COLORS: Record<Exclude<PlayerColor, null>, string> = {
   green: '#2d5016', // Swamp green
 };
 
-export default function PlayerAvatar({ name, selected = false, onClick, teamColor, avatar, photoUrl }: PlayerAvatarProps) {
+export default function PlayerAvatar({ name, selected = false, onClick, teamColor, avatar, photoUrl, isSessionMember = false }: PlayerAvatarProps) {
   const borderStyle = teamColor ? { borderColor: PLAYER_COLORS[teamColor] } : {};
   const avatarData = STOCK_AVATARS.find(a => a.id === avatar) || STOCK_AVATARS[0];
 
@@ -32,6 +33,10 @@ export default function PlayerAvatar({ name, selected = false, onClick, teamColo
       className={`flex flex-col items-center gap-2 transition-opacity ${selected ? 'opacity-100' : 'opacity-60 hover:opacity-80'}`}
     >
       <div className="relative">
+        {/* Session member indicator ring */}
+        {isSessionMember && (
+          <div className="absolute -inset-1 rounded-full ring-2 ring-[#90EE90] animate-pulse"></div>
+        )}
         {photoUrl ? (
           <div
             className="w-12 h-12 sm:w-24 sm:h-24 rounded-full border-4 overflow-hidden"

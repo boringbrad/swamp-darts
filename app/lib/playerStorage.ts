@@ -43,12 +43,13 @@ export const playerStorage = {
   /**
    * Add a new player
    */
-  addPlayer(name: string, avatar?: string, isGuest = false): StoredPlayer {
+  addPlayer(name: string, avatar?: string, isGuest = false, createdBy?: string): StoredPlayer {
     const newPlayer: StoredPlayer = {
       id: generateUUID(),
       name,
       avatar,
       isGuest,
+      createdBy,
       addedDate: new Date(),
       lastUsed: new Date(),
     };
@@ -127,11 +128,11 @@ export const playerStorage = {
   /**
    * Initialize storage with default players
    */
-  initializeDefaultPlayers(): void {
+  initializeDefaultPlayers(userId?: string): void {
     const existing = this.getAllPlayers();
     if (existing.length === 0) {
       DEFAULT_PLAYERS.forEach(p => {
-        this.addPlayer(p.name, p.avatar, false);
+        this.addPlayer(p.name, p.avatar, false, userId);
       });
     }
   },

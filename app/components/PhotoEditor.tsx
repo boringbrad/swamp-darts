@@ -21,6 +21,8 @@ export default function PhotoEditor({ isOpen, imageUrl, onSave, onCancel }: Phot
   useEffect(() => {
     if (isOpen && imageUrl) {
       const img = new Image();
+      // Set crossOrigin to prevent CORS taint issues when loading from Supabase
+      img.crossOrigin = 'anonymous';
       img.onload = () => {
         imageRef.current = img;
         // Center the image initially
