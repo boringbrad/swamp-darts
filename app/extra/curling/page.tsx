@@ -603,7 +603,26 @@ export default function CurlingPage() {
   return (
     <>
       <Header title="CURLING DARTS" />
-      <div style={{
+
+      {/* Mobile Notice - Hidden on tablets and desktop */}
+      <div className="mobile-notice" style={{
+        display: 'none',
+        background: '#0f0f0f',
+        color: 'white',
+        height: '100vh',
+        justifyContent: 'center',
+        alignItems: 'center',
+        textAlign: 'center',
+        padding: '20px'
+      }}>
+        <div>
+          <h1 style={{ fontSize: '2rem', marginBottom: '20px', color: '#00d1b2' }}>Curling Darts</h1>
+          <p style={{ fontSize: '1.2rem', color: '#888', marginBottom: '10px' }}>Not available on mobile devices</p>
+          <p style={{ fontSize: '1rem', color: '#666' }}>Please use a tablet or desktop to play Curling Darts</p>
+        </div>
+      </div>
+
+      <div className="curling-game" style={{
         background: '#0f0f0f',
         color: 'white',
         fontFamily: "'Segoe UI', sans-serif",
@@ -816,6 +835,54 @@ export default function CurlingPage() {
           .counter-bg { fill: rgba(0,0,0,0.85); pointer-events: none; }
           .counter-text { fill: white; font-size: 11px; font-weight: 900; text-anchor: middle; pointer-events: none; }
           .bull-counter-text { fill: white; font-size: 12px; font-weight: 900; text-anchor: middle; pointer-events: none; paint-order: stroke; stroke: rgba(0,0,0,0.9); stroke-width: 4px; }
+
+          /* iPad adjustments - smaller left sidebar, larger board */
+          @media (min-width: 769px) and (max-width: 1024px) {
+            .curling-game {
+              grid-template-columns: 250px 1fr 200px !important;
+            }
+            #sidebar h2 {
+              font-size: 1.3rem !important;
+            }
+            #sidebar input {
+              font-size: 0.85rem !important;
+              padding: 6px !important;
+            }
+            #turn-display {
+              font-size: 1.3rem !important;
+              padding: 8px !important;
+            }
+            #sidebar button {
+              font-size: 0.9rem !important;
+              padding: 10px !important;
+            }
+            #sidebar p {
+              font-size: 1.1rem !important;
+            }
+            #sidebar > div {
+              padding: 8px !important;
+            }
+            #current-lie {
+              font-size: 1.4rem !important;
+            }
+            #lie-details {
+              font-size: 1rem !important;
+            }
+            #main-board {
+              max-width: 90vh !important;
+              max-height: 90vh !important;
+            }
+          }
+
+          /* Mobile - hide game, show notice */
+          @media (max-width: 768px) {
+            .curling-game {
+              display: none !important;
+            }
+            .mobile-notice {
+              display: flex !important;
+            }
+          }
         `}</style>
       </div>
     </>
