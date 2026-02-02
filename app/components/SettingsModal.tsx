@@ -144,10 +144,19 @@ export default function SettingsModal({ isOpen, onClose, pathname = '' }: Settin
       try {
         console.log('Starting logout...');
 
-        // Leave any active game session first
+        // Leave any active game session first (with 3 second timeout)
         const { leaveActiveSession } = await import('../lib/sessions');
-        await leaveActiveSession();
-        console.log('Left active session');
+        const leaveSessionPromise = leaveActiveSession();
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Leave session timeout')), 3000)
+        );
+
+        try {
+          await Promise.race([leaveSessionPromise, timeoutPromise]);
+          console.log('Left active session');
+        } catch (error) {
+          console.warn('Failed to leave session (timeout or error), continuing with logout:', error);
+        }
 
         // Sign out from Supabase and wait for it
         await supabase.auth.signOut();

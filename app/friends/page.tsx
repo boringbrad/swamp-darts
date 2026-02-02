@@ -76,23 +76,31 @@ export default function FriendsPage() {
 
   const loadData = async () => {
     setLoading(true);
-    const [friendsData, requestsData, sentData] = await Promise.all([
-      getFriends(),
-      getFriendRequests(),
-      getSentFriendRequests()
-    ]);
-    setFriends(friendsData);
-    setFriendRequests(requestsData);
-    setSentRequests(sentData);
+    try {
+      const [friendsData, requestsData, sentData] = await Promise.all([
+        getFriends(),
+        getFriendRequests(),
+        getSentFriendRequests()
+      ]);
+      setFriends(friendsData);
+      setFriendRequests(requestsData);
+      setSentRequests(sentData);
 
-    // Load friend activity for the friends tab
-    if (activeTab === 'friends' && friendsData.length > 0) {
-      const friendUserIds = friendsData.map(f => f.userId);
-      const activity = await getFriendsLastActivity(friendUserIds);
-      setFriendActivity(activity);
+      // Load friend activity for the friends tab
+      if (activeTab === 'friends' && friendsData.length > 0) {
+        const friendUserIds = friendsData.map(f => f.userId);
+        const activity = await getFriendsLastActivity(friendUserIds);
+        setFriendActivity(activity);
+      }
+    } catch (error) {
+      console.error('Error loading friends data:', error);
+      // Set empty arrays on error so the UI can still render
+      setFriends([]);
+      setFriendRequests([]);
+      setSentRequests([]);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   const handleSearch = async (query: string) => {
