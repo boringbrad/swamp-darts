@@ -34,13 +34,13 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
   const sessionPlayers = useSessionPlayers();
   const { venueId, venuePlayersForSelection: venuePlayers, refreshParticipants } = useVenueContext();
 
-  // Refresh venue participants when entering venue mode
+  // Refresh venue participants when component mounts or venueId changes
   useEffect(() => {
     if (venueId) {
       console.log('[GolfPlayerSelection] In venue mode, refreshing participants');
       refreshParticipants();
     }
-  }, [venueId]); // Run when venueId changes
+  }, [venueId, refreshParticipants]); // Run when component mounts or venueId changes
 
   // Debug logging
   useEffect(() => {

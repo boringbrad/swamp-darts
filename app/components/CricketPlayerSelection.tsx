@@ -60,13 +60,13 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
   const sessionPlayers = useSessionPlayers();
   const { venueId, venuePlayersForSelection: venuePlayers, refreshParticipants } = useVenueContext();
 
-  // Refresh venue participants when entering venue mode
+  // Refresh venue participants when component mounts or venueId changes
   useEffect(() => {
     if (venueId) {
       console.log('[CricketPlayerSelection] In venue mode, refreshing participants');
       refreshParticipants();
     }
-  }, [venueId]); // Run when venueId changes
+  }, [venueId, refreshParticipants]); // Run when component mounts or venueId changes
 
   // Check if KO is enabled (default true)
   const enableKO = cricketRules.enableKO !== false;
