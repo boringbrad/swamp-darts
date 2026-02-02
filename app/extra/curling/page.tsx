@@ -836,46 +836,65 @@ export default function CurlingPage() {
           .counter-text { fill: white; font-size: 11px; font-weight: 900; text-anchor: middle; pointer-events: none; }
           .bull-counter-text { fill: white; font-size: 12px; font-weight: 900; text-anchor: middle; pointer-events: none; paint-order: stroke; stroke: rgba(0,0,0,0.9); stroke-width: 4px; }
 
-          /* iPad adjustments - smaller left sidebar, larger board */
-          @media (min-width: 769px) and (max-width: 1024px) {
+          /* iPad adjustments - smaller sidebars, SVG takes ~2/3 of space */
+          @media (min-width: 769px) and (max-width: 1200px) {
             .curling-game {
-              grid-template-columns: 250px 1fr 200px !important;
+              grid-template-columns: 150px 1fr 150px !important;
             }
-            #sidebar h2 {
-              font-size: 1.3rem !important;
-            }
-            #sidebar input {
-              font-size: 0.85rem !important;
-              padding: 6px !important;
-            }
-            #turn-display {
-              font-size: 1.3rem !important;
-              padding: 8px !important;
-            }
-            #sidebar button {
-              font-size: 0.9rem !important;
+            #sidebar {
               padding: 10px !important;
             }
-            #sidebar p {
-              font-size: 1.1rem !important;
+            #sidebar h2 {
+              font-size: 1.2rem !important;
+              margin-bottom: 8px !important;
             }
-            #sidebar > div {
+            #sidebar input {
+              font-size: 0.75rem !important;
+              padding: 5px !important;
+            }
+            #turn-display {
+              font-size: 1.1rem !important;
+              padding: 6px !important;
+            }
+            #sidebar button {
+              font-size: 0.8rem !important;
               padding: 8px !important;
             }
+            #sidebar p {
+              font-size: 0.95rem !important;
+            }
+            #sidebar > div {
+              padding: 6px !important;
+              margin-bottom: 8px !important;
+            }
             #current-lie {
-              font-size: 1.4rem !important;
+              font-size: 1.2rem !important;
             }
             #lie-details {
-              font-size: 1rem !important;
+              font-size: 0.9rem !important;
             }
             #main-board {
-              max-width: 90vh !important;
-              max-height: 90vh !important;
+              max-width: none !important;
+              max-height: 85vh !important;
+              width: 100% !important;
+            }
+            #log {
+              font-size: 0.85rem !important;
             }
           }
 
-          /* Mobile - hide game, show notice */
+          /* Mobile and small tablets - hide game, show notice */
           @media (max-width: 768px) {
+            .curling-game {
+              display: none !important;
+            }
+            .mobile-notice {
+              display: flex !important;
+            }
+          }
+
+          /* Extra safety - force mobile notice on portrait tablets */
+          @media (max-width: 768px) and (orientation: portrait) {
             .curling-game {
               display: none !important;
             }
