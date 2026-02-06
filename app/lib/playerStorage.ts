@@ -13,7 +13,7 @@ import { cleanupPlayerCricketMatches } from './cricketStats';
  * Default/mock players to initialize storage
  */
 const DEFAULT_PLAYERS = [
-  { name: 'THE MAYOR', avatar: 'avatar-1' },
+  { name: 'Unknown User', avatar: 'avatar-1' },
   { name: 'PIPER ROSE', avatar: 'avatar-2' },
   { name: 'STOVE', avatar: 'avatar-3' },
   { name: 'PONCHO MAN', avatar: 'avatar-4' },

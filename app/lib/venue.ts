@@ -65,6 +65,7 @@ export interface VenueInfo {
 /**
  * Request venue status for current user
  * Generates room code, creates default board, sets up venue
+ * All operations are atomic - either all succeed or all fail
  */
 export async function requestVenueStatus(venueName: string): Promise<{ success: boolean; error?: string; roomCode?: string }> {
   try {
@@ -73,60 +74,33 @@ export async function requestVenueStatus(venueName: string): Promise<{ success: 
       return { success: false, error: 'Not authenticated' };
     }
 
-    // Generate room code using database function
-    const { data: codeData, error: codeError } = await supabase
-      .rpc('generate_venue_room_code');
-
-    if (codeError || !codeData) {
-      console.error('Error generating room code:', codeError);
-      return { success: false, error: 'Failed to generate room code' };
-    }
-
-    const roomCode = codeData;
-
-    // Generate QR data (JSON format)
-    const qrData = JSON.stringify({
-      type: 'venue_join',
-      venueId: user.id,
-      roomCode,
-      venueName,
-    });
-
-    // Update profile to venue account
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .update({
-        account_type: 'venue',
-        venue_name: venueName,
-        venue_room_code: roomCode,
-        venue_qr_data: qrData,
+    // Call atomic database function that does all 3 operations in a transaction
+    const { data, error } = await supabase
+      .rpc('activate_venue_account', {
+        user_id_param: user.id,
+        venue_name_param: venueName,
       })
-      .eq('id', user.id);
+      .single();
 
-    if (profileError) {
-      console.error('Error updating profile:', profileError);
-      return { success: false, error: 'Failed to update profile' };
+    if (error) {
+      console.error('Error activating venue account:', error);
+      return { success: false, error: error.message || 'Failed to activate venue account' };
     }
 
-    // Create default board
-    const { error: boardError } = await supabase
-      .from('venue_boards')
-      .insert({
-        venue_id: user.id,
-        board_name: 'Board 1',
-        board_order: 0,
-        is_active: true,
-      });
-
-    if (boardError) {
-      console.error('Error creating default board:', boardError);
-      return { success: false, error: 'Failed to create default board' };
+    if (!data) {
+      return { success: false, error: 'No response from server' };
     }
 
-    return { success: true, roomCode };
-  } catch (error) {
+    // Check the result from the database function
+    if (!data.success) {
+      console.error('Venue activation failed:', data.error_message);
+      return { success: false, error: data.error_message || 'Failed to activate venue account' };
+    }
+
+    return { success: true, roomCode: data.room_code };
+  } catch (error: any) {
     console.error('Unexpected error requesting venue status:', error);
-    return { success: false, error: 'Unexpected error occurred' };
+    return { success: false, error: error.message || 'Unexpected error occurred' };
   }
 }
 

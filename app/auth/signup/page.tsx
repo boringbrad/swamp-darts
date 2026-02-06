@@ -11,6 +11,8 @@ export default function SignupPage() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const [termsAccepted, setTermsAccepted] = useState(false)
+  const [marketingConsent, setMarketingConsent] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
@@ -23,6 +25,11 @@ export default function SignupPage() {
     // Validation
     if (!email || !password || !displayName) {
       setError('Please fill in all fields')
+      return
+    }
+
+    if (!termsAccepted) {
+      setError('You must agree to the Terms of Service and Privacy Policy to create an account')
       return
     }
 
@@ -50,6 +57,9 @@ export default function SignupPage() {
         options: {
           data: {
             display_name: displayName,
+            terms_accepted_at: new Date().toISOString(),
+            marketing_consent: marketingConsent,
+            marketing_consent_at: marketingConsent ? new Date().toISOString() : null,
           },
           emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
@@ -187,6 +197,61 @@ export default function SignupPage() {
                 required
                 disabled={loading || !!successMessage}
               />
+            </div>
+
+            {/* Legal Consents */}
+            <div className="space-y-3 bg-gray-700/50 rounded-lg p-4 border border-gray-600">
+              {/* Terms & Privacy - Required */}
+              <div className="flex items-start gap-3">
+                <input
+                  id="termsAccepted"
+                  type="checkbox"
+                  checked={termsAccepted}
+                  onChange={(e) => setTermsAccepted(e.target.checked)}
+                  className="mt-1 w-4 h-4 rounded border-gray-500 bg-gray-600 text-green-600 focus:ring-green-500 focus:ring-offset-gray-800"
+                  disabled={loading || !!successMessage}
+                  required
+                />
+                <label htmlFor="termsAccepted" className="text-sm text-gray-300 flex-1">
+                  I agree to the{' '}
+                  <a
+                    href="/terms"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-green-400 hover:text-green-300 underline"
+                  >
+                    Terms of Service
+                  </a>
+                  {' '}and{' '}
+                  <a
+                    href="/privacy"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-green-400 hover:text-green-300 underline"
+                  >
+                    Privacy Policy
+                  </a>
+                  {' '}<span className="text-red-400">*</span>
+                </label>
+              </div>
+
+              {/* Marketing Consent - Optional */}
+              <div className="flex items-start gap-3">
+                <input
+                  id="marketingConsent"
+                  type="checkbox"
+                  checked={marketingConsent}
+                  onChange={(e) => setMarketingConsent(e.target.checked)}
+                  className="mt-1 w-4 h-4 rounded border-gray-500 bg-gray-600 text-green-600 focus:ring-green-500 focus:ring-offset-gray-800"
+                  disabled={loading || !!successMessage}
+                />
+                <label htmlFor="marketingConsent" className="text-sm text-gray-300 flex-1">
+                  I want to receive newsletters, updates, and promotional emails about Swamp Darts
+                  <span className="block text-xs text-gray-400 mt-1">
+                    (Optional - you can change this preference anytime in your settings)
+                  </span>
+                </label>
+              </div>
             </div>
 
             {/* Account Type Info */}

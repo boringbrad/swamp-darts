@@ -33,26 +33,52 @@ export interface FriendRequest {
 }
 
 /**
- * Search for users by username, display name, or email
+ * Search for users by username or display name
+ * Privacy-compliant: Only allows partial matching on username/display_name
+ * For email, requires EXACT match and doesn't expose email in results
  */
 export async function searchUsers(query: string): Promise<any[]> {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return [];
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, username, display_name, email, avatar, photo_url')
-      .or(`username.ilike.%${query}%,display_name.ilike.%${query}%,email.ilike.%${query}%`)
-      .neq('id', user.id) // Don't include current user
-      .limit(20);
+    // Check if query looks like an email (contains @)
+    const isEmailQuery = query.includes('@');
 
-    if (error) {
-      console.error('Error searching users:', error);
-      return [];
+    if (isEmailQuery) {
+      // For email queries, only allow EXACT match for privacy
+      // Don't expose the email in results - only show if exact match found
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar, photo_url')
+        .eq('email', query) // Exact match only
+        .neq('id', user.id)
+        .limit(1);
+
+      if (error) {
+        console.error('Error searching users by email:', error);
+        return [];
+      }
+
+      // Return without email field to protect privacy
+      return data || [];
+    } else {
+      // For non-email queries, search username and display_name with partial matching
+      // Don't include email field to prevent email harvesting
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar, photo_url')
+        .or(`username.ilike.%${query}%,display_name.ilike.%${query}%`)
+        .neq('id', user.id)
+        .limit(20);
+
+      if (error) {
+        console.error('Error searching users:', error);
+        return [];
+      }
+
+      return data || [];
     }
-
-    return data || [];
   } catch (error) {
     console.error('Error in searchUsers:', error);
     return [];
@@ -196,18 +222,34 @@ export async function getFriends(): Promise<Friend[]> {
       return [];
     }
 
-    if (!data) return [];
+    if (!data || data.length === 0) return [];
 
-    // Get profile info for each friend
+    // Get all friend user IDs in one pass
+    const friendUserIds = data.map(friendship =>
+      friendship.user_id_1 === user.id ? friendship.user_id_2 : friendship.user_id_1
+    );
+
+    // Fetch all profiles in a single query
+    const { data: profiles, error: profilesError } = await supabase
+      .from('profiles')
+      .select('id, username, display_name, avatar, photo_url, last_seen_at')
+      .in('id', friendUserIds);
+
+    if (profilesError) {
+      console.error('Error fetching friend profiles:', profilesError);
+      return [];
+    }
+
+    if (!profiles) return [];
+
+    // Create a map of userId -> profile for quick lookup
+    const profileMap = new Map(profiles.map(p => [p.id, p]));
+
+    // Build friends array
     const friends: Friend[] = [];
     for (const friendship of data) {
       const friendUserId = friendship.user_id_1 === user.id ? friendship.user_id_2 : friendship.user_id_1;
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('username, display_name, avatar, photo_url, last_seen_at')
-        .eq('id', friendUserId)
-        .single();
+      const profile = profileMap.get(friendUserId);
 
       if (profile) {
         friends.push({
@@ -254,18 +296,32 @@ export async function getFriendRequests(): Promise<FriendRequest[]> {
       return [];
     }
 
-    if (!data) return [];
+    if (!data || data.length === 0) return [];
 
-    // Get profile info for each requester
+    // Get all requester IDs
+    const requesterIds = data.map(friendship => friendship.requested_by);
+
+    // Fetch all profiles in a single query
+    const { data: profiles, error: profilesError } = await supabase
+      .from('profiles')
+      .select('id, username, display_name, avatar, photo_url')
+      .in('id', requesterIds);
+
+    if (profilesError) {
+      console.error('Error fetching requester profiles:', profilesError);
+      return [];
+    }
+
+    if (!profiles) return [];
+
+    // Create a map of userId -> profile for quick lookup
+    const profileMap = new Map(profiles.map(p => [p.id, p]));
+
+    // Build requests array
     const requests: FriendRequest[] = [];
     for (const friendship of data) {
       const requesterId = friendship.requested_by;
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('username, display_name, avatar, photo_url')
-        .eq('id', requesterId)
-        .single();
+      const profile = profileMap.get(requesterId);
 
       if (profile) {
         requests.push({
@@ -306,18 +362,34 @@ export async function getSentFriendRequests(): Promise<Friend[]> {
       return [];
     }
 
-    if (!data) return [];
+    if (!data || data.length === 0) return [];
 
-    // Get profile info for each recipient
+    // Get all recipient IDs
+    const recipientIds = data.map(friendship =>
+      friendship.user_id_1 === user.id ? friendship.user_id_2 : friendship.user_id_1
+    );
+
+    // Fetch all profiles in a single query
+    const { data: profiles, error: profilesError } = await supabase
+      .from('profiles')
+      .select('id, username, display_name, avatar, photo_url')
+      .in('id', recipientIds);
+
+    if (profilesError) {
+      console.error('Error fetching recipient profiles:', profilesError);
+      return [];
+    }
+
+    if (!profiles) return [];
+
+    // Create a map of userId -> profile for quick lookup
+    const profileMap = new Map(profiles.map(p => [p.id, p]));
+
+    // Build requests array
     const requests: Friend[] = [];
     for (const friendship of data) {
       const recipientId = friendship.user_id_1 === user.id ? friendship.user_id_2 : friendship.user_id_1;
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('username, display_name, avatar, photo_url')
-        .eq('id', recipientId)
-        .single();
+      const profile = profileMap.get(recipientId);
 
       if (profile) {
         requests.push({

@@ -24,34 +24,96 @@ export interface PlayerInfo {
 
 export async function getAllPlayers(): Promise<PlayerInfo[]> {
   try {
-    console.log('getAllPlayers: Fetching profiles...');
+    console.log('getAllPlayers: Fetching matches...');
+
+    // Get all cricket and golf matches with user_id and created_at
+    const { data: cricketData, error: cricketError } = await supabase
+      .from('cricket_matches')
+      .select('user_id, created_at');
+
+    const { data: golfData, error: golfError } = await supabase
+      .from('golf_matches')
+      .select('user_id, created_at');
+
+    console.log('getAllPlayers: cricket matches:', cricketData?.length, 'golf matches:', golfData?.length);
+
+    // Build a map of user_id -> {cricketMatches, golfMatches, lastActivity}
+    const userStatsMap = new Map<string, {cricketMatches: number, golfMatches: number, lastActivity: string}>();
+
+    // Process cricket matches
+    cricketData?.forEach(match => {
+      if (!match.user_id) return;
+
+      const existing = userStatsMap.get(match.user_id) || {
+        cricketMatches: 0,
+        golfMatches: 0,
+        lastActivity: match.created_at
+      };
+
+      existing.cricketMatches++;
+      if (new Date(match.created_at) > new Date(existing.lastActivity)) {
+        existing.lastActivity = match.created_at;
+      }
+
+      userStatsMap.set(match.user_id, existing);
+    });
+
+    // Process golf matches
+    golfData?.forEach(match => {
+      if (!match.user_id) return;
+
+      const existing = userStatsMap.get(match.user_id) || {
+        cricketMatches: 0,
+        golfMatches: 0,
+        lastActivity: match.created_at
+      };
+
+      existing.golfMatches++;
+      if (new Date(match.created_at) > new Date(existing.lastActivity)) {
+        existing.lastActivity = match.created_at;
+      }
+
+      userStatsMap.set(match.user_id, existing);
+    });
+
+    console.log('getAllPlayers: unique user IDs with stats:', userStatsMap.size);
+
+    if (userStatsMap.size === 0) {
+      console.log('getAllPlayers: No users found with matches');
+      return [];
+    }
+
+    const userIds = Array.from(userStatsMap.keys());
+
+    // Fetch profiles for these users
     const { data: profiles, error: profileError } = await supabase
       .from('profiles')
-      .select('id, display_name, email');
-    console.log('getAllPlayers: profiles:', profiles);
+      .select('id, display_name, email')
+      .in('id', userIds);
 
-    if (profileError) throw profileError;
+    console.log('getAllPlayers: profiles:', profiles?.length, 'error:', profileError);
 
-    const { data: activityData, error: activityError } = await supabase
-      .from('user_activity_analytics')
-      .select('*');
+    if (profileError) {
+      console.error('getAllPlayers: Profile error:', profileError);
+      throw profileError;
+    }
 
-    if (activityError) throw activityError;
-
-    const activityMap = new Map(activityData?.map(a => [a.user_id, a]) || []);
-
-    return (profiles || []).map(p => {
-      const activity = activityMap.get(p.id);
+    // Build result with actual match counts
+    const result = (profiles || []).map(p => {
+      const stats = userStatsMap.get(p.id) || {cricketMatches: 0, golfMatches: 0, lastActivity: 'Never'};
       return {
         id: p.id,
-        displayName: p.display_name,
+        displayName: p.display_name || 'Unknown User',
         email: p.email || 'No email',
-        totalMatches: (activity?.cricket_match_count || 0) + (activity?.golf_match_count || 0),
-        cricketMatches: activity?.cricket_match_count || 0,
-        golfMatches: activity?.golf_match_count || 0,
-        lastActivity: activity?.last_activity || 'Never',
+        totalMatches: stats.cricketMatches + stats.golfMatches,
+        cricketMatches: stats.cricketMatches,
+        golfMatches: stats.golfMatches,
+        lastActivity: stats.lastActivity,
       };
     }).sort((a, b) => b.totalMatches - a.totalMatches);
+
+    console.log('getAllPlayers: returning', result.length, 'players with match counts');
+    return result;
   } catch (error) {
     console.error('Error fetching players:', error);
     return [];

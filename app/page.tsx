@@ -14,7 +14,9 @@ export default function Home() {
   const { playMode, setPlayMode, userProfile } = useAppContext();
   const [isAdmin, setIsAdmin] = useState(false);
   const { requestCount } = useFriendRequests();
-  const { venueMode } = useVenueMode();
+
+  // Check if user has a venue account (not just venue mode enabled)
+  const isVenueAccount = userProfile?.accountType === 'venue';
 
   // Update user presence to track online status
   useUserPresence();
@@ -46,34 +48,28 @@ export default function Home() {
             <GameModeCard title="GOLF" href="/golf" color="golf" />
             <GameModeCard title="EXTRA GAMES" href="/extra" color="extra" />
             <GameModeCard title="PLAY ONLINE" href="/tbd" color="tbd" disabled={true} />
-            {/* Portrait only - show profile buttons or venue hub */}
+            {/* Portrait only - show profile buttons AND venue hub if applicable */}
             <div className="landscape:hidden lg:hidden contents">
-              {venueMode ? (
+              <GameModeCard title="PROFILE" href="/stats" color="gray" />
+              <GameModeCard title="FRIENDS" href="/friends" color="gray" badgeCount={requestCount} />
+              {isVenueAccount && (
                 <GameModeCard title="VENUE HUB" href="/venue" color="purple" />
-              ) : (
-                <>
-                  <GameModeCard title="PROFILE" href="/stats" color="gray" />
-                  <GameModeCard title="FRIENDS" href="/friends" color="gray" badgeCount={requestCount} />
-                  {isAdmin && (
-                    <GameModeCard title="ADMIN" href="/admin" color="purple" />
-                  )}
-                </>
+              )}
+              {isAdmin && (
+                <GameModeCard title="ADMIN" href="/admin" color="purple" />
               )}
             </div>
           </div>
 
           {/* Right side - Profile and options (landscape/desktop only) - Takes 1/3 of width */}
           <div className="hidden landscape:flex landscape:w-1/3 lg:flex lg:w-1/3 flex-col gap-2 landscape:gap-3 sm:gap-4 h-full">
-            {venueMode ? (
+            <GameModeCard title="PROFILE" href="/stats" color="gray" />
+            <GameModeCard title="FRIENDS" href="/friends" color="gray" badgeCount={requestCount} />
+            {isVenueAccount && (
               <GameModeCard title="VENUE HUB" href="/venue" color="purple" />
-            ) : (
-              <>
-                <GameModeCard title="PROFILE" href="/stats" color="gray" />
-                <GameModeCard title="FRIENDS" href="/friends" color="gray" badgeCount={requestCount} />
-                {isAdmin && (
-                  <GameModeCard title="ADMIN" href="/admin" color="purple" />
-                )}
-              </>
+            )}
+            {isAdmin && (
+              <GameModeCard title="ADMIN" href="/admin" color="purple" />
             )}
           </div>
         </main>

@@ -343,20 +343,18 @@ export async function syncSessionMatchResults(
         insertData.course_id = matchData.course_id;
       }
 
-      console.log(`  💾 Inserting match for participant ${participant.user_id}...`);
+      console.log(`  💾 Upserting match for participant ${participant.user_id}...`);
 
-      // Create a copy of the match for this participant
+      // Create or update a copy of the match for this participant (use upsert to prevent duplicates)
       const { error: syncError } = await supabase
         .from(matchTable)
-        .insert(insertData);
+        .upsert(insertData, {
+          onConflict: 'match_id',
+          ignoreDuplicates: false, // Update if exists
+        });
 
       if (syncError) {
-        // If already exists, that's ok - skip silently
-        if (syncError.code !== '23505') { // 23505 is unique violation
-          console.error(`  ❌ Error syncing match to participant ${participant.user_id}:`, syncError);
-        } else {
-          console.log(`  ✓ Match already exists for participant ${participant.user_id}`);
-        }
+        console.error(`  ❌ Error syncing match to participant ${participant.user_id}:`, syncError);
         continue;
       }
 
@@ -456,20 +454,18 @@ export async function syncVenueMatchResults(
         insertData.course_id = matchData.course_id;
       }
 
-      console.log(`  💾 Inserting match for participant ${participant.user_id}...`);
+      console.log(`  💾 Upserting match for participant ${participant.user_id}...`);
 
-      // Create a copy of the match for this participant
+      // Create or update a copy of the match for this participant (use upsert to prevent duplicates)
       const { error: syncError } = await supabase
         .from(matchTable)
-        .insert(insertData);
+        .upsert(insertData, {
+          onConflict: 'match_id',
+          ignoreDuplicates: false, // Update if exists
+        });
 
       if (syncError) {
-        // If already exists, that's ok - skip silently
-        if (syncError.code !== '23505') { // 23505 is unique violation
-          console.error(`  ❌ Error syncing match to participant ${participant.user_id}:`, syncError);
-        } else {
-          console.log(`  ✓ Match already exists for participant ${participant.user_id}`);
-        }
+        console.error(`  ❌ Error syncing match to participant ${participant.user_id}:`, syncError);
         continue;
       }
 

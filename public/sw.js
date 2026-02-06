@@ -1,5 +1,7 @@
 // Swamp Darts Service Worker
-const CACHE_NAME = 'swamp-darts-v2'; // Increment version to force cache refresh
+// Auto-increment version on each deployment - uses build timestamp
+const BUILD_VERSION = '__BUILD_VERSION__'; // Replaced during build
+const CACHE_NAME = `swamp-darts-${BUILD_VERSION || Date.now()}`;
 const STATIC_ASSETS = [
   '/manifest.json',
   '/icon-192.png',
@@ -26,13 +28,31 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheName !== CACHE_NAME) {
+            console.log('Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
+    }).then(() => {
+      // Notify all clients that a new version is active
+      return self.clients.matchAll().then((clients) => {
+        clients.forEach((client) => {
+          client.postMessage({
+            type: 'SW_UPDATED',
+            version: BUILD_VERSION,
+          });
+        });
+      });
     })
   );
   self.clients.claim();
+});
+
+// Listen for skip waiting message
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 // Fetch event - network-first strategy (better for development)

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { STOCK_AVATARS } from '../lib/avatars';
 import PhotoEditor from './PhotoEditor';
+import { compressImage, uploadPhotoToSupabase } from '../lib/photoUpload';
 
 interface AddGuestPlayerModalProps {
   isOpen: boolean;
@@ -29,8 +30,11 @@ export default function AddGuestPlayerModal({
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [showCamera, setShowCamera] = useState(false);
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [showPhotoEditor, setShowPhotoEditor] = useState(false);
   const [photoToEdit, setPhotoToEdit] = useState<string>('');
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Update state when initial values change (for edit mode)
   useEffect(() => {
@@ -41,11 +45,15 @@ export default function AddGuestPlayerModal({
     }
   }, [isOpen, initialName, initialAvatar, initialPhotoUrl]);
 
-  // Cleanup camera stream when modal closes or camera closes
+  // Cleanup camera stream and abort photo processing when modal closes
   useEffect(() => {
     return () => {
       if (cameraStream) {
         cameraStream.getTracks().forEach(track => track.stop());
+      }
+      // Abort any ongoing photo compression
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
       }
     };
   }, [cameraStream]);
@@ -66,6 +74,11 @@ export default function AddGuestPlayerModal({
   };
 
   const handleCancel = () => {
+    // Abort any ongoing photo processing
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
     // Stop camera if running
     if (cameraStream) {
       cameraStream.getTracks().forEach(track => track.stop());
@@ -77,79 +90,39 @@ export default function AddGuestPlayerModal({
     setPlayerName('');
     setSelectedAvatar('avatar-1');
     setPhotoUrl(undefined);
+    setUploadError(null);
     onClose();
-  };
-
-  // Compress and resize image to keep file size reasonable for localStorage
-  const compressImage = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-
-          // Max dimensions (reduce file size significantly)
-          const MAX_WIDTH = 400;
-          const MAX_HEIGHT = 400;
-
-          if (width > height) {
-            if (width > MAX_WIDTH) {
-              height *= MAX_WIDTH / width;
-              width = MAX_WIDTH;
-            }
-          } else {
-            if (height > MAX_HEIGHT) {
-              width *= MAX_HEIGHT / height;
-              height = MAX_HEIGHT;
-            }
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, width, height);
-            // Use lower quality to reduce size further (0.7 = 70% quality)
-            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
-
-            // Check if compressed image is still too large (>500KB)
-            const sizeInKB = (compressedDataUrl.length * 3) / 4 / 1024;
-            if (sizeInKB > 500) {
-              // Try even lower quality if still too large
-              const furtherCompressed = canvas.toDataURL('image/jpeg', 0.5);
-              resolve(furtherCompressed);
-            } else {
-              resolve(compressedDataUrl);
-            }
-          } else {
-            reject(new Error('Failed to get canvas context'));
-          }
-        };
-        img.onerror = () => reject(new Error('Failed to load image'));
-        img.src = e.target?.result as string;
-      };
-      reader.onerror = () => reject(new Error('Failed to read file'));
-      reader.readAsDataURL(file);
-    });
   };
 
   // Handle photo upload from file
   const handlePhotoUpload = async (file: File) => {
+    // Create new abort controller for this compression
+    abortControllerRef.current = new AbortController();
+
     setIsProcessingPhoto(true);
+    setUploadError(null);
+
     try {
-      const compressed = await compressImage(file);
+      // Compress with abort support (smaller size for faster processing)
+      const compressed = await compressImage(
+        file,
+        400, // maxWidth
+        400, // maxHeight
+        0.7, // quality
+        abortControllerRef.current.signal
+      );
+
       // Open photo editor instead of directly setting photo
       setPhotoToEdit(compressed);
       setShowPhotoEditor(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error processing photo:', error);
-      alert('Failed to process photo. Please try a different image.');
+      if (error.name !== 'AbortError') {
+        setUploadError('Failed to process photo. Please try a different image.');
+      }
     } finally {
       setIsProcessingPhoto(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -201,10 +174,32 @@ export default function AddGuestPlayerModal({
     setPhotoUrl(undefined);
   };
 
-  const handlePhotoEditorSave = (editedImageUrl: string) => {
-    setPhotoUrl(editedImageUrl);
+  const handlePhotoEditorSave = async (editedImageUrl: string) => {
     setShowPhotoEditor(false);
     setPhotoToEdit('');
+    setIsUploadingPhoto(true);
+    setUploadError(null);
+
+    try {
+      // Generate a unique ID for this guest (will be replaced when actually saved)
+      const tempId = `guest-${Date.now()}`;
+
+      // Upload to Supabase Storage
+      const result = await uploadPhotoToSupabase(editedImageUrl, tempId, 'guest-photos');
+
+      if (result.success && result.url) {
+        setPhotoUrl(result.url);
+      } else {
+        throw new Error(result.error || 'Upload failed');
+      }
+    } catch (error: any) {
+      console.error('Error uploading photo:', error);
+      setUploadError(error.message || 'Failed to upload photo');
+      // Fallback to data URL if upload fails (temporary)
+      setPhotoUrl(editedImageUrl);
+    } finally {
+      setIsUploadingPhoto(false);
+    }
   };
 
   const handlePhotoEditorCancel = () => {
@@ -256,10 +251,22 @@ export default function AddGuestPlayerModal({
             PROFILE PICTURE (OPTIONAL)
           </label>
 
+          {/* Error message */}
+          {uploadError && (
+            <div className="mb-3 p-3 bg-[#FF6B6B]/20 border border-[#FF6B6B] rounded">
+              <p className="text-[#FF6B6B] text-sm">{uploadError}</p>
+            </div>
+          )}
+
           {isProcessingPhoto ? (
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 border-4 border-[#6b1a8b] border-t-transparent rounded-full animate-spin"></div>
-              <p className="text-white text-sm">Processing photo...</p>
+              <p className="text-white text-sm">Compressing photo...</p>
+            </div>
+          ) : isUploadingPhoto ? (
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 border-4 border-[#4CAF50] border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-white text-sm">Uploading photo to cloud...</p>
             </div>
           ) : photoUrl ? (
             <div className="flex items-center gap-4">

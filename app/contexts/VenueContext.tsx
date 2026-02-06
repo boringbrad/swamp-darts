@@ -19,7 +19,7 @@ interface VenueContextType {
   venuePlayersForSelection: StoredPlayer[];
 
   // Actions
-  refreshParticipants: () => void;
+  refreshParticipants: () => Promise<void>;
 }
 
 const VenueContext = createContext<VenueContextType | undefined>(undefined);

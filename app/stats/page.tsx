@@ -165,7 +165,7 @@ export default function ProfilePage() {
             {/* Name and Edit Button */}
             <div className="flex flex-col gap-4">
               <h1 className="text-4xl font-bold text-white">
-                {userProfile?.displayName || 'THE MAYOR'}
+                {userProfile?.displayName || 'Unknown User'}
               </h1>
               <button
                 onClick={() => setIsEditModalOpen(true)}

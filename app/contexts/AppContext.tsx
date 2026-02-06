@@ -177,8 +177,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // Create default user profile
           const defaultProfile: UserProfile = {
             id: 'default-user',
-            username: 'the-mayor',
-            displayName: 'THE MAYOR',
+            username: 'unknown-user',
+            displayName: 'Unknown User',
             avatar: 'avatar-1',
             friends: [],
             clubs: [],
@@ -223,8 +223,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // Create default user profile
           const defaultProfile: UserProfile = {
             id: 'default-user',
-            username: 'the-mayor',
-            displayName: 'THE MAYOR',
+            username: 'unknown-user',
+            displayName: 'Unknown User',
             avatar: 'avatar-1',
             friends: [],
             clubs: [],

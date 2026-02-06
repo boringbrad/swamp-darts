@@ -685,17 +685,20 @@ export default function SettingsModal({ isOpen, onClose, pathname = '' }: Settin
                     <div className="flex-1">
                       <p className="text-white font-semibold mb-1">Enable Venue Mode on this device</p>
                       <p className="text-sm text-gray-400">
-                        Switch between player mode and venue mode. This setting is per-device.
+                        {isVenue
+                          ? 'This account is a venue account and cannot be switched to player mode.'
+                          : 'Switch between player mode and venue mode. This setting is per-device.'}
                       </p>
                     </div>
-                    <label className="relative inline-flex items-center cursor-pointer ml-4">
+                    <label className={`relative inline-flex items-center ml-4 ${isVenue ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
                       <input
                         type="checkbox"
                         checked={venueMode}
                         onChange={(e) => setVenueMode(e.target.checked)}
+                        disabled={isVenue}
                         className="sr-only peer"
                       />
-                      <div className="w-14 h-7 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-green-600"></div>
+                      <div className="w-14 h-7 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-green-600 peer-disabled:opacity-60 peer-disabled:cursor-not-allowed"></div>
                     </label>
                   </div>
 

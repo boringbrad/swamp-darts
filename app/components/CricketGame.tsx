@@ -134,6 +134,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
   const [lastSkippedPlayer, setLastSkippedPlayer] = useState<string | null>(null); // Prevent consecutive skips
   const [pinCount, setPinCount] = useState(0); // Positive = player 0, Negative = player 1
   const [gameWinner, setGameWinner] = useState<string | null>(null);
+  const [isSavingGame, setIsSavingGame] = useState(false); // Track game save progress
   const [history, setHistory] = useState<HistoryEntry[]>([]); // Complete action history for undo
 
   // Helper to get team index for a player (for tag-team mode)
@@ -408,24 +409,32 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
       console.log('[CricketGame] venuePlayers count:', venuePlayers.length);
       if (canSync) {
         console.log('🔄 Starting Supabase sync for cricket match...');
-        await syncCricketMatch({
-          matchId: matchData.matchId,
-          matchData: matchData,
-          players: matchData.players,
-          gameMode: matchData.variant,
-          completedAt: new Date(matchData.date),
-          venueId: venueId || undefined,
-        });
-        console.log('✅ Supabase sync complete!');
 
-        // If this is a venue game, sync to all venue participants
+        // Run syncs in parallel for better performance
+        const syncPromises = [
+          syncCricketMatch({
+            matchId: matchData.matchId,
+            matchData: matchData,
+            players: matchData.players,
+            gameMode: matchData.variant,
+            completedAt: new Date(matchData.date),
+            venueId: venueId || undefined,
+          })
+        ];
+
+        // Add venue participant sync if this is a venue game
         if (venueId) {
-          console.log('🏢 Syncing match to all venue participants...');
-          await syncVenueMatchResults(venueId, matchData.matchId, 'cricket_matches');
-          console.log('✅ Venue participant sync complete!');
+          console.log('🏢 Will sync match to all venue participants...');
+          syncPromises.push(
+            syncVenueMatchResults(venueId, matchData.matchId, 'cricket_matches')
+          );
         } else {
           console.log('⏭️ No venueId - skipping venue participant sync');
         }
+
+        // Wait for all syncs to complete in parallel
+        await Promise.all(syncPromises);
+        console.log('✅ All Supabase syncs complete!');
       } else {
         console.log('⏭️ Not authenticated, skipping Supabase sync');
       }
@@ -460,8 +469,11 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
 
   // Save game when winner is determined
   useEffect(() => {
-    if (gameWinner) {
-      saveGameToDatabase();
+    if (gameWinner && !isSavingGame) {
+      setIsSavingGame(true);
+      saveGameToDatabase().finally(() => {
+        setIsSavingGame(false);
+      });
     }
   }, [gameWinner]);
 
@@ -2039,11 +2051,23 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
                 ? playerScores.find(s => s.playerId === gameWinner)?.playerName
                 : players.find(p => p.id === gameWinner)?.name} WINS!
             </p>
+
+            {/* Saving indicator */}
+            {isSavingGame && (
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-white text-xl">Saving game...</p>
+              </div>
+            )}
+
             <button
-              onClick={() => router.push('/')}
-              className="bg-[#9d8b1a] text-white px-12 py-6 rounded text-4xl font-bold hover:bg-[#b39f2a] transition-colors"
+              onClick={() => !isSavingGame && router.push('/')}
+              disabled={isSavingGame}
+              className={`bg-[#9d8b1a] text-white px-12 py-6 rounded text-4xl font-bold transition-colors ${
+                isSavingGame ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#b39f2a]'
+              }`}
             >
-              Return to Home
+              {isSavingGame ? 'Saving...' : 'Return to Home'}
             </button>
           </div>
         </div>

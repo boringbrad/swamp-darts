@@ -15,6 +15,7 @@ export default function AdminPlayerStatsView() {
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerInfo | null>(null);
   const [gameType, setGameType] = useState<GameType>('all');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Load all players
   useEffect(() => {
@@ -23,9 +24,20 @@ export default function AdminPlayerStatsView() {
 
   const loadPlayers = async () => {
     setLoading(true);
-    const playerList = await getAllPlayers();
-    setPlayers(playerList);
-    setLoading(false);
+    setError(null);
+    try {
+      const playerList = await getAllPlayers();
+      console.log('AdminPlayerStatsView: Loaded players:', playerList.length);
+      setPlayers(playerList);
+      if (playerList.length === 0) {
+        setError('No players found. Make sure users have played games.');
+      }
+    } catch (err) {
+      console.error('AdminPlayerStatsView: Error loading players:', err);
+      setError('Failed to load players. Check console for details.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const filteredPlayers = players.filter(p => {
@@ -74,29 +86,61 @@ export default function AdminPlayerStatsView() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Player List */}
         <div className="bg-[#2a2a2a] rounded-lg p-6">
-          <h3 className="text-white text-xl font-bold mb-4">
-            Select Player ({filteredPlayers.length})
-          </h3>
-          <div className="space-y-2 max-h-[600px] overflow-y-auto">
-            {filteredPlayers.map(player => (
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-white text-xl font-bold">
+              Select Player ({loading ? '...' : filteredPlayers.length})
+            </h3>
+            {!loading && (
               <button
-                key={player.id}
-                onClick={() => setSelectedPlayer(player)}
-                className={`w-full text-left p-4 rounded transition-colors ${
-                  selectedPlayer?.id === player.id
-                    ? 'bg-[#6b1a8b] text-white'
-                    : 'bg-[#1a1a1a] text-white hover:bg-[#333333]'
-                }`}
+                onClick={loadPlayers}
+                className="px-3 py-1 bg-[#6b1a8b] text-white text-sm font-bold rounded hover:opacity-90"
               >
-                <div className="font-bold">{player.displayName}</div>
-                <div className="text-sm opacity-75">
-                  {player.totalMatches} matches
-                  {gameType === 'cricket' && ` (${player.cricketMatches} cricket)`}
-                  {gameType === 'golf' && ` (${player.golfMatches} golf)`}
-                </div>
+                Refresh
               </button>
-            ))}
+            )}
           </div>
+          {loading ? (
+            <div className="text-center py-12">
+              <div className="text-white text-lg">Loading players...</div>
+            </div>
+          ) : error ? (
+            <div className="text-center py-12">
+              <div className="text-red-400 text-lg mb-4">{error}</div>
+              <button
+                onClick={loadPlayers}
+                className="px-6 py-2 bg-[#6b1a8b] text-white font-bold rounded hover:opacity-90"
+              >
+                Try Again
+              </button>
+            </div>
+          ) : filteredPlayers.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="text-white/50 text-lg">
+                No players found for {gameType === 'all' ? 'any game' : gameType}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-[600px] overflow-y-auto">
+              {filteredPlayers.map(player => (
+                <button
+                  key={player.id}
+                  onClick={() => setSelectedPlayer(player)}
+                  className={`w-full text-left p-4 rounded transition-colors ${
+                    selectedPlayer?.id === player.id
+                      ? 'bg-[#6b1a8b] text-white'
+                      : 'bg-[#1a1a1a] text-white hover:bg-[#333333]'
+                  }`}
+                >
+                  <div className="font-bold">{player.displayName}</div>
+                  <div className="text-sm opacity-75">
+                    {player.totalMatches} matches
+                    {gameType === 'cricket' && ` (${player.cricketMatches} cricket)`}
+                    {gameType === 'golf' && ` (${player.golfMatches} golf)`}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Player Stats & History */}

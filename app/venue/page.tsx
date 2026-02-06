@@ -10,12 +10,12 @@ import VenueLeaderboards from '../components/VenueLeaderboards';
 import VenueStats from '../components/VenueStats';
 import { useVenueMode, useVenueInfo, useVenueParticipants, useVenueBoards, useVenueGuests } from '../hooks/useVenue';
 import { useVenueContext } from '../contexts/VenueContext';
-import { createBoard, createVenueGuest, updateVenueGuest, deleteVenueGuest, regenerateRoomCode, updateVenueName, removeParticipant } from '../lib/venue';
+import { createBoard, deleteBoard, createVenueGuest, updateVenueGuest, deleteVenueGuest, regenerateRoomCode, updateVenueName, removeParticipant } from '../lib/venue';
 import { getAvatarById, getDefaultAvatar, STOCK_AVATARS } from '../lib/avatars';
 
 export default function VenueDashboardPage() {
   const router = useRouter();
-  const { venueMode } = useVenueMode();
+  const { venueMode, setVenueMode } = useVenueMode();
   const { venueInfo, refresh: refreshVenueInfo } = useVenueInfo();
   const { activeParticipants, refresh: refreshParticipants } = useVenueParticipants(venueInfo?.id || null);
   const { boards, refresh: refreshBoards } = useVenueBoards(venueInfo?.id || null);
@@ -31,22 +31,9 @@ export default function VenueDashboardPage() {
   const [isEditingVenueName, setIsEditingVenueName] = useState(false);
   const [editVenueName, setEditVenueName] = useState('');
 
-  // Redirect if not in venue mode or not a venue
-  if (!venueMode) {
-    return (
-      <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl text-white mb-4">Venue Mode Disabled</h1>
-          <p className="text-gray-400 mb-6">Enable venue mode in settings to access this page.</p>
-          <button
-            onClick={() => router.push('/')}
-            className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded"
-          >
-            Go Home
-          </button>
-        </div>
-      </div>
-    );
+  // Auto-enable venue mode if user has venue info but venue mode is disabled
+  if (venueInfo && !venueMode) {
+    setVenueMode(true);
   }
 
   if (!venueInfo) {
@@ -82,6 +69,24 @@ export default function VenueDashboardPage() {
     }
   };
 
+  const handleDeleteBoard = async (boardId: string, boardName: string) => {
+    if (!confirm(`Are you sure you want to delete "${boardName}"? This cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const result = await deleteBoard(boardId);
+      if (result.success) {
+        await refreshBoards();
+      } else {
+        alert(result.error || 'Failed to delete board');
+      }
+    } catch (error) {
+      console.error('Error deleting board:', error);
+      alert('Failed to delete board');
+    }
+  };
+
   const handleAddOrEditGuest = async (name: string, avatar: string, photoUrl?: string) => {
     if (!venueInfo?.id) return;
 
@@ -92,7 +97,7 @@ export default function VenueDashboardPage() {
         if (result.success) {
           await refreshGuests();
           await refreshParticipants(); // Refresh venue dashboard participants
-          refreshVenueContext(); // Refresh player pool participants
+          await refreshVenueContext(); // Refresh player pool participants
           setEditingGuest(null);
           setShowGuestModal(false);
         } else {
@@ -104,7 +109,7 @@ export default function VenueDashboardPage() {
         if (result.success) {
           await refreshGuests();
           await refreshParticipants(); // Refresh venue dashboard participants
-          refreshVenueContext(); // Refresh player pool participants
+          await refreshVenueContext(); // Refresh player pool participants
           setShowGuestModal(false);
         } else {
           alert(result.error || 'Failed to create guest');
@@ -160,7 +165,7 @@ export default function VenueDashboardPage() {
       const result = await removeParticipant(participantId);
       if (result.success) {
         await refreshParticipants(); // Refresh venue dashboard participants
-        refreshVenueContext(); // Refresh player pool participants immediately
+        await refreshVenueContext(); // Refresh player pool participants immediately
       } else {
         alert(result.error || 'Failed to remove participant');
       }
@@ -494,15 +499,23 @@ export default function VenueDashboardPage() {
                             <p className="text-white font-bold text-lg">{board.boardName}</p>
                             <p className="text-gray-400 text-sm">Board #{index + 1}</p>
                           </div>
-                          <button
-                            onClick={() => {
-                              // TODO: Navigate to game selection for this board
-                              alert('Board game selection coming soon!');
-                            }}
-                            className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded"
-                          >
-                            Start Game
-                          </button>
+                          <div className="flex gap-3">
+                            <button
+                              onClick={() => {
+                                // TODO: Navigate to game selection for this board
+                                alert('Board game selection coming soon!');
+                              }}
+                              className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded"
+                            >
+                              Start Game
+                            </button>
+                            <button
+                              onClick={() => handleDeleteBoard(board.id, board.boardName)}
+                              className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded transition-colors"
+                            >
+                              Delete
+                            </button>
+                          </div>
                         </div>
                       ))
                     )}
