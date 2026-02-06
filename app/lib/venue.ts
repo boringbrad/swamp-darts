@@ -80,7 +80,7 @@ export async function requestVenueStatus(venueName: string): Promise<{ success: 
         user_id_param: user.id,
         venue_name_param: venueName,
       })
-      .single();
+      .single() as { data: { success: boolean; error_message?: string; room_code?: string } | null; error: any };
 
     if (error) {
       console.error('Error activating venue account:', error);
