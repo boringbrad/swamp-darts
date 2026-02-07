@@ -8,6 +8,8 @@ type Player = {
   name: string;
   score: number;
   dartsThrown: number;
+  lastTurnScore: number;
+  turnStartScore: number;
 };
 
 type DartScore = {
@@ -20,6 +22,7 @@ type HistoryEntry = {
   currentPlayerIndex: number;
   dartCount: number;
   currentTurnDarts: DartScore[];
+  multiplier: number;
 };
 
 function X01Game() {
@@ -54,6 +57,8 @@ function X01Game() {
           name,
           score,
           dartsThrown: 0,
+          lastTurnScore: 0,
+          turnStartScore: score,
         }))
       );
       setInitialized(true);
@@ -68,6 +73,7 @@ function X01Game() {
         currentPlayerIndex,
         dartCount,
         currentTurnDarts: [...currentTurnDarts],
+        multiplier,
       },
     ]);
   };
@@ -81,17 +87,44 @@ function X01Game() {
     const newPlayers = [...players];
     const currentPlayer = newPlayers[currentPlayerIndex];
     const newScore = currentPlayer.score - points;
+    const newDartCount = dartCount + 1;
+    const newTurnDarts = [...currentTurnDarts, { value: points, display }];
 
-    if (newScore < 0) {
-      // Bust - reset to original score for this turn
-      alert('BUST! Score would go below zero.');
+    // Check for bust conditions
+    if (newScore < 0 || newScore === 1) {
+      // Bust - score below 0 or score of 1 (can't finish on double)
+      alert(`BUST! ${newScore < 0 ? 'Score would go below zero.' : 'Cannot finish on a score of 1!'}`);
+      currentPlayer.score = currentPlayer.turnStartScore;
+      currentPlayer.dartsThrown += 3;
+      currentPlayer.lastTurnScore = 0;
+      setPlayers(newPlayers);
+      setCurrentPlayerIndex((currentPlayerIndex + 1) % players.length);
+      setDartCount(0);
+      setCurrentTurnDarts([]);
+      setMultiplier(1);
       return;
     }
 
-    if (newScore === 0) {
+    if (newScore === 0 && multiplier !== 2) {
+      // Bust - must finish on a double
+      alert('BUST! Must finish on a DOUBLE!');
+      currentPlayer.score = currentPlayer.turnStartScore;
+      currentPlayer.dartsThrown += 3;
+      currentPlayer.lastTurnScore = 0;
+      setPlayers(newPlayers);
+      setCurrentPlayerIndex((currentPlayerIndex + 1) % players.length);
+      setDartCount(0);
+      setCurrentTurnDarts([]);
+      setMultiplier(1);
+      return;
+    }
+
+    if (newScore === 0 && multiplier === 2) {
       // Winner!
       currentPlayer.score = 0;
-      currentPlayer.dartsThrown += dartCount + 1;
+      currentPlayer.dartsThrown += newDartCount;
+      const turnScore = currentPlayer.turnStartScore - newScore;
+      currentPlayer.lastTurnScore = turnScore;
       setPlayers(newPlayers);
       setTimeout(() => {
         alert(`${currentPlayer.name} WINS! 🎉`);
@@ -101,14 +134,21 @@ function X01Game() {
     }
 
     currentPlayer.score = newScore;
-    const newDartCount = dartCount + 1;
-    const newTurnDarts = [...currentTurnDarts, { value: points, display }];
 
     if (newDartCount >= 3) {
       // End of turn
+      const turnScore = currentPlayer.turnStartScore - newScore;
+      currentPlayer.lastTurnScore = turnScore;
       currentPlayer.dartsThrown += 3;
       setPlayers(newPlayers);
-      setCurrentPlayerIndex((currentPlayerIndex + 1) % players.length);
+
+      // Set next player's turn start score
+      const nextPlayerIndex = (currentPlayerIndex + 1) % players.length;
+      const updatedPlayers = [...newPlayers];
+      updatedPlayers[nextPlayerIndex].turnStartScore = updatedPlayers[nextPlayerIndex].score;
+      setPlayers(updatedPlayers);
+
+      setCurrentPlayerIndex(nextPlayerIndex);
       setDartCount(0);
       setCurrentTurnDarts([]);
       setMultiplier(1);
@@ -129,8 +169,8 @@ function X01Game() {
     setCurrentPlayerIndex(lastState.currentPlayerIndex);
     setDartCount(lastState.dartCount);
     setCurrentTurnDarts(lastState.currentTurnDarts);
+    setMultiplier(lastState.multiplier);
     setHistory(history.slice(0, -1));
-    setMultiplier(1);
   };
 
   const orderedNumbers = [20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
@@ -169,7 +209,20 @@ function X01Game() {
                 >
                   <div className="text-white text-base sm:text-xl font-bold mb-1 sm:mb-2 truncate">{player.name}</div>
                   <div className="text-white text-3xl sm:text-5xl font-bold mb-1">{player.score}</div>
-                  <div className="text-gray-300 text-xs sm:text-sm">Darts: {player.dartsThrown + dartCount}</div>
+                  {player.lastTurnScore > 0 && (
+                    <div className="text-[#00d1b2] text-sm sm:text-base font-semibold">
+                      Last: -{player.lastTurnScore}
+                    </div>
+                  )}
+                  <div className="text-gray-300 text-xs sm:text-sm">Darts: {player.dartsThrown + (index === currentPlayerIndex ? dartCount : 0)}</div>
+                  {(() => {
+                    const totalPoints = startingScore - player.score;
+                    const completedTurns = Math.floor(player.dartsThrown / 3);
+                    const avg = completedTurns > 0 ? (totalPoints / completedTurns).toFixed(1) : '0.0';
+                    return (
+                      <div className="text-gray-400 text-xs sm:text-sm">Avg: {avg} pts/turn</div>
+                    );
+                  })()}
                 </div>
               ))}
             </div>

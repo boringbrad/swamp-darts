@@ -604,24 +604,6 @@ export default function CurlingPage() {
     <>
       <Header title="CURLING DARTS" />
 
-      {/* Mobile Notice - Hidden on tablets and desktop */}
-      <div className="mobile-notice" style={{
-        display: 'none',
-        background: '#0f0f0f',
-        color: 'white',
-        height: '100vh',
-        justifyContent: 'center',
-        alignItems: 'center',
-        textAlign: 'center',
-        padding: '20px'
-      }}>
-        <div>
-          <h1 style={{ fontSize: '2rem', marginBottom: '20px', color: '#00d1b2' }}>Curling Darts</h1>
-          <p style={{ fontSize: '1.2rem', color: '#888', marginBottom: '10px' }}>Not available on mobile devices</p>
-          <p style={{ fontSize: '1rem', color: '#666' }}>Please use a tablet or desktop to play Curling Darts</p>
-        </div>
-      </div>
-
       <div className="curling-game" style={{
         background: '#0f0f0f',
         color: 'white',
@@ -645,7 +627,7 @@ export default function CurlingPage() {
           boxSizing: 'border-box',
           overflow: 'auto'
         }}>
-          <h2 style={{ margin: '0 0 10px 0', fontSize: '2rem', color: '#00d1b2', letterSpacing: '2px' }}>CURLING DARTS</h2>
+          <h2 id="curling-title" style={{ margin: '0 0 10px 0', fontSize: '2rem', color: '#00d1b2', letterSpacing: '2px' }}>CURLING DARTS</h2>
 
           <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
             <input type="text" id="name-t1" placeholder="Red Player" defaultValue="Red Player" style={{
@@ -774,7 +756,7 @@ export default function CurlingPage() {
         </div>
 
         {/* Right Sidebar - Dart History */}
-        <div style={{
+        <div id="dart-history" style={{
           background: '#181818',
           padding: '15px',
           borderLeft: '1px solid #333',
@@ -798,7 +780,7 @@ export default function CurlingPage() {
         </div>
 
         {/* Bottom - End-by-End Scores (Horizontal) */}
-        <div style={{
+        <div id="scores-section" style={{
           gridColumn: '1 / -1',
           background: '#181818',
           padding: '10px 15px',
@@ -882,23 +864,181 @@ export default function CurlingPage() {
             }
           }
 
-          /* Mobile portrait - hide game (catches phones and small tablets in portrait) */
-          @media (max-width: 834px) and (orientation: portrait) {
+          /* Mobile portrait - vertical layout */
+          @media (max-width: 1024px) {
             .curling-game {
+              display: flex !important;
+              flex-direction: column !important;
+              grid-template-columns: unset !important;
+              grid-template-rows: unset !important;
+              padding-top: 60px !important;
+              height: 100vh !important;
+              overflow: hidden !important;
+            }
+
+            /* Hide title on mobile */
+            #curling-title {
               display: none !important;
             }
-            .mobile-notice {
-              display: flex !important;
+
+            /* Top section - Controls (1/4 height) */
+            #sidebar {
+              height: auto !important;
+              max-height: 28vh !important;
+              border-right: none !important;
+              border-bottom: 1px solid #333 !important;
+              padding: 4px !important;
+              overflow-y: hidden !important;
+              flex-shrink: 0 !important;
+            }
+
+            #sidebar input {
+              font-size: 0.65rem !important;
+              padding: 2px 4px !important;
+            }
+
+            #turn-display {
+              font-size: 0.75rem !important;
+              padding: 3px !important;
+              margin-bottom: 2px !important;
+              line-height: 1.2 !important;
+            }
+
+            #sidebar button {
+              font-size: 0.7rem !important;
+              padding: 4px 6px !important;
+            }
+
+            #sidebar > div {
+              padding: 3px !important;
+              margin-bottom: 2px !important;
+            }
+
+            #sidebar p {
+              font-size: 0.95rem !important;
+              margin: 0 !important;
+              line-height: 1.3 !important;
+              display: inline !important;
+              margin-right: 10px !important;
+            }
+
+            #current-lie {
+              font-size: 1.1rem !important;
+              display: inline !important;
+              font-weight: bold !important;
+            }
+
+            #lie-details {
+              font-size: 0.95rem !important;
+              margin-top: 0 !important;
+              display: inline !important;
+              margin-left: 6px !important;
+            }
+
+            /* Match Score - much larger text */
+            #sidebar > div:has(#total-red) {
+              margin-bottom: 0 !important;
+            }
+
+            #sidebar > div:has(#total-red) > div:first-child {
+              font-size: 0.75rem !important;
+              margin-bottom: 3px !important;
+            }
+
+            #sidebar > div:has(#total-red) > div:last-child {
+              font-size: 1.4rem !important;
+            }
+
+            #name-display-t1, #name-display-t2 {
+              font-size: 1.1rem !important;
+              font-weight: bold !important;
+            }
+
+            #total-red, #total-blue {
+              font-size: 1.6rem !important;
+              font-weight: bold !important;
+            }
+
+            /* End count and darts display */
+            #end-count, #t1-darts, #t2-darts {
+              font-size: 0.95rem !important;
+            }
+
+            /* Dart History - small section */
+            #dart-history {
+              height: auto !important;
+              max-height: 60px !important;
+              border-left: none !important;
+              border-bottom: 1px solid #333 !important;
+              padding: 6px !important;
+              flex-shrink: 0 !important;
+              overflow: hidden !important;
+            }
+
+            #dart-history h3 {
+              font-size: 0.8rem !important;
+              margin: 0 0 4px 0 !important;
+            }
+
+            #log {
+              font-size: 0.8rem !important;
+              padding: 6px !important;
+              max-height: 32px !important;
+              line-height: 1.2 !important;
+              overflow: hidden !important;
+            }
+
+            /* Center - Dartboard (majority of space) */
+            #game-container {
+              flex-grow: 1 !important;
+              height: auto !important;
+              padding: 8px !important;
+            }
+
+            #main-board {
+              max-width: 100% !important;
+              max-height: 100% !important;
+              width: 100% !important;
+              height: 100% !important;
+            }
+
+            /* Bottom - Scores table (small) */
+            #scores-section {
+              height: auto !important;
+              max-height: 15vh !important;
+              padding: 6px 8px !important;
+              overflow-y: auto !important;
+              flex-shrink: 0 !important;
+              grid-column: unset !important;
+            }
+
+            #scores-section > div:first-child {
+              font-size: 0.7rem !important;
+              margin-bottom: 4px !important;
+            }
+
+            #end-scores-table {
+              font-size: 0.7rem !important;
+            }
+
+            #end-scores-table th,
+            #end-scores-table td {
+              padding: 2px 4px !important;
+            }
+
+            #end-scores-table th:first-child {
+              min-width: 60px !important;
+              font-size: 0.65rem !important;
             }
           }
 
-          /* Small screens regardless of orientation - hide game */
+          /* Small screens regardless of orientation */
           @media (max-width: 700px) {
             .curling-game {
-              display: none !important;
-            }
-            .mobile-notice {
               display: flex !important;
+              flex-direction: column !important;
+              grid-template-columns: unset !important;
+              grid-template-rows: unset !important;
             }
           }
         `}</style>
