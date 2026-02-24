@@ -80,7 +80,10 @@ export default function GolfGame({ variant }: GolfGameProps) {
     loadRecord();
   }, [golfCourseName]);
 
-  // Initialize players and scores from selected players
+  // Initialize players and scores from selected players.
+  // IMPORTANT: scores are only reset when the player IDs change (new game).
+  // localPlayers can update asynchronously from Supabase after the game starts —
+  // we must not let that re-fire wipe all the entered hole scores back to null.
   useEffect(() => {
     const golfPlayers = selectedPlayers.golf[variant] || [];
 
@@ -95,10 +98,17 @@ export default function GolfGame({ variant }: GolfGameProps) {
         };
       });
       setPlayers(storedPlayers);
-      setScores(golfPlayers.map(p => ({
-        playerId: p.id,
-        holes: Array(TOTAL_HOLES).fill(null),
-      })));
+      // Only reset scores if the player lineup changed — preserve scores across
+      // metadata updates (e.g. localPlayers finishing its async Supabase load)
+      setScores(prev => {
+        const newIds = golfPlayers.map(p => p.id).join(',');
+        const prevIds = prev.map(s => s.playerId).join(',');
+        if (newIds === prevIds) return prev;
+        return golfPlayers.map(p => ({
+          playerId: p.id,
+          holes: Array(TOTAL_HOLES).fill(null),
+        }));
+      });
     } else {
       const mockPlayers: StoredPlayer[] = [
         { id: '1', name: 'MAYOR', avatar: 'fox', isGuest: false, addedDate: new Date() },
