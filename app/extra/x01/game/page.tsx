@@ -302,11 +302,11 @@ export default function X01GamePage() {
                     </span>
                     {activePlayerNeedsDouble && <div className="text-yellow-400 font-bold" style={{ fontSize: 'clamp(10px, 1.8vw, 14px)' }}>NEEDS DOUBLE</div>}
                     {lastTurnPs?.lastTurn && (
-                      <div className="flex flex-col items-center leading-tight">
-                        <span className={`font-bold ${lastTurnPs.lastTurn.total > 0 ? 'text-[#00d1b2]' : 'text-red-400'}`} style={{ fontSize: 'clamp(13px, 2.5vw, 20px)' }}>
+                      <div className="flex items-center gap-1.5 justify-center flex-wrap w-full leading-none">
+                        <span className={`font-bold ${lastTurnPs.lastTurn.total > 0 ? 'text-[#00d1b2]' : 'text-red-400'}`} style={{ fontSize: 'clamp(11px, 2vw, 15px)' }}>
                           {lastTurnPs.lastTurn.total > 0 ? `+${lastTurnPs.lastTurn.total}` : 'BUST'}
                         </span>
-                        <span className="text-gray-500" style={{ fontSize: 'clamp(11px, 2vw, 16px)' }}>
+                        <span className="text-gray-500" style={{ fontSize: 'clamp(10px, 1.8vw, 13px)' }}>
                           {lastTurnPs.lastTurn.darts.map((d, i) => (
                             <span key={i} className={d.isBust || d.wasted ? 'text-red-700' : ''}>
                               {i > 0 ? '·' : ''}{dartLabel(d)}{d.wasted ? '*' : ''}
@@ -331,7 +331,7 @@ export default function X01GamePage() {
             </div>
           ) : (
             /* Individual mode */
-            <div className={`flex-1 min-h-0 grid gap-1.5 ${numPlayers <= 2 ? 'grid-cols-2' : 'grid-cols-4'}`}>
+            <div className="flex-1 min-h-0 grid gap-1.5" style={{ gridTemplateColumns: `repeat(${numPlayers}, minmax(0, 1fr))` }}>
               {playerStates.map((ps, idx) => {
                 const isCurrent = idx === currentIdx && winner === null;
                 const color = getColorForIdx(idx);
@@ -348,11 +348,11 @@ export default function X01GamePage() {
                     </span>
                     {!ps.hasEnteredGame && <div className="text-yellow-400 font-bold" style={{ fontSize: 'clamp(10px, 1.8vw, 14px)' }}>NEEDS DOUBLE</div>}
                     {ps.lastTurn && (
-                      <div className="flex flex-col items-center leading-tight">
-                        <span className={`font-bold ${ps.lastTurn.total > 0 ? 'text-[#00d1b2]' : 'text-red-400'}`} style={{ fontSize: 'clamp(13px, 2.5vw, 20px)' }}>
+                      <div className="flex items-center gap-1.5 justify-center flex-wrap w-full leading-none">
+                        <span className={`font-bold ${ps.lastTurn.total > 0 ? 'text-[#00d1b2]' : 'text-red-400'}`} style={{ fontSize: 'clamp(11px, 2vw, 15px)' }}>
                           {ps.lastTurn.total > 0 ? `+${ps.lastTurn.total}` : 'BUST'}
                         </span>
-                        <span className="text-gray-500" style={{ fontSize: 'clamp(11px, 2vw, 16px)' }}>
+                        <span className="text-gray-500" style={{ fontSize: 'clamp(10px, 1.8vw, 13px)' }}>
                           {ps.lastTurn.darts.map((d, i) => (
                             <span key={i} className={d.isBust || d.wasted ? 'text-red-700' : ''}>
                               {i > 0 ? '·' : ''}{dartLabel(d)}{d.wasted ? '*' : ''}
@@ -426,8 +426,8 @@ export default function X01GamePage() {
               </div>
             )}
 
-            {/* Triple, Double, Single — each takes equal share of space */}
-            {SECTIONS.map(sec => (
+            {/* Single, Double, Triple — each takes equal share of space */}
+            {[...SECTIONS].reverse().map(sec => (
               <div
                 key={sec.mult}
                 className={`flex-1 min-h-0 grid grid-cols-5 gap-0.5`}
