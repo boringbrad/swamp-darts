@@ -38,13 +38,21 @@ export default function SettingsModal({ isOpen, onClose, pathname = '' }: Settin
     cricketRules,
     setCricketRules,
     userProfile,
+    x01StartingScore,
+    setX01StartingScore,
+    x01DoubleIn,
+    setX01DoubleIn,
+    x01DoubleOut,
+    setX01DoubleOut,
+    x01AverageMode,
+    setX01AverageMode,
   } = useAppContext();
   const [courseNameInput, setCourseNameInput] = useState(golfCourseName);
   const [bannerImageInput, setBannerImageInput] = useState(courseBannerImage);
   const [bannerOpacityInput, setBannerOpacityInput] = useState(courseBannerOpacity);
   const [existingCourses, setExistingCourses] = useState<string[]>([]);
   const [showCustomInput, setShowCustomInput] = useState(false);
-  const [activeTab, setActiveTab] = useState<'system' | 'golf' | 'cricket' | 'venue' | 'royal-rumble'>('system');
+  const [activeTab, setActiveTab] = useState<'system' | 'golf' | 'cricket' | 'x01' | 'venue' | 'royal-rumble'>('system');
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Check if we're in Royal Rumble game
@@ -286,6 +294,16 @@ export default function SettingsModal({ isOpen, onClose, pathname = '' }: Settin
             }`}
           >
             CRICKET
+          </button>
+          <button
+            onClick={() => setActiveTab('x01')}
+            className={`px-6 py-3 font-bold transition-colors ${
+              activeTab === 'x01'
+                ? 'text-white border-b-4 border-[#90EE90]'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            X01
           </button>
           <button
             onClick={() => setActiveTab('venue')}
@@ -667,6 +685,101 @@ export default function SettingsModal({ isOpen, onClose, pathname = '' }: Settin
               <div className="mt-6 p-4 bg-yellow-900/30 rounded-lg border border-yellow-600/50">
                 <p className="text-yellow-200 text-sm">
                   <strong>Note:</strong> These settings apply to all Cricket variants. Changes will take effect for new games.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* X01 Tab */}
+          {activeTab === 'x01' && (
+            <div>
+              {/* Starting Score */}
+              <div className="mb-6">
+                <h3 className="text-xl font-bold text-white mb-4">STARTING SCORE</h3>
+                <div className="grid grid-cols-3 gap-3">
+                  {[101, 201, 301, 401, 501, 601, 701, 801, 901].map((score) => (
+                    <button
+                      key={score}
+                      onClick={() => setX01StartingScore(score)}
+                      className={`py-3 rounded-lg text-xl font-bold transition-colors ${
+                        x01StartingScore === score
+                          ? 'bg-[#00d1b2] text-white'
+                          : 'bg-[#333333] text-gray-300 hover:bg-[#444444]'
+                      }`}
+                    >
+                      {score}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Finish Rules */}
+              <div className="mb-6">
+                <h3 className="text-xl font-bold text-white mb-4">RULES</h3>
+                <div className="space-y-4">
+                  <div className="bg-[#333333] rounded-lg p-4">
+                    <div className="flex items-center gap-3 mb-2">
+                      <input
+                        type="checkbox"
+                        id="x01DoubleIn"
+                        checked={x01DoubleIn}
+                        onChange={(e) => setX01DoubleIn(e.target.checked)}
+                        className="w-6 h-6 cursor-pointer"
+                      />
+                      <label htmlFor="x01DoubleIn" className="text-white text-lg font-bold cursor-pointer">
+                        Double In
+                      </label>
+                    </div>
+                    <p className="text-gray-400 text-sm pl-9">
+                      Player must hit a double to start counting score. Darts before the opening double don't count.
+                    </p>
+                  </div>
+
+                  <div className="bg-[#333333] rounded-lg p-4">
+                    <div className="flex items-center gap-3 mb-2">
+                      <input
+                        type="checkbox"
+                        id="x01DoubleOut"
+                        checked={x01DoubleOut}
+                        onChange={(e) => setX01DoubleOut(e.target.checked)}
+                        className="w-6 h-6 cursor-pointer"
+                      />
+                      <label htmlFor="x01DoubleOut" className="text-white text-lg font-bold cursor-pointer">
+                        Double Out
+                      </label>
+                    </div>
+                    <p className="text-gray-400 text-sm pl-9">
+                      Player must finish on a double (or bullseye). Hitting the exact score without a double is a bust.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Average Mode */}
+              <div className="bg-[#333333] rounded-lg p-4">
+                <p className="text-white text-lg font-bold mb-3">Average Display</p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setX01AverageMode('per-turn')}
+                    className={`flex-1 py-3 rounded-lg font-bold transition-colors ${x01AverageMode === 'per-turn' ? 'bg-[#00d1b2] text-white' : 'bg-[#444444] text-gray-300 hover:bg-[#555555]'}`}
+                  >
+                    Per Turn
+                  </button>
+                  <button
+                    onClick={() => setX01AverageMode('per-dart')}
+                    className={`flex-1 py-3 rounded-lg font-bold transition-colors ${x01AverageMode === 'per-dart' ? 'bg-[#00d1b2] text-white' : 'bg-[#444444] text-gray-300 hover:bg-[#555555]'}`}
+                  >
+                    Per Dart
+                  </button>
+                </div>
+                <p className="text-gray-400 text-sm mt-2">
+                  {x01AverageMode === 'per-turn' ? 'Shows average score per 3-dart turn.' : 'Shows average score per individual dart (turn avg ÷ 3).'}
+                </p>
+              </div>
+
+              <div className="p-4 bg-[#1a3a3a] rounded-lg border border-[#00d1b2]/30">
+                <p className="text-[#00d1b2] text-sm">
+                  <strong>Current:</strong> {x01StartingScore} — {x01DoubleIn ? 'Double In' : 'Straight In'} / {x01DoubleOut ? 'Double Out' : 'Straight Out'}
                 </p>
               </div>
             </div>

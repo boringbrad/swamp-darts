@@ -22,6 +22,12 @@ export interface LocalPlayersStorage {
 }
 
 export interface SelectedPlayersStorage {
+  x01?: {
+    default?: {
+      players: StoredPlayer[];
+      isTeams: boolean;
+    };
+  };
   cricket: {
     singles?: {
       players: Player[];

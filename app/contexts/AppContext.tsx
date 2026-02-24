@@ -32,6 +32,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [cameraEnabled, setCameraEnabledState] = useState(false);
   const [showCourseRecord, setShowCourseRecordState] = useState(true);
   const [showCourseName, setShowCourseNameState] = useState(true);
+  const [x01StartingScore, setX01StartingScoreState] = useState(501);
+  const [x01DoubleIn, setX01DoubleInState] = useState(false);
+  const [x01DoubleOut, setX01DoubleOutState] = useState(true);
+  const [x01AverageMode, setX01AverageModeState] = useState<'per-turn' | 'per-dart'>('per-turn');
 
   // Load initial state from storage on mount and listen for auth changes
   useEffect(() => {
@@ -296,6 +300,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setShowCourseNameState(savedShowCourseName === 'true');
     }
 
+    // Load X01 settings from localStorage
+    const savedX01StartingScore = localStorage.getItem('x01StartingScore');
+    if (savedX01StartingScore) setX01StartingScoreState(parseInt(savedX01StartingScore));
+    const savedX01DoubleIn = localStorage.getItem('x01DoubleIn');
+    if (savedX01DoubleIn !== null) setX01DoubleInState(savedX01DoubleIn === 'true');
+    const savedX01DoubleOut = localStorage.getItem('x01DoubleOut');
+    if (savedX01DoubleOut !== null) setX01DoubleOutState(savedX01DoubleOut === 'true');
+    const savedX01AverageMode = localStorage.getItem('x01AverageMode');
+    if (savedX01AverageMode === 'per-dart' || savedX01AverageMode === 'per-turn') setX01AverageModeState(savedX01AverageMode);
+
     // Cleanup subscription on unmount
     return () => {
       subscription.unsubscribe();
@@ -503,6 +517,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('showCourseName', show.toString());
   };
 
+  const setX01StartingScore = (score: number) => {
+    setX01StartingScoreState(score);
+    localStorage.setItem('x01StartingScore', score.toString());
+  };
+
+  const setX01DoubleIn = (enabled: boolean) => {
+    setX01DoubleInState(enabled);
+    localStorage.setItem('x01DoubleIn', enabled.toString());
+  };
+
+  const setX01DoubleOut = (enabled: boolean) => {
+    setX01DoubleOutState(enabled);
+    localStorage.setItem('x01DoubleOut', enabled.toString());
+  };
+
+  const setX01AverageMode = (mode: 'per-turn' | 'per-dart') => {
+    setX01AverageModeState(mode);
+    localStorage.setItem('x01AverageMode', mode);
+  };
+
   const contextValue: AppContextValue = {
     userProfile,
     updateUserProfile,
@@ -532,6 +566,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setShowCourseRecord,
     showCourseName,
     setShowCourseName,
+    x01StartingScore,
+    setX01StartingScore,
+    x01DoubleIn,
+    setX01DoubleIn,
+    x01DoubleOut,
+    setX01DoubleOut,
+    x01AverageMode,
+    setX01AverageMode,
   };
 
   return <AppContext.Provider value={contextValue}>{children}</AppContext.Provider>;

@@ -74,9 +74,7 @@ export default function SignupPage() {
 
       if (data.user) {
         console.log('User created successfully:', data.user.id)
-        setSuccessMessage(
-          'Account created! Please check your email to verify your account before logging in.'
-        )
+        setSuccessMessage('Account created! You can now log in.')
         // Clear form
         setEmail('')
         setPassword('')

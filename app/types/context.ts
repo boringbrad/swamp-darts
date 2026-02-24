@@ -61,6 +61,16 @@ export interface AppContextValue {
   // Course Name Display
   showCourseName: boolean;
   setShowCourseName: (show: boolean) => void;
+
+  // X01 Settings
+  x01StartingScore: number;
+  setX01StartingScore: (score: number) => void;
+  x01DoubleIn: boolean;
+  setX01DoubleIn: (enabled: boolean) => void;
+  x01DoubleOut: boolean;
+  setX01DoubleOut: (enabled: boolean) => void;
+  x01AverageMode: 'per-turn' | 'per-dart';
+  setX01AverageMode: (mode: 'per-turn' | 'per-dart') => void;
 }
 
 export interface PlayerContextValue {

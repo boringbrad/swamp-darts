@@ -1,513 +1,526 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAppContext } from '@/app/contexts/AppContext';
 import Header from '@/app/components/Header';
+import { StoredPlayer } from '@/app/types/storage';
+import { canSyncToSupabase } from '@/app/lib/supabaseSync';
 
-type Player = {
-  name: string;
+const PLAYER_COLORS = ['blue', 'red', 'purple', 'green'] as const;
+const TEAM_ORDER = [0, 2, 1, 3];
+// 5 columns: 20-16, 15-11, 10-6, 5-1
+const BOARD_NUMBERS = [20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
+const COLOR_BORDERS: Record<string, string> = {
+  blue: '#1a7a9d', red: '#9d1a1a', purple: '#6b1a8b', green: '#2d5016',
+};
+
+// Checkout guide — standard double-out finishes up to 170
+const CHECKOUTS: Record<number, string> = {
+  170:'T20 T20 Bull', 167:'T20 T19 Bull', 164:'T20 T18 Bull', 161:'T20 T17 Bull',
+  160:'T20 T20 D20',  158:'T20 T20 D19',  157:'T20 T19 D20',  156:'T20 T20 D18',
+  155:'T20 T19 D19',  154:'T20 T18 D20',  153:'T20 T19 D18',  152:'T20 T20 D16',
+  151:'T20 T17 D20',  150:'T20 T18 D18',  149:'T20 T19 D16',  148:'T20 T20 D14',
+  147:'T20 T17 D18',  146:'T20 T18 D16',  145:'T20 T15 D20',  144:'T20 T20 D12',
+  143:'T20 T17 D16',  142:'T20 T14 D20',  141:'T20 T19 D12',  140:'T20 T20 D10',
+  139:'T20 T13 D20',  138:'T20 T18 D12',  137:'T20 T15 D16',  136:'T20 T20 D8',
+  135:'T20 T17 D12',  134:'T20 T14 D16',  133:'T20 T19 D8',   132:'T20 T16 D12',
+  131:'T20 T13 D16',  130:'T20 T20 D5',   129:'T19 T16 D12',  128:'T20 T16 D8',
+  127:'T20 T17 D8',   126:'T19 T19 D6',   125:'T20 T15 D10',  124:'T20 T16 D8',
+  123:'T20 T13 D12',  122:'T18 T18 D7',   121:'T20 T11 D14',  120:'T20 S20 D20',
+  119:'T19 T12 D13',  118:'T20 S18 D20',  117:'T20 S17 D20',  116:'T20 S16 D20',
+  115:'T19 S18 D20',  114:'T20 S14 D20',  113:'T20 S13 D20',  112:'T20 S12 D20',
+  111:'T20 S11 D20',  110:'T20 S10 D20',  109:'T20 S9 D20',   108:'T20 S8 D20',
+  107:'T19 S18 D16',  106:'T20 S6 D20',   105:'T20 S5 D20',   104:'T18 S18 D16',
+  103:'T20 S3 D20',   102:'T20 S2 D20',   101:'T17 S18 D16',
+  100:'T20 D20',       99:'T19 S10 D16',   98:'T20 D19',   97:'T19 D20',
+   96:'T20 D18',       95:'T19 D19',        94:'T18 D20',   93:'T19 D18',
+   92:'T20 D16',       91:'T17 D20',        90:'T18 D18',   89:'T19 D16',
+   88:'T20 D14',       87:'T17 D18',        86:'T18 D16',   85:'T15 D20',
+   84:'T20 D12',       83:'T17 D16',        82:'T14 D20',   81:'T19 D12',
+   80:'T20 D10',       79:'T13 D20',        78:'T18 D12',   77:'T15 D16',
+   76:'T20 D8',        75:'T17 D12',        74:'T14 D16',   73:'T19 D8',
+   72:'T16 D12',       71:'T13 D16',        70:'T18 D8',    69:'T15 D12',
+   68:'T20 D4',        67:'T17 D8',         66:'T10 D18',   65:'T19 D4',
+   64:'T16 D8',        63:'T13 D12',        62:'T10 D16',   61:'T15 D8',
+   60:'S20 D20',       59:'S19 D20',        58:'S18 D20',   57:'S17 D20',
+   56:'T16 D4',        55:'S15 D20',        54:'S14 D20',   53:'S13 D20',
+   52:'S12 D20',       51:'S11 D20',        50:'DBull',     49:'S9 D20',
+   48:'S16 D16',       47:'S15 D16',        46:'S14 D16',   45:'S13 D16',
+   44:'S12 D16',       43:'S11 D16',        42:'S10 D16',   41:'S9 D16',
+   40:'D20',           39:'S7 D16',         38:'D19',       37:'S5 D16',
+   36:'D18',           35:'S3 D16',         34:'D17',       33:'S1 D16',
+   32:'D16',           31:'S15 D8',         30:'D15',       29:'S13 D8',
+   28:'D14',           27:'S11 D8',         26:'D13',       25:'S9 D8',
+   24:'D12',           23:'S7 D8',          22:'D11',       21:'S5 D8',
+   20:'D10',           19:'S3 D8',          18:'D9',        17:'S1 D8',
+   16:'D8',            15:'S7 D4',          14:'D7',        13:'S5 D4',
+   12:'D6',            11:'S3 D4',          10:'D5',         9:'S1 D4',
+    8:'D4',             7:'S3 D2',           6:'D3',         5:'S1 D2',
+    4:'D2',             3:'S1 D1',           2:'D1',
+};
+
+// Three number sections stacked: Triple (•••), Double (••), Single (•)
+const SECTIONS = [
+  { mult: 3 as const, dots: '●●●', bgClass: 'bg-[#2a1a3a] hover:bg-[#3d2a5a]', numClass: 'text-[#c0affe]', dotClass: 'text-[#7c5cbf]' },
+  { mult: 2 as const, dots: '●●',  bgClass: 'bg-[#0a2a45] hover:bg-[#18405e]', numClass: 'text-[#74b9ff]', dotClass: 'text-[#2979b5]' },
+  { mult: 1 as const, dots: '●',   bgClass: 'bg-[#1a3030] hover:bg-[#263d3d]', numClass: 'text-white',    dotClass: 'text-[#4a6060]' },
+];
+
+interface DartThrow {
+  number: number;
+  multiplier: 1 | 2 | 3;
   score: number;
-  dartsThrown: number;
-  lastTurnScore: number;
-  lastTurnDarts: DartScore[];
-  turnStartScore: number;
-};
+  wasted: boolean;
+  isMiss: boolean;
+  isBust: boolean;
+}
 
-type DartScore = {
-  value: number;
-  display: string;
-};
+interface PlayerState {
+  player: StoredPlayer;
+  score: number;
+  hasEnteredGame: boolean;
+  turnsPlayed: number;
+  totalReduced: number;
+  lastTurn?: { darts: DartThrow[]; total: number };
+}
 
-type HistoryEntry = {
-  players: Player[];
-  currentPlayerIndex: number;
-  dartCount: number;
-  currentTurnDarts: DartScore[];
-  multiplier: number;
-};
+interface TurnRecord {
+  prevPlayerStates: PlayerState[];
+}
 
-const CHECKOUT_PATHS: Record<number, string[]> = {
-  // 1-dart finishes
-  2: ['D1'], 4: ['D2'], 6: ['D3'], 8: ['D4'], 10: ['D5'],
-  12: ['D6'], 14: ['D7'], 16: ['D8'], 18: ['D9'], 20: ['D10'],
-  22: ['D11'], 24: ['D12'], 26: ['D13'], 28: ['D14'], 30: ['D15'],
-  32: ['D16'], 34: ['D17'], 36: ['D18'], 38: ['D19'], 40: ['D20'],
-  50: ['Bull'],
-  // 2-dart finishes (3–59)
-  3: ['1', 'D1'], 5: ['1', 'D2'], 7: ['3', 'D2'], 9: ['1', 'D4'],
-  11: ['3', 'D4'], 13: ['5', 'D4'], 15: ['3', 'D6'], 17: ['1', 'D8'],
-  19: ['3', 'D8'], 21: ['1', 'D10'], 23: ['3', 'D10'], 25: ['1', 'D12'],
-  27: ['3', 'D12'], 29: ['1', 'D14'], 31: ['3', 'D14'], 33: ['1', 'D16'],
-  35: ['3', 'D16'], 37: ['1', 'D18'], 39: ['3', 'D18'],
-  41: ['1', 'D20'], 42: ['2', 'D20'], 43: ['3', 'D20'], 44: ['4', 'D20'],
-  45: ['5', 'D20'], 46: ['6', 'D20'], 47: ['7', 'D20'], 48: ['8', 'D20'],
-  49: ['9', 'D20'], 51: ['11', 'D20'], 52: ['12', 'D20'], 53: ['13', 'D20'],
-  54: ['14', 'D20'], 55: ['15', 'D20'], 56: ['16', 'D20'], 57: ['17', 'D20'],
-  58: ['18', 'D20'], 59: ['19', 'D20'],
-  // 2-dart finishes (60–100)
-  60: ['20', 'D20'], 61: ['T15', 'D8'], 62: ['T10', 'D16'], 63: ['T13', 'D12'],
-  64: ['T16', 'D8'], 65: ['T19', 'D4'], 66: ['T10', 'D18'], 67: ['T17', 'D8'],
-  68: ['T20', 'D4'], 69: ['T15', 'D12'], 70: ['T10', 'D20'], 71: ['T13', 'D16'],
-  72: ['T16', 'D12'], 73: ['T19', 'D8'], 74: ['T14', 'D16'], 75: ['T17', 'D12'],
-  76: ['T20', 'D8'], 77: ['T19', 'D10'], 78: ['T18', 'D12'], 79: ['T19', 'D11'],
-  80: ['T20', 'D10'], 81: ['T19', 'D12'], 82: ['T14', 'D20'], 83: ['T17', 'D16'],
-  84: ['T20', 'D12'], 85: ['T15', 'D20'], 86: ['T18', 'D16'], 87: ['T17', 'D18'],
-  88: ['T16', 'D20'], 89: ['T19', 'D16'], 90: ['T20', 'D15'], 91: ['T17', 'D20'],
-  92: ['T20', 'D16'], 93: ['T19', 'D18'], 94: ['T18', 'D20'], 95: ['T19', 'D19'],
-  96: ['T20', 'D18'], 97: ['T19', 'D20'], 98: ['T20', 'D19'], 100: ['T20', 'D20'],
-  // 3-dart finishes (99–170)
-  99: ['T19', '10', 'D16'],
-  101: ['T20', '1', 'D20'], 102: ['T20', '10', 'D16'], 103: ['T20', '3', 'D20'],
-  104: ['T18', '18', 'D16'], 105: ['T19', '16', 'D16'], 106: ['T20', '14', 'D16'],
-  107: ['T19', '18', 'D16'], 108: ['T20', '16', 'D16'], 109: ['T19', '20', 'D16'],
-  110: ['T20', '18', 'D16'], 111: ['T20', '19', 'D16'], 112: ['T20', '12', 'D20'],
-  113: ['T20', '13', 'D20'], 114: ['T20', '14', 'D20'], 115: ['T20', '15', 'D20'],
-  116: ['T20', '16', 'D20'], 117: ['T20', '17', 'D20'], 118: ['T20', '18', 'D20'],
-  119: ['T19', 'T10', 'D16'], 120: ['T20', '20', 'D20'],
-  121: ['T17', 'T10', 'D20'], 122: ['T18', 'T20', 'D4'], 123: ['T19', 'T16', 'D9'],
-  124: ['T20', 'T16', 'D8'], 125: ['25', 'T20', 'D20'], 126: ['T19', 'T19', 'D6'],
-  127: ['T20', 'T17', 'D8'], 128: ['T18', 'T14', 'D16'], 129: ['T19', 'T16', 'D12'],
-  130: ['T20', 'T20', 'D5'], 131: ['T20', 'T13', 'D16'], 132: ['T20', 'T16', 'D12'],
-  133: ['T20', 'T19', 'D8'], 134: ['T20', 'T14', 'D16'], 135: ['T20', 'T17', 'D12'],
-  136: ['T20', 'T20', 'D8'], 137: ['T19', 'T16', 'D16'], 138: ['T20', 'T18', 'D12'],
-  139: ['T19', 'T14', 'D20'], 140: ['T20', 'T16', 'D16'], 141: ['T20', 'T19', 'D12'],
-  142: ['T20', 'T14', 'D20'], 143: ['T20', 'T17', 'D16'], 144: ['T20', 'T20', 'D12'],
-  145: ['T20', 'T15', 'D20'], 146: ['T20', 'T18', 'D16'], 147: ['T20', 'T17', 'D18'],
-  148: ['T20', 'T16', 'D20'], 149: ['T20', 'T19', 'D16'], 150: ['T20', 'T18', 'D18'],
-  151: ['T20', 'T17', 'D20'], 152: ['T20', 'T20', 'D16'], 153: ['T20', 'T19', 'D18'],
-  154: ['T20', 'T18', 'D20'], 155: ['T20', 'T19', 'D19'], 156: ['T20', 'T20', 'D18'],
-  157: ['T20', 'T19', 'D20'], 158: ['T20', 'T20', 'D19'],
-  160: ['T20', 'T20', 'D20'],
-  161: ['T20', 'T17', 'Bull'], 164: ['T20', 'T18', 'Bull'],
-  167: ['T20', 'T19', 'Bull'], 170: ['T20', 'T20', 'Bull'],
-};
-
-function X01Game() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [startingScore, setStartingScore] = useState(501);
-  const [isTeams, setIsTeams] = useState(false);
-  const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0);
-  const [dartCount, setDartCount] = useState(0);
-  const [currentTurnDarts, setCurrentTurnDarts] = useState<DartScore[]>([]);
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [initialized, setInitialized] = useState(false);
-  const [multiplier, setMultiplier] = useState(1);
-
-  useEffect(() => {
-    if (initialized) return;
-
-    const playersParam = searchParams.get('players');
-    const startingScoreParam = searchParams.get('startingScore');
-    const isTeamsParam = searchParams.get('isTeams');
-
-    if (playersParam && startingScoreParam) {
-      const playerNames = JSON.parse(playersParam);
-      const score = parseInt(startingScoreParam);
-      const teams = isTeamsParam === 'true';
-
-      setStartingScore(score);
-      setIsTeams(teams);
-      setPlayers(
-        playerNames.map((name: string) => ({
-          name,
-          score,
-          dartsThrown: 0,
-          lastTurnScore: 0,
-          lastTurnDarts: [],
-          turnStartScore: score,
-        }))
-      );
-      setInitialized(true);
-    }
-  }, [searchParams, initialized]);
-
-  const saveToHistory = () => {
-    setHistory([
-      ...history,
-      {
-        players: JSON.parse(JSON.stringify(players)),
-        currentPlayerIndex,
-        dartCount,
-        currentTurnDarts: [...currentTurnDarts],
-        multiplier,
-      },
-    ]);
-  };
-
-  // Team mode helpers: teams are [0,1] and [2,3], turn order is 0→2→1→3→0
-  const TEAM_TURN_ORDER = [0, 2, 1, 3];
-  const teammateIndex = (idx: number) => idx % 2 === 0 ? idx + 1 : idx - 1;
-  const nextPlayerIdx = () => {
-    if (!isTeams) return (currentPlayerIndex + 1) % players.length;
-    const pos = TEAM_TURN_ORDER.indexOf(currentPlayerIndex);
-    return TEAM_TURN_ORDER[(pos + 1) % 4];
-  };
-
-  const handleScore = (baseValue: number, displayText?: string, isDouble?: boolean) => {
-    saveToHistory();
-
-    const points = isDouble ? baseValue : baseValue * multiplier;
-    const isFinishingDouble = isDouble || multiplier === 2;
-    const display = displayText || (multiplier === 1 ? `${baseValue}` : multiplier === 2 ? `D${baseValue}` : `T${baseValue}`);
-
-    const newPlayers = [...players];
-    const currentPlayer = newPlayers[currentPlayerIndex];
-    const newScore = currentPlayer.score - points;
-    const newDartCount = dartCount + 1;
-    const newTurnDarts = [...currentTurnDarts, { value: points, display }];
-    const next = nextPlayerIdx();
-
-    const endTurnBust = () => {
-      currentPlayer.score = currentPlayer.turnStartScore;
-      if (isTeams) newPlayers[teammateIndex(currentPlayerIndex)].score = currentPlayer.turnStartScore;
-      currentPlayer.dartsThrown += 3;
-      currentPlayer.lastTurnScore = 0;
-      currentPlayer.lastTurnDarts = newTurnDarts;
-      newPlayers[next].turnStartScore = newPlayers[next].score;
-      setPlayers(newPlayers);
-      setCurrentPlayerIndex(next);
-      setDartCount(0);
-      setCurrentTurnDarts([]);
-      setMultiplier(1);
-    };
-
-    // Check for bust conditions
-    if (newScore < 0 || newScore === 1) {
-      alert(`BUST! ${newScore < 0 ? 'Score would go below zero.' : 'Cannot finish on a score of 1!'}`);
-      endTurnBust();
-      return;
-    }
-
-    if (newScore === 0 && !isFinishingDouble) {
-      alert('BUST! Must finish on a DOUBLE!');
-      endTurnBust();
-      return;
-    }
-
-    if (newScore === 0 && isFinishingDouble) {
-      // Winner!
-      currentPlayer.score = 0;
-      if (isTeams) newPlayers[teammateIndex(currentPlayerIndex)].score = 0;
-      currentPlayer.dartsThrown += newDartCount;
-      currentPlayer.lastTurnScore = currentPlayer.turnStartScore;
-      currentPlayer.lastTurnDarts = newTurnDarts;
-      setPlayers(newPlayers);
-      const winMsg = isTeams
-        ? `${currentPlayer.name}'s team WINS! 🎉`
-        : `${currentPlayer.name} WINS! 🎉`;
-      setTimeout(() => {
-        alert(winMsg);
-        router.push('/extra/x01');
-      }, 100);
-      return;
-    }
-
-    currentPlayer.score = newScore;
-    if (isTeams) newPlayers[teammateIndex(currentPlayerIndex)].score = newScore;
-
-    if (newDartCount >= 3) {
-      // End of turn
-      currentPlayer.lastTurnScore = currentPlayer.turnStartScore - newScore;
-      currentPlayer.lastTurnDarts = newTurnDarts;
-      currentPlayer.dartsThrown += 3;
-      newPlayers[next].turnStartScore = newPlayers[next].score;
-      setPlayers(newPlayers);
-      setCurrentPlayerIndex(next);
-      setDartCount(0);
-      setCurrentTurnDarts([]);
-      setMultiplier(1);
-    } else {
-      // Continue turn
-      setPlayers(newPlayers);
-      setDartCount(newDartCount);
-      setCurrentTurnDarts(newTurnDarts);
-      setMultiplier(1);
-    }
-  };
-
-  const handleUndo = () => {
-    if (history.length === 0) return;
-
-    const lastState = history[history.length - 1];
-    setPlayers(lastState.players);
-    setCurrentPlayerIndex(lastState.currentPlayerIndex);
-    setDartCount(lastState.dartCount);
-    setCurrentTurnDarts(lastState.currentTurnDarts);
-    setMultiplier(lastState.multiplier);
-    setHistory(history.slice(0, -1));
-  };
-
-  const orderedNumbers = [20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
-
-  if (!initialized || players.length === 0) {
-    return (
-      <div className="min-h-screen bg-[#1a5a5a] flex items-center justify-center">
-        <div className="text-white text-2xl">Loading...</div>
-      </div>
-    );
-  }
-
-  const currentPlayer = players[currentPlayerIndex];
-  const dartsRemaining = 3 - dartCount;
-
-  return (
-    <div className="min-h-screen bg-[#1a5a5a]">
-      <Header title={`X01 - ${startingScore}`} />
-
-      <main className="pt-32 px-2 sm:px-4 lg:px-12 xl:px-20 pb-6">
-        <div className="w-full max-w-4xl mx-auto lg:max-w-none">
-          {/* Top Spacer */}
-          <div className="h-16 sm:h-20"></div>
-
-          {/* Score Display */}
-          <div className="mb-4 sm:mb-6">
-            {isTeams ? (
-              <div className="grid grid-cols-2 gap-2 sm:gap-4">
-                {[0, 1].map(teamIdx => {
-                  const p0 = players[teamIdx * 2];
-                  const p1 = players[teamIdx * 2 + 1];
-                  const isActive = currentPlayerIndex === teamIdx * 2 || currentPlayerIndex === teamIdx * 2 + 1;
-                  return (
-                    <div
-                      key={teamIdx}
-                      className={`p-3 sm:p-4 rounded-lg text-center transition-all ${
-                        isActive ? 'bg-[#0984e3] ring-2 sm:ring-4 ring-[#74b9ff]' : 'bg-[#2d4a4a]'
-                      }`}
-                    >
-                      <div className="text-white text-xs font-bold uppercase tracking-wider mb-1">Team {teamIdx + 1}</div>
-                      <div className="text-white text-3xl sm:text-5xl font-bold mb-2">{p0.score}</div>
-                      <div className="flex justify-center gap-2 mb-2 flex-wrap">
-                        {[p0, p1].map((p, i) => (
-                          <span
-                            key={i}
-                            className={`text-sm font-bold px-2 py-0.5 rounded ${
-                              isActive && currentPlayerIndex === teamIdx * 2 + i
-                                ? 'bg-[#00d1b2] text-white'
-                                : 'text-gray-300'
-                            }`}
-                          >
-                            {p.name}
-                          </span>
-                        ))}
-                      </div>
-                      {[p0, p1].some(p => p.lastTurnDarts.length > 0) && (
-                        <div className="bg-[#1a3a3a] rounded-lg px-2 py-2 space-y-1">
-                          {[p0, p1].filter(p => p.lastTurnDarts.length > 0).map((p, i) => (
-                            <div key={i}>
-                              <span className={`text-sm font-bold ${p.lastTurnScore > 0 ? 'text-[#00d1b2]' : 'text-[#ff7675]'}`}>
-                                {p.name}: {p.lastTurnScore > 0 ? `-${p.lastTurnScore}` : 'BUST'}
-                              </span>
-                              <span className="text-gray-400 text-xs ml-1">{p.lastTurnDarts.map(d => d.display).join(' · ')}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      <div className="text-gray-300 text-xs mt-2">
-                        Darts: {[p0, p1].reduce((sum, p, i) => sum + p.dartsThrown + (currentPlayerIndex === teamIdx * 2 + i ? dartCount : 0), 0)}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className={`grid gap-2 sm:gap-4`} style={{ gridTemplateColumns: `repeat(${players.length}, minmax(0, 1fr))` }}>
-                {players.map((player, index) => (
-                  <div
-                    key={index}
-                    className={`p-3 sm:p-4 rounded-lg transition-all text-center ${
-                      index === currentPlayerIndex
-                        ? 'bg-[#0984e3] ring-2 sm:ring-4 ring-[#74b9ff]'
-                        : 'bg-[#2d4a4a]'
-                    }`}
-                  >
-                    <div className="text-white text-base sm:text-xl font-bold mb-1 sm:mb-2 truncate">{player.name}</div>
-                    <div className="text-white text-3xl sm:text-5xl font-bold mb-1">{player.score}</div>
-                    {player.lastTurnDarts.length > 0 && (
-                      <div className="mt-1 mb-1 bg-[#1a3a3a] rounded-lg px-3 py-2">
-                        <div className={`text-xl sm:text-2xl font-bold ${player.lastTurnScore > 0 ? 'text-[#00d1b2]' : 'text-[#ff7675]'}`}>
-                          {player.lastTurnScore > 0 ? `Last: -${player.lastTurnScore}` : 'BUST'}
-                        </div>
-                        <div className="text-gray-300 text-sm sm:text-base tracking-wide">
-                          {player.lastTurnDarts.map(d => d.display).join('  ·  ')}
-                        </div>
-                      </div>
-                    )}
-                    <div className="text-gray-300 text-xs sm:text-sm">Darts: {player.dartsThrown + (index === currentPlayerIndex ? dartCount : 0)}</div>
-                    {(() => {
-                      const totalPoints = startingScore - player.score;
-                      const completedTurns = Math.floor(player.dartsThrown / 3);
-                      const avg = completedTurns > 0 ? (totalPoints / completedTurns).toFixed(1) : '0.0';
-                      return (
-                        <div className="text-gray-400 text-xs sm:text-sm">Avg: {avg} pts/turn</div>
-                      );
-                    })()}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Current Turn Info */}
-          <div className="bg-[#2d4a4a] rounded-lg p-4 sm:p-6 mb-4 sm:mb-6">
-            <div className="text-center mb-3 sm:mb-4">
-              <div className="text-white text-xl sm:text-3xl font-bold mb-1 sm:mb-2">
-                {currentPlayer.name}'s Turn
-              </div>
-              <div className="text-[#00d1b2] text-base sm:text-xl">
-                Darts Remaining: {dartsRemaining}
-              </div>
-              {currentPlayer.score > 0 && currentPlayer.score <= 170 && CHECKOUT_PATHS[currentPlayer.score] && (
-                <div className="mt-3 bg-[#1a3a3a] rounded-lg px-4 py-3">
-                  <div className="text-[#f39c12] text-xs font-bold text-center mb-2 uppercase tracking-wider">
-                    Checkout ({CHECKOUT_PATHS[currentPlayer.score].length} dart{CHECKOUT_PATHS[currentPlayer.score].length !== 1 ? 's' : ''})
-                  </div>
-                  <div className="flex justify-center gap-2 flex-wrap">
-                    {CHECKOUT_PATHS[currentPlayer.score].map((dart, i) => (
-                      <span
-                        key={i}
-                        className={`text-white text-base sm:text-lg font-bold px-3 py-1 rounded ${
-                          i === CHECKOUT_PATHS[currentPlayer.score].length - 1
-                            ? 'bg-[#00a693]'
-                            : 'bg-[#2d6a9f]'
-                        }`}
-                      >
-                        {dart}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Current Turn Darts Display */}
-            <div className="flex justify-center gap-2 sm:gap-4">
-              {[0, 1, 2].map((index) => (
-                <div
-                  key={index}
-                  className={`w-16 h-16 sm:w-20 sm:h-20 rounded-lg flex items-center justify-center text-xl sm:text-2xl font-bold ${
-                    currentTurnDarts[index]
-                      ? 'bg-[#0984e3] text-white'
-                      : 'bg-[#1a3a3a] text-gray-500 border-2 border-dashed border-gray-600'
-                  }`}
-                >
-                  {currentTurnDarts[index]?.display || '-'}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Score Input Grid */}
-          <div className="bg-[#2d4a4a] rounded-lg p-3 sm:p-6 mb-4 sm:mb-6">
-            <h3 className="text-white text-lg sm:text-2xl font-bold mb-3 sm:mb-4 text-center">Score Input</h3>
-
-            {/* Multiplier Buttons */}
-            <div className="grid grid-cols-3 gap-3 sm:gap-6 mb-6 sm:mb-8">
-              <button
-                onClick={() => setMultiplier(1)}
-                className={`py-8 sm:py-10 rounded-lg text-2xl sm:text-3xl font-bold transition-all touch-manipulation ${
-                  multiplier === 1
-                    ? 'bg-[#00d1b2] text-white ring-4 sm:ring-6 ring-[#00f5d4]'
-                    : 'bg-[#444444] text-gray-300 active:bg-[#555555]'
-                }`}
-              >
-                Single (1x)
-              </button>
-              <button
-                onClick={() => setMultiplier(2)}
-                className={`py-8 sm:py-10 rounded-lg text-2xl sm:text-3xl font-bold transition-all touch-manipulation ${
-                  multiplier === 2
-                    ? 'bg-[#0984e3] text-white ring-4 sm:ring-6 ring-[#74b9ff]'
-                    : 'bg-[#444444] text-gray-300 active:bg-[#555555]'
-                }`}
-              >
-                Double (2x)
-              </button>
-              <button
-                onClick={() => setMultiplier(3)}
-                className={`py-8 sm:py-10 rounded-lg text-2xl sm:text-3xl font-bold transition-all touch-manipulation ${
-                  multiplier === 3
-                    ? 'bg-[#d63031] text-white ring-4 sm:ring-6 ring-[#ff7675]'
-                    : 'bg-[#444444] text-gray-300 active:bg-[#555555]'
-                }`}
-              >
-                Triple (3x)
-              </button>
-            </div>
-
-            {/* Bulls */}
-            <div className="mb-6 sm:mb-8">
-              <div className="text-white text-xl sm:text-2xl font-bold mb-3 sm:mb-4 text-center">Bulls</div>
-              <div className="grid grid-cols-2 gap-3 sm:gap-6">
-                <button
-                  onClick={() => handleScore(25, '25')}
-                  className="bg-[#444444] active:bg-[#555555] text-white text-3xl sm:text-4xl font-bold py-10 sm:py-12 rounded-lg transition-colors touch-manipulation"
-                >
-                  25
-                </button>
-                <button
-                  onClick={() => handleScore(50, 'Bull', true)}
-                  className="bg-[#d63031] active:bg-[#ff7675] text-white text-3xl sm:text-4xl font-bold py-10 sm:py-12 rounded-lg transition-colors touch-manipulation"
-                >
-                  Bull (50)
-                </button>
-              </div>
-            </div>
-
-            {/* Numbers Grid */}
-            <div className="text-white text-xl sm:text-2xl font-bold mb-3 sm:mb-4 text-center">Numbers (20-1)</div>
-            <div className="grid grid-cols-4 gap-3 sm:gap-4">
-              {orderedNumbers.map((num) => (
-                <button
-                  key={num}
-                  onClick={() => handleScore(num)}
-                  className={`py-12 sm:py-16 rounded-lg font-bold text-3xl sm:text-5xl transition-colors touch-manipulation active:scale-95 ${
-                    multiplier === 1
-                      ? 'bg-[#00d1b2] active:bg-[#00f5d4]'
-                      : multiplier === 2
-                      ? 'bg-[#0984e3] active:bg-[#74b9ff]'
-                      : 'bg-[#d63031] active:bg-[#ff7675]'
-                  } text-white`}
-                >
-                  {num}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Control Buttons */}
-          <div className="grid grid-cols-2 gap-3 sm:gap-6">
-            <button
-              onClick={handleUndo}
-              disabled={history.length === 0}
-              className={`py-10 sm:py-12 rounded-lg text-3xl sm:text-4xl font-bold transition-colors touch-manipulation ${
-                history.length === 0
-                  ? 'bg-[#333333] text-gray-500 cursor-not-allowed'
-                  : 'bg-[#f39c12] active:bg-[#f1c40f] text-white'
-              }`}
-            >
-              ⟲ UNDO
-            </button>
-            <button
-              onClick={() => handleScore(0, 'Miss')}
-              className="bg-[#666666] active:bg-[#777777] text-white py-10 sm:py-12 rounded-lg text-3xl sm:text-4xl font-bold transition-colors touch-manipulation"
-            >
-              MISS
-            </button>
-          </div>
-        </div>
-      </main>
-    </div>
-  );
+function dartLabel(d: DartThrow): string {
+  if (d.isMiss) return 'MISS';
+  const pre = d.multiplier === 3 ? 'T' : d.multiplier === 2 ? 'D' : '';
+  return `${pre}${d.number === 25 ? 'Bull' : d.number}`;
 }
 
 export default function X01GamePage() {
+  const router = useRouter();
+  const { selectedPlayers: selectedPlayersCtx, x01StartingScore, x01DoubleIn, x01DoubleOut, x01AverageMode } = useAppContext();
+
+  const gameData = selectedPlayersCtx.x01?.default;
+  const players = gameData?.players ?? [];
+  const isTeams = gameData?.isTeams ?? false;
+
+  const [playerStates, setPlayerStates] = useState<PlayerState[]>(() =>
+    players.map(p => ({ player: p, score: x01StartingScore, hasEnteredGame: !x01DoubleIn, turnsPlayed: 0, totalReduced: 0 }))
+  );
+  const [turnStep, setTurnStep] = useState(0);
+  const [turnHistory, setTurnHistory] = useState<TurnRecord[]>([]);
+  const [currentTurnDarts, setCurrentTurnDarts] = useState<DartThrow[]>([]);
+  const [winner, setWinner] = useState<number | null>(null);
+  const [bustMsg, setBustMsg] = useState('');
+
+  const numPlayers = playerStates.length;
+
+  useEffect(() => {
+    if (players.length === 0) router.replace('/extra/x01');
+  }, []);
+
+  const getCurrentIdx = (step: number) =>
+    isTeams && numPlayers === 4 ? TEAM_ORDER[step % 4] : numPlayers > 0 ? step % numPlayers : 0;
+
+  const currentIdx = getCurrentIdx(turnStep);
+  const currentState = playerStates[currentIdx];
+
+  const getTeamForIdx = (idx: number) => (!isTeams ? null : idx < 2 ? 0 : 1);
+  const getTeamMateIdx = (idx: number): number | undefined => {
+    if (!isTeams) return undefined;
+    if (idx === 0) return 1; if (idx === 1) return 0; if (idx === 2) return 3; return 2;
+  };
+  const getColorForIdx = (idx: number) =>
+    isTeams ? (idx < 2 ? 'blue' : 'red') : (PLAYER_COLORS[idx] ?? 'blue');
+
+  const currentTurnTotal = currentTurnDarts.reduce((s, d) => s + d.score, 0);
+  const previewRemaining = currentState ? currentState.score - currentTurnTotal : 0;
+
+  // Checkout guide: based on remaining score after darts thrown this turn
+  const checkoutScore = currentTurnDarts.length > 0 ? previewRemaining : (currentState?.score ?? 0);
+  const dartsLeft = 3 - currentTurnDarts.length;
+  const rawHint = winner === null && checkoutScore >= 2 && checkoutScore <= 170
+    ? CHECKOUTS[checkoutScore]
+    : undefined;
+  // Only show hint if achievable with darts remaining in this turn
+  const checkoutHint = rawHint && rawHint.split(' ').length <= dartsLeft ? rawHint : undefined;
+
+  const commitTurn = (darts: DartThrow[], scoreReduced: number, enteringGame: boolean) => {
+    const prevPlayerStates = playerStates.map(ps => ({ ...ps }));
+    setTurnHistory(prev => [...prev, { prevPlayerStates }]);
+    const teamMate = getTeamMateIdx(currentIdx);
+    setPlayerStates(prev => prev.map((ps, i) => {
+      if (i === currentIdx) return {
+        ...ps, score: ps.score - scoreReduced,
+        hasEnteredGame: enteringGame ? true : ps.hasEnteredGame,
+        turnsPlayed: scoreReduced > 0 ? ps.turnsPlayed + 1 : ps.turnsPlayed,
+        totalReduced: ps.totalReduced + scoreReduced,
+        lastTurn: { darts, total: scoreReduced },
+      };
+      if (isTeams && i === teamMate) return { ...ps, score: ps.score - scoreReduced };
+      return ps;
+    }));
+    setCurrentTurnDarts([]);
+    setTurnStep(prev => prev + 1);
+  };
+
+  const handleDart = (number: number, mult: 1 | 2 | 3, isMiss = false) => {
+    if (winner !== null || !currentState || currentTurnDarts.length >= 3) return;
+    // No triple bull
+    const m: 1 | 2 | 3 = (!isMiss && number === 25 && mult === 3) ? 2 : mult;
+
+    const enteredThisTurn = x01DoubleIn && !currentState.hasEnteredGame &&
+      currentTurnDarts.some(d => !d.wasted && !d.isMiss && d.multiplier === 2);
+    const isInGame = currentState.hasEnteredGame || enteredThisTurn;
+    const wasted = !isMiss && x01DoubleIn && !isInGame && m !== 2;
+    const enteredWithThis = !isMiss && x01DoubleIn && !isInGame && m === 2;
+    const dartScore = isMiss || wasted ? 0 : number * m;
+
+    const newDarts: DartThrow[] = [
+      ...currentTurnDarts,
+      { number: isMiss ? 0 : number, multiplier: m, score: dartScore, wasted, isMiss, isBust: false },
+    ];
+    const runningTotal = newDarts.reduce((s, d) => s + d.score, 0);
+    const newRemaining = currentState.score - runningTotal;
+    const nowInGame = currentState.hasEnteredGame || enteredThisTurn || enteredWithThis;
+
+    if (newRemaining < 0 || (newRemaining === 1 && x01DoubleOut && nowInGame)) {
+      const bustDarts = newDarts.map((d, i) => i === newDarts.length - 1 ? { ...d, score: 0, isBust: true } : d);
+      setBustMsg('BUST!');
+      setTimeout(() => setBustMsg(''), 1400);
+      commitTurn(bustDarts, 0, enteredWithThis);
+      return;
+    }
+
+    if (newRemaining === 0) {
+      if (x01DoubleOut && m !== 2 && nowInGame) {
+        const bustDarts = newDarts.map((d, i) => i === newDarts.length - 1 ? { ...d, score: 0, isBust: true } : d);
+        setBustMsg('BUST — need double to finish!');
+        setTimeout(() => setBustMsg(''), 1800);
+        commitTurn(bustDarts, 0, enteredWithThis);
+        return;
+      }
+      commitTurn(newDarts, runningTotal, enteredWithThis);
+      setWinner(currentIdx);
+      return;
+    }
+
+    if (newDarts.length === 3) { commitTurn(newDarts, runningTotal, enteredWithThis); return; }
+
+    setCurrentTurnDarts(newDarts);
+  };
+
+  const handleUndo = () => {
+    if (currentTurnDarts.length > 0) { setCurrentTurnDarts(prev => prev.slice(0, -1)); return; }
+    if (turnHistory.length === 0) return;
+    const last = turnHistory[turnHistory.length - 1];
+    setTurnHistory(prev => prev.slice(0, -1));
+    setPlayerStates(last.prevPlayerStates);
+    setTurnStep(prev => prev - 1);
+    setWinner(null);
+    setBustMsg('');
+  };
+
+  useEffect(() => {
+    if (winner === null) return;
+    const ws = playerStates[winner];
+    const matchData = {
+      matchId: `x01_${Date.now()}`, date: new Date().toISOString(),
+      startingScore: x01StartingScore, doubleIn: x01DoubleIn, doubleOut: x01DoubleOut, isTeams,
+      winnerId: ws.player.id, winnerName: ws.player.name,
+      players: playerStates.map(ps => ({
+        id: ps.player.id, name: ps.player.name, avatar: ps.player.avatar,
+        turnsPlayed: ps.turnsPlayed, totalReduced: ps.totalReduced,
+        average: ps.turnsPlayed > 0 ? Math.round((ps.totalReduced / ps.turnsPlayed) * 10) / 10 : 0,
+        won: playerStates.indexOf(ps) === winner,
+      })),
+    };
+    try {
+      const ex = JSON.parse(localStorage.getItem('x01Matches') || '[]');
+      ex.push(matchData);
+      localStorage.setItem('x01Matches', JSON.stringify(ex));
+    } catch (e) { console.error(e); }
+    (async () => {
+      try {
+        if (await canSyncToSupabase()) {
+          const { createClient } = await import('@/app/lib/supabase/client');
+          await createClient().from('x01_matches').insert({ match_id: matchData.matchId, match_data: matchData, created_at: matchData.date });
+        }
+      } catch (e) { console.log('x01 sync skipped:', e); }
+    })();
+  }, [winner]);
+
+  const handlePlayAgain = () => {
+    setPlayerStates(players.map(p => ({ player: p, score: x01StartingScore, hasEnteredGame: !x01DoubleIn, turnsPlayed: 0, totalReduced: 0 })));
+    setTurnStep(0); setTurnHistory([]); setCurrentTurnDarts([]); setWinner(null); setBustMsg('');
+  };
+
+  if (players.length === 0) return null;
+
+  const winnerState = winner !== null ? playerStates[winner] : null;
+  const winnerTeam = winner !== null ? getTeamForIdx(winner) : null;
+
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#1a5a5a] flex items-center justify-center">
-      <div className="text-white text-2xl">Loading...</div>
-    </div>}>
-      <X01Game />
-    </Suspense>
+    <div className="h-screen bg-[#1a2a2a] flex flex-col overflow-hidden">
+      <Header title={`X01 — ${x01StartingScore}`} showBackButton={winner === null} />
+
+      <main className="flex-1 flex flex-col overflow-hidden" style={{ paddingTop: '64px' }}>
+
+        {/* ── Top 28%: scores + dart slots ── */}
+        <div className="shrink-0 px-2 pt-2 pb-1 flex flex-col gap-1.5 overflow-hidden" style={{ height: '28%' }}>
+
+          {/* Score Panels — fill available height */}
+          {isTeams ? (
+            /* Team mode: 2 shared panels */
+            <div className="flex-1 min-h-0 grid grid-cols-2 gap-1.5">
+              {[0, 1].map(teamIdx => {
+                const teamIdxList = playerStates.map((_, i) => i).filter(i => getTeamForIdx(i) === teamIdx);
+                const teamPs = teamIdxList.map(i => playerStates[i]);
+                const isCurrentTeam = teamIdxList.includes(currentIdx) && winner === null;
+                const teamColor = teamIdx === 0 ? 'blue' : 'red';
+                const teamBorderColor = COLOR_BORDERS[teamColor];
+                const teamScore = teamPs[0]?.score ?? 0;
+                const displayScore = isCurrentTeam && currentTurnDarts.length > 0 ? previewRemaining : teamScore;
+                // Show last turn from the team member who most recently played
+                const lastThrownIdx = getCurrentIdx(turnStep - 1);
+                const lastTurnPs = teamIdxList.includes(lastThrownIdx)
+                  ? playerStates[lastThrownIdx]
+                  : teamPs.find(ps => ps.lastTurn);
+                const activePlayerNeedsDouble = isCurrentTeam && !playerStates[currentIdx].hasEnteredGame;
+                return (
+                  <div
+                    key={teamIdx}
+                    className={`rounded-lg px-2 py-1 border-2 transition-all flex flex-col items-center justify-center text-center gap-0.5 overflow-hidden ${isCurrentTeam ? 'border-[#00d1b2] bg-[#1a3a3a]' : 'border-[#333] bg-[#2a2a2a]'}`}
+                  >
+                    <span className="font-bold leading-none" style={{ fontSize: 'clamp(11px, 2vw, 16px)', color: teamBorderColor }}>
+                      TEAM {teamIdx + 1}
+                    </span>
+                    <span className="text-gray-300 leading-tight w-full truncate" style={{ fontSize: 'clamp(12px, 2.5vw, 20px)' }}>
+                      {teamPs.map(ps => ps.player.name).join(' & ')}
+                    </span>
+                    <span className={`font-black leading-none ${isCurrentTeam ? 'text-white' : 'text-gray-400'}`} style={{ fontSize: 'clamp(44px, 10vw, 90px)' }}>
+                      {displayScore}
+                    </span>
+                    {activePlayerNeedsDouble && <div className="text-yellow-400 font-bold" style={{ fontSize: 'clamp(10px, 1.8vw, 14px)' }}>NEEDS DOUBLE</div>}
+                    {lastTurnPs?.lastTurn && (
+                      <div className="flex flex-col items-center leading-tight">
+                        <span className={`font-bold ${lastTurnPs.lastTurn.total > 0 ? 'text-[#00d1b2]' : 'text-red-400'}`} style={{ fontSize: 'clamp(13px, 2.5vw, 20px)' }}>
+                          {lastTurnPs.lastTurn.total > 0 ? `+${lastTurnPs.lastTurn.total}` : 'BUST'}
+                        </span>
+                        <span className="text-gray-500" style={{ fontSize: 'clamp(11px, 2vw, 16px)' }}>
+                          {lastTurnPs.lastTurn.darts.map((d, i) => (
+                            <span key={i} className={d.isBust || d.wasted ? 'text-red-700' : ''}>
+                              {i > 0 ? '·' : ''}{dartLabel(d)}{d.wasted ? '*' : ''}
+                            </span>
+                          ))}
+                        </span>
+                      </div>
+                    )}
+                    {(() => {
+                      const totalTurns = teamPs.reduce((s, p) => s + p.turnsPlayed, 0);
+                      const totalReduced = teamPs.reduce((s, p) => s + p.totalReduced, 0);
+                      const rawAvg = totalTurns > 0 ? totalReduced / totalTurns : null;
+                      const avg = rawAvg !== null ? (x01AverageMode === 'per-dart' ? rawAvg / 3 : rawAvg).toFixed(1) : null;
+                      const avgLabel = x01AverageMode === 'per-dart' ? 'dart avg' : 'turn avg';
+                      return avg ? (
+                        <span className="text-gray-500" style={{ fontSize: 'clamp(10px, 1.8vw, 14px)' }}>{avgLabel} {avg}</span>
+                      ) : null;
+                    })()}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* Individual mode */
+            <div className={`flex-1 min-h-0 grid gap-1.5 ${numPlayers <= 2 ? 'grid-cols-2' : 'grid-cols-4'}`}>
+              {playerStates.map((ps, idx) => {
+                const isCurrent = idx === currentIdx && winner === null;
+                const color = getColorForIdx(idx);
+                return (
+                  <div
+                    key={ps.player.id}
+                    className={`rounded-lg px-2 py-1 border-2 transition-all flex flex-col items-center justify-center text-center gap-0.5 overflow-hidden ${isCurrent ? 'border-[#00d1b2] bg-[#1a3a3a]' : 'border-[#333] bg-[#2a2a2a]'}`}
+                  >
+                    <span className="font-bold leading-tight w-full text-center truncate" style={{ fontSize: 'clamp(14px, 3vw, 26px)', color: COLOR_BORDERS[color] ?? '#fff' }}>
+                      {ps.player.name}
+                    </span>
+                    <span className={`font-black leading-none ${isCurrent ? 'text-white' : 'text-gray-400'}`} style={{ fontSize: numPlayers <= 2 ? 'clamp(44px, 10vw, 90px)' : 'clamp(32px, 7vw, 64px)' }}>
+                      {isCurrent && currentTurnDarts.length > 0 ? previewRemaining : ps.score}
+                    </span>
+                    {!ps.hasEnteredGame && <div className="text-yellow-400 font-bold" style={{ fontSize: 'clamp(10px, 1.8vw, 14px)' }}>NEEDS DOUBLE</div>}
+                    {ps.lastTurn && (
+                      <div className="flex flex-col items-center leading-tight">
+                        <span className={`font-bold ${ps.lastTurn.total > 0 ? 'text-[#00d1b2]' : 'text-red-400'}`} style={{ fontSize: 'clamp(13px, 2.5vw, 20px)' }}>
+                          {ps.lastTurn.total > 0 ? `+${ps.lastTurn.total}` : 'BUST'}
+                        </span>
+                        <span className="text-gray-500" style={{ fontSize: 'clamp(11px, 2vw, 16px)' }}>
+                          {ps.lastTurn.darts.map((d, i) => (
+                            <span key={i} className={d.isBust || d.wasted ? 'text-red-700' : ''}>
+                              {i > 0 ? '·' : ''}{dartLabel(d)}{d.wasted ? '*' : ''}
+                            </span>
+                          ))}
+                        </span>
+                      </div>
+                    )}
+                    {ps.turnsPlayed > 0 && (
+                      <span className="text-gray-500" style={{ fontSize: 'clamp(10px, 1.8vw, 14px)' }}>
+                        {x01AverageMode === 'per-dart' ? 'dart' : 'turn'} avg {(ps.totalReduced / ps.turnsPlayed / (x01AverageMode === 'per-dart' ? 3 : 1)).toFixed(1)}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Dart Slots row — 2x taller than normal keypad buttons */}
+          <div className="flex items-stretch gap-1 shrink-0 h-24">
+            {[0, 1, 2].map(i => {
+              const d = currentTurnDarts[i];
+              return (
+                <div
+                  key={i}
+                  className={`flex-1 rounded flex flex-col items-center justify-center ${d ? (d.isBust || d.wasted ? 'bg-red-900/30' : 'bg-[#1a4a4a]') : 'bg-[#1a2a2a]'}`}
+                >
+                  {d ? (
+                    <>
+                      <div className={`text-2xl font-bold leading-none ${d.isBust || d.wasted ? 'text-red-400' : 'text-white'}`}>
+                        {dartLabel(d)}{d.wasted ? '*' : ''}
+                      </div>
+                      <div className={`text-base mt-1 ${d.isBust ? 'text-red-500' : d.wasted ? 'text-gray-600' : 'text-[#00d1b2]'}`}>
+                        {d.isBust ? 'bust' : d.score}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-gray-700 text-2xl">—</div>
+                  )}
+                </div>
+              );
+            })}
+            <div className="text-right pl-2 shrink-0 min-w-[64px] flex flex-col justify-center">
+              <div className="text-white font-bold text-3xl leading-none">{currentTurnTotal > 0 ? currentTurnTotal : ''}</div>
+              {currentTurnTotal > 0 && (
+                <div className={`text-base mt-1 ${previewRemaining < 0 || (previewRemaining === 1 && x01DoubleOut) ? 'text-red-400' : 'text-gray-400'}`}>
+                  → {previewRemaining}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Keypad — fills ALL remaining screen space ── */}
+        {winner === null && (
+          <div className="flex-1 flex flex-col px-2 pb-2 gap-0.5 min-h-0">
+
+            {/* Bust message */}
+            {bustMsg && (
+              <div className="shrink-0 bg-red-800 text-white text-center py-1 rounded font-bold text-sm">
+                {bustMsg}
+              </div>
+            )}
+
+            {/* Checkout guide */}
+            {!bustMsg && checkoutHint && (
+              <div className="shrink-0 bg-[#1a3a1a] border border-[#2d6a2d] rounded px-3 py-1.5 flex items-center gap-2">
+                <span className="text-[#00d1b2] font-bold text-xs uppercase tracking-wider shrink-0">Checkout</span>
+                <span className="text-white font-bold" style={{ fontSize: 'clamp(13px, 3vw, 18px)' }}>{checkoutHint}</span>
+              </div>
+            )}
+
+            {/* Triple, Double, Single — each takes equal share of space */}
+            {SECTIONS.map(sec => (
+              <div
+                key={sec.mult}
+                className={`flex-1 min-h-0 grid grid-cols-5 gap-0.5`}
+              >
+                {BOARD_NUMBERS.map(n => (
+                  <button
+                    key={n}
+                    onClick={() => handleDart(n, sec.mult)}
+                    className={`flex flex-col items-center justify-center rounded active:scale-95 transition-transform select-none ${sec.bgClass}`}
+                  >
+                    <span className={`font-black leading-none ${sec.numClass}`} style={{ fontSize: 'clamp(13px, 4vw, 24px)' }}>
+                      {n}
+                    </span>
+                    <span className={`leading-none mt-0.5 ${sec.dotClass}`} style={{ fontSize: 'clamp(7px, 1.8vw, 11px)' }}>
+                      {sec.dots}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ))}
+
+            {/* Bottom row: Bull · D-Bull · MISS · UNDO */}
+            <div className="flex gap-0.5 shrink-0 h-14">
+              <button
+                onClick={() => handleDart(25, 1)}
+                className="flex-1 flex flex-col items-center justify-center bg-[#4a4010] hover:bg-[#5a5018] rounded active:scale-95 transition-all"
+              >
+                <span className="text-yellow-400 font-bold text-sm leading-none">Bull</span>
+                <span className="text-yellow-600 text-xs">25</span>
+              </button>
+              <button
+                onClick={() => handleDart(25, 2)}
+                className="flex-1 flex flex-col items-center justify-center bg-[#0a2a45] hover:bg-[#18405e] rounded active:scale-95 transition-all"
+              >
+                <span className="text-[#74b9ff] font-bold text-sm leading-none">D-Bull</span>
+                <span className="text-[#4a7aaf] text-xs">50</span>
+              </button>
+              <button
+                onClick={() => handleDart(0, 1, true)}
+                className="flex-1 flex items-center justify-center bg-[#3a2020] hover:bg-[#4a2a2a] rounded active:scale-95 transition-all"
+              >
+                <span className="text-red-400 font-bold text-sm">MISS</span>
+              </button>
+              <button
+                onClick={handleUndo}
+                disabled={turnHistory.length === 0 && currentTurnDarts.length === 0}
+                className="flex-1 flex items-center justify-center bg-[#333] hover:bg-[#444] rounded disabled:opacity-30 active:scale-95 transition-all"
+              >
+                <span className="text-white font-bold text-sm">UNDO</span>
+              </button>
+            </div>
+
+          </div>
+        )}
+
+      </main>
+
+      {/* Winner Overlay */}
+      {winnerState && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1a3a3a] rounded-2xl p-8 text-center max-w-sm w-full">
+            <div className="text-6xl mb-3">🎯</div>
+            <div className="text-[#00d1b2] text-2xl font-bold mb-1">
+              {isTeams ? `TEAM ${(winnerTeam ?? 0) + 1} WINS!` : 'WINNER!'}
+            </div>
+            <div className="text-white text-3xl font-bold mb-1">{winnerState.player.name}</div>
+            {isTeams && winnerTeam !== null && (
+              <div className="text-gray-400 text-sm mb-4">
+                {playerStates.filter((_, i) => getTeamForIdx(i) === winnerTeam).map(s => s.player.name).join(' & ')}
+              </div>
+            )}
+            <div className="bg-[#2a4a4a] rounded-lg p-3 mb-6 text-left">
+              <div className="text-gray-400 text-xs font-bold uppercase mb-2">Match Averages</div>
+              {playerStates.map(ps => (
+                <div key={ps.player.id} className="flex justify-between text-sm py-0.5">
+                  <span className="text-white">{ps.player.name}</span>
+                  <span className="text-[#00d1b2] font-bold">
+                    {ps.turnsPlayed > 0 ? Math.round(ps.totalReduced / ps.turnsPlayed) : '—'}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => router.push('/extra/x01')} className="flex-1 py-3 bg-[#444] text-white font-bold rounded-lg hover:bg-[#555] transition-colors">
+                PLAYER SELECT
+              </button>
+              <button onClick={handlePlayAgain} className="flex-1 py-3 bg-[#00d1b2] text-white font-bold rounded-lg hover:bg-[#00f5d4] transition-colors">
+                PLAY AGAIN
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
