@@ -1,7 +1,7 @@
 // Swamp Darts Service Worker
-// Auto-increment version on each deployment - uses build timestamp
-const BUILD_VERSION = '__BUILD_VERSION__'; // Replaced during build
-const CACHE_NAME = `swamp-darts-${BUILD_VERSION || Date.now()}`;
+// Cache name includes a timestamp baked in at deploy time via next.config.ts headers.
+// Using Date.now() at SW install time ensures each new deployment gets a fresh cache.
+const CACHE_NAME = `swamp-darts-${Date.now()}`;
 const STATIC_ASSETS = [
   '/manifest.json',
   '/icon-192.png',
@@ -39,7 +39,6 @@ self.addEventListener('activate', (event) => {
         clients.forEach((client) => {
           client.postMessage({
             type: 'SW_UPDATED',
-            version: BUILD_VERSION,
           });
         });
       });

@@ -432,9 +432,14 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
           console.log('⏭️ No venueId - skipping venue participant sync');
         }
 
-        // Wait for all syncs to complete in parallel
-        await Promise.all(syncPromises);
-        console.log('✅ All Supabase syncs complete!');
+        // Wait for all syncs — allSettled means one failure won't kill the others
+        const results = await Promise.allSettled(syncPromises);
+        const failed = results.filter(r => r.status === 'rejected');
+        if (failed.length > 0) {
+          console.error('❌ Some Supabase syncs failed:', failed.map(r => (r as PromiseRejectedResult).reason));
+        } else {
+          console.log('✅ All Supabase syncs complete!');
+        }
       } else {
         console.log('⏭️ Not authenticated, skipping Supabase sync');
       }

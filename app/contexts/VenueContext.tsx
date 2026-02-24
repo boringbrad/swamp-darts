@@ -26,24 +26,19 @@ const VenueContext = createContext<VenueContextType | undefined>(undefined);
 
 export function VenueProvider({ children }: { children: ReactNode }) {
   const [venueId, setVenueId] = useState<string | null>(null);
-  const { venueMode } = useVenueMode();
+  const { venueMode, isLoading: venueModeLoading } = useVenueMode();
 
   // Use hooks to get real-time venue participant data
   const { activeParticipants, participants, refresh } = useVenueParticipants(venueId);
 
-  // Debug: log what we get from the hook
+  // Load venue info only after localStorage has finished loading — prevents the race
+  // condition where venueMode is briefly false before localStorage is read, causing
+  // venueId to be incorrectly cleared on every mount.
   useEffect(() => {
-    console.log('[VenueContext] useVenueParticipants returned:', {
-      participantsLength: participants.length,
-      activeParticipantsLength: activeParticipants.length,
-      participants: participants.map(p => ({ id: p.id, userId: p.userId, displayName: p.displayName }))
-    });
-  }, [participants, activeParticipants]);
-
-  // Load venue info on mount if in venue mode
-  useEffect(() => {
-    loadVenueInfo();
-  }, [venueMode]);
+    if (!venueModeLoading) {
+      loadVenueInfo();
+    }
+  }, [venueMode, venueModeLoading]);
 
   const loadVenueInfo = async () => {
     console.log('[VenueContext] loadVenueInfo called, venueMode:', venueMode);

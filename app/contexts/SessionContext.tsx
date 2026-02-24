@@ -54,8 +54,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // Don't clear anything if we don't have currentUserId yet
     if (!currentUserId) return;
 
-    // Clear if session expired or completed
-    if (session && session.status !== 'lobby') {
+    // Clear if session expired or completed — but NOT when in_game (game is actively running)
+    if (session && session.status !== 'lobby' && session.status !== 'in_game') {
       setSessionId(null);
       return;
     }
@@ -89,7 +89,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     ? true
     : activeParticipants.some(p => p.userId === currentUserId);
 
-  const isInSession = !!sessionId && session?.status === 'lobby' && userIsActiveParticipant;
+  const isInSession = !!sessionId && (session?.status === 'lobby' || session?.status === 'in_game') && userIsActiveParticipant;
 
   const value: SessionContextType = {
     sessionId,

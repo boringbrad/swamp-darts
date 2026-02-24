@@ -667,25 +667,33 @@ export default function GolfGame({ variant }: GolfGameProps) {
           }
         }
 
-        await syncGolfMatch({
-          matchId: matchData.matchId,
-          matchData: matchData,
-          players: matchData.players,
-          courseId: matchData.courseName,
-          gameMode: matchData.variant,
-          completedAt: new Date(matchData.date),
-          venueId: venueId || undefined,
-          boardId: boardId,
-        });
-        console.log('✅ Supabase sync complete!');
+        const syncPromises = [
+          syncGolfMatch({
+            matchId: matchData.matchId,
+            matchData: matchData,
+            players: matchData.players,
+            courseId: matchData.courseName,
+            gameMode: matchData.variant,
+            completedAt: new Date(matchData.date),
+            venueId: venueId || undefined,
+            boardId: boardId,
+          })
+        ];
 
-        // If this is a venue game, sync to all venue participants
         if (venueId) {
-          console.log('🏢 Syncing match to all venue participants...');
-          await syncVenueMatchResults(venueId, matchData.matchId, 'golf_matches');
-          console.log('✅ Venue participant sync complete!');
+          console.log('🏢 Will sync match to all venue participants...');
+          syncPromises.push(syncVenueMatchResults(venueId, matchData.matchId, 'golf_matches'));
         } else {
           console.log('⏭️ No venueId - skipping venue participant sync');
+        }
+
+        // allSettled means one failure won't kill the other sync
+        const results = await Promise.allSettled(syncPromises);
+        const failed = results.filter(r => r.status === 'rejected');
+        if (failed.length > 0) {
+          console.error('❌ Some Supabase syncs failed:', failed.map(r => (r as PromiseRejectedResult).reason));
+        } else {
+          console.log('✅ All Supabase syncs complete!');
         }
       } else {
         console.log('⏭️ Not authenticated, skipping Supabase sync');

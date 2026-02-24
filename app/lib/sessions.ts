@@ -220,11 +220,11 @@ export async function leaveSession(sessionId: string): Promise<{
     const now = new Date().toISOString();
     const isHost = participants.some(p => p.is_host);
 
-    // Mark ALL participant records for this user in ALL sessions as left (handles duplicates and old sessions)
-    // This ensures the user can cleanly create a new session
+    // Mark ALL participant records for this user in THIS session as left (handles duplicate rows)
     const { error } = await supabase
       .from('session_participants')
       .update({ left_at: now })
+      .eq('session_id', sessionId)
       .eq('user_id', user.id)
       .is('left_at', null);
 
