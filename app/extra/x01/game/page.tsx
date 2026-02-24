@@ -152,7 +152,7 @@ export default function X01GamePage() {
       if (i === currentIdx) return {
         ...ps, score: ps.score - scoreReduced,
         hasEnteredGame: enteringGame ? true : ps.hasEnteredGame,
-        turnsPlayed: scoreReduced > 0 ? ps.turnsPlayed + 1 : ps.turnsPlayed,
+        turnsPlayed: (scoreReduced > 0 || darts.some(d => d.isBust)) ? ps.turnsPlayed + 1 : ps.turnsPlayed,
         totalReduced: ps.totalReduced + scoreReduced,
         lastTurn: { darts, total: scoreReduced },
       };
@@ -212,10 +212,14 @@ export default function X01GamePage() {
   const handleUndo = () => {
     if (currentTurnDarts.length > 0) { setCurrentTurnDarts(prev => prev.slice(0, -1)); return; }
     if (turnHistory.length === 0) return;
+    // Grab the darts from the just-completed turn (minus the last one) before restoring state
+    const prevPlayerIdx = getCurrentIdx(turnStep - 1);
+    const committedDarts = playerStates[prevPlayerIdx]?.lastTurn?.darts ?? [];
     const last = turnHistory[turnHistory.length - 1];
     setTurnHistory(prev => prev.slice(0, -1));
     setPlayerStates(last.prevPlayerStates);
     setTurnStep(prev => prev - 1);
+    setCurrentTurnDarts(committedDarts.slice(0, -1));
     setWinner(null);
     setBustMsg('');
   };
