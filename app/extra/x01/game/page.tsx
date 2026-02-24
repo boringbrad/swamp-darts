@@ -295,22 +295,22 @@ export default function X01GamePage() {
                     key={teamIdx}
                     className={`rounded-lg px-2 py-1 border-2 transition-all flex flex-col items-center justify-center text-center gap-0.5 overflow-hidden ${isCurrentTeam ? 'border-[#00d1b2] bg-[#1a3a3a]' : 'border-[#333] bg-[#2a2a2a]'}`}
                   >
-                    <span className="font-bold leading-none" style={{ fontSize: 'clamp(11px, 2vw, 16px)', color: teamBorderColor }}>
+                    <span className="font-bold leading-none" style={{ fontSize: 'clamp(10px, min(2vw, 1.8vh), 15px)', color: teamBorderColor }}>
                       TEAM {teamIdx + 1}
                     </span>
-                    <span className="text-gray-300 leading-tight w-full truncate" style={{ fontSize: 'clamp(12px, 2.5vw, 20px)' }}>
+                    <span className="text-gray-300 leading-tight w-full truncate" style={{ fontSize: 'clamp(11px, min(2.5vw, 2vh), 18px)' }}>
                       {teamPs.map(ps => ps.player.name).join(' & ')}
                     </span>
-                    <span className={`font-black leading-none ${isCurrentTeam ? 'text-white' : 'text-gray-400'}`} style={{ fontSize: 'clamp(44px, 10vw, 90px)' }}>
+                    <span className={`font-black leading-none ${isCurrentTeam ? 'text-white' : 'text-gray-400'}`} style={{ fontSize: 'clamp(20px, min(10vw, 7.5vh), 80px)' }}>
                       {displayScore}
                     </span>
-                    {activePlayerNeedsDouble && <div className="text-yellow-400 font-bold" style={{ fontSize: 'clamp(10px, 1.8vw, 14px)' }}>NEEDS DOUBLE</div>}
+                    {activePlayerNeedsDouble && <div className="text-yellow-400 font-bold" style={{ fontSize: 'clamp(9px, min(1.8vw, 1.4vh), 13px)' }}>NEEDS DOUBLE</div>}
                     {lastTurnPs?.lastTurn && (
                       <div className="flex items-center gap-1.5 justify-center flex-wrap w-full leading-none">
-                        <span className={`font-bold ${lastTurnPs.lastTurn.total > 0 ? 'text-[#00d1b2]' : 'text-red-400'}`} style={{ fontSize: 'clamp(11px, 2vw, 15px)' }}>
+                        <span className={`font-bold ${lastTurnPs.lastTurn.total > 0 ? 'text-[#00d1b2]' : 'text-red-400'}`} style={{ fontSize: 'clamp(10px, min(2vw, 1.6vh), 14px)' }}>
                           {lastTurnPs.lastTurn.total > 0 ? `+${lastTurnPs.lastTurn.total}` : 'BUST'}
                         </span>
-                        <span className="text-gray-500" style={{ fontSize: 'clamp(10px, 1.8vw, 13px)' }}>
+                        <span className="text-gray-500" style={{ fontSize: 'clamp(9px, min(1.8vw, 1.4vh), 12px)' }}>
                           {lastTurnPs.lastTurn.darts.map((d, i) => (
                             <span key={i} className={d.isBust || d.wasted ? 'text-red-700' : ''}>
                               {i > 0 ? '·' : ''}{dartLabel(d)}{d.wasted ? '*' : ''}
@@ -326,7 +326,7 @@ export default function X01GamePage() {
                       const avg = rawAvg !== null ? (x01AverageMode === 'per-dart' ? rawAvg / 3 : rawAvg).toFixed(1) : null;
                       const avgLabel = x01AverageMode === 'per-dart' ? 'dart avg' : 'turn avg';
                       return avg ? (
-                        <span className="text-gray-500" style={{ fontSize: 'clamp(10px, 1.8vw, 14px)' }}>{avgLabel} {avg}</span>
+                        <span className="text-gray-500" style={{ fontSize: 'clamp(9px, min(1.8vw, 1.4vh), 12px)' }}>{avgLabel} {avg}</span>
                       ) : null;
                     })()}
                   </div>
@@ -344,19 +344,19 @@ export default function X01GamePage() {
                     key={ps.player.id}
                     className={`rounded-lg px-2 py-1 border-2 transition-all flex flex-col items-center justify-center text-center gap-0.5 overflow-hidden ${isCurrent ? 'border-[#00d1b2] bg-[#1a3a3a]' : 'border-[#333] bg-[#2a2a2a]'}`}
                   >
-                    <span className="font-bold leading-tight w-full text-center truncate" style={{ fontSize: 'clamp(14px, 3vw, 26px)', color: COLOR_BORDERS[color] ?? '#fff' }}>
+                    <span className="font-bold leading-tight w-full text-center truncate" style={{ fontSize: 'clamp(11px, min(3vw, 2.2vh), 22px)', color: COLOR_BORDERS[color] ?? '#fff' }}>
                       {ps.player.name}
                     </span>
-                    <span className={`font-black leading-none ${isCurrent ? 'text-white' : 'text-gray-400'}`} style={{ fontSize: numPlayers <= 2 ? 'clamp(44px, 10vw, 90px)' : 'clamp(32px, 7vw, 64px)' }}>
+                    <span className={`font-black leading-none ${isCurrent ? 'text-white' : 'text-gray-400'}`} style={{ fontSize: numPlayers <= 2 ? 'clamp(20px, min(10vw, 7.5vh), 80px)' : 'clamp(16px, min(7vw, 5.5vh), 56px)' }}>
                       {isCurrent && currentTurnDarts.length > 0 ? previewRemaining : ps.score}
                     </span>
-                    {!ps.hasEnteredGame && <div className="text-yellow-400 font-bold" style={{ fontSize: 'clamp(10px, 1.8vw, 14px)' }}>NEEDS DOUBLE</div>}
+                    {!ps.hasEnteredGame && <div className="text-yellow-400 font-bold" style={{ fontSize: 'clamp(9px, min(1.8vw, 1.4vh), 13px)' }}>NEEDS DOUBLE</div>}
                     {ps.lastTurn && (
                       <div className="flex items-center gap-1.5 justify-center flex-wrap w-full leading-none">
-                        <span className={`font-bold ${ps.lastTurn.total > 0 ? 'text-[#00d1b2]' : 'text-red-400'}`} style={{ fontSize: 'clamp(11px, 2vw, 15px)' }}>
+                        <span className={`font-bold ${ps.lastTurn.total > 0 ? 'text-[#00d1b2]' : 'text-red-400'}`} style={{ fontSize: 'clamp(10px, min(2vw, 1.6vh), 14px)' }}>
                           {ps.lastTurn.total > 0 ? `+${ps.lastTurn.total}` : 'BUST'}
                         </span>
-                        <span className="text-gray-500" style={{ fontSize: 'clamp(10px, 1.8vw, 13px)' }}>
+                        <span className="text-gray-500" style={{ fontSize: 'clamp(9px, min(1.8vw, 1.4vh), 12px)' }}>
                           {ps.lastTurn.darts.map((d, i) => (
                             <span key={i} className={d.isBust || d.wasted ? 'text-red-700' : ''}>
                               {i > 0 ? '·' : ''}{dartLabel(d)}{d.wasted ? '*' : ''}
@@ -366,7 +366,7 @@ export default function X01GamePage() {
                       </div>
                     )}
                     {ps.turnsPlayed > 0 && (
-                      <span className="text-gray-500" style={{ fontSize: 'clamp(10px, 1.8vw, 14px)' }}>
+                      <span className="text-gray-500" style={{ fontSize: 'clamp(9px, min(1.8vw, 1.4vh), 12px)' }}>
                         {x01AverageMode === 'per-dart' ? 'dart' : 'turn'} avg {(ps.totalReduced / ps.turnsPlayed / (x01AverageMode === 'per-dart' ? 3 : 1)).toFixed(1)}
                       </span>
                     )}
