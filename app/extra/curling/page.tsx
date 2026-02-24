@@ -17,7 +17,8 @@ export default function CurlingPage() {
     let playerNames: { [key: number]: string } = { 1: "Red Player", 2: "Blue Player" };
     let activeTeam = 1;
     let lastScorer = 1;
-    let dartsLeft: { [key: number]: number } = { 1: 8, 2: 8 };
+    let dartsPerEnd = 8;
+    let dartsLeft: { [key: number]: number } = { 1: dartsPerEnd, 2: dartsPerEnd };
     let gameScore: { [key: number]: number } = { 1: 0, 2: 0 };
     let currentEnd = 1;
     let boardState: any = {};
@@ -524,13 +525,13 @@ export default function CurlingPage() {
         boardState[k].blockOwner = 0;
         updateVisuals(k);
       }
-      dartsLeft = { 1: 8, 2: 8 };
+      dartsLeft = { 1: dartsPerEnd, 2: dartsPerEnd };
       activeTeam = lastScorer;
       setTurnUI(activeTeam);
       updateUI({ team: 0, pts: 0 });
 
-      if (t1Darts) t1Darts.innerText = '8';
-      if (t2Darts) t2Darts.innerText = '8';
+      if (t1Darts) t1Darts.innerText = String(dartsPerEnd);
+      if (t2Darts) t2Darts.innerText = String(dartsPerEnd);
       if (log) log.innerHTML = `--- End ${currentEnd} Started ---<br>` + log.innerHTML;
     }
 
@@ -565,10 +566,27 @@ export default function CurlingPage() {
       createBull(12, "Inner Bull", 1);
     }
 
+    function changeDartsPerEnd(delta: number) {
+      const prev = dartsPerEnd;
+      dartsPerEnd = Math.max(1, Math.min(16, dartsPerEnd + delta));
+      const el = document.getElementById('darts-per-end-val');
+      if (el) el.innerText = String(dartsPerEnd);
+      // If no darts thrown yet this end, apply immediately
+      if (dartsLeft[1] === prev && dartsLeft[2] === prev) {
+        dartsLeft[1] = dartsPerEnd;
+        dartsLeft[2] = dartsPerEnd;
+        const t1 = document.getElementById('t1-darts');
+        const t2 = document.getElementById('t2-darts');
+        if (t1) t1.innerText = String(dartsPerEnd);
+        if (t2) t2.innerText = String(dartsPerEnd);
+      }
+    }
+
     // Expose functions globally
     (window as any).undoLastMove = undoLastMove;
     (window as any).handleMiss = handleMiss;
     (window as any).startNextEnd = startNextEnd;
+    (window as any).changeDartsPerEnd = changeDartsPerEnd;
 
     // Initialize
     init();
@@ -597,6 +615,7 @@ export default function CurlingPage() {
       delete (window as any).undoLastMove;
       delete (window as any).handleMiss;
       delete (window as any).startNextEnd;
+      delete (window as any).changeDartsPerEnd;
     };
   }, []);
 
@@ -695,6 +714,12 @@ export default function CurlingPage() {
             <p style={{ margin: '8px 0 0 0', fontSize: '1.5rem' }}>
               Darts: <span style={{ color: '#ff7675' }} id="t1-darts">8</span> | <span style={{ color: '#74b9ff' }} id="t2-darts">8</span>
             </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', fontSize: '1.2rem' }}>
+              <span style={{ color: '#888' }}>Per end:</span>
+              <button onClick={() => (window as any).changeDartsPerEnd?.(-1)} style={{ width: '28px', height: '28px', background: '#333', border: '1px solid #555', color: 'white', borderRadius: '4px', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1 }}>−</button>
+              <span id="darts-per-end-val" style={{ fontWeight: 'bold', minWidth: '2ch', textAlign: 'center' }}>8</span>
+              <button onClick={() => (window as any).changeDartsPerEnd?.(1)} style={{ width: '28px', height: '28px', background: '#333', border: '1px solid #555', color: 'white', borderRadius: '4px', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1 }}>+</button>
+            </div>
           </div>
 
           <div style={{ background: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '6px', marginBottom: '10px', borderLeft: '4px solid #444' }}>
