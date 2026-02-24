@@ -16,7 +16,7 @@ import { getAvatarById, getDefaultAvatar, STOCK_AVATARS } from '../lib/avatars';
 export default function VenueDashboardPage() {
   const router = useRouter();
   const { venueMode, setVenueMode } = useVenueMode();
-  const { venueInfo, refresh: refreshVenueInfo } = useVenueInfo();
+  const { venueInfo, isLoading: venueInfoLoading, refresh: refreshVenueInfo } = useVenueInfo();
   const { activeParticipants, refresh: refreshParticipants } = useVenueParticipants(venueInfo?.id || null);
   const { boards, refresh: refreshBoards } = useVenueBoards(venueInfo?.id || null);
   const { guests, refresh: refreshGuests } = useVenueGuests(venueInfo?.id || null);
@@ -34,6 +34,14 @@ export default function VenueDashboardPage() {
   // Auto-enable venue mode if user has venue info but venue mode is disabled
   if (venueInfo && !venueMode) {
     setVenueMode(true);
+  }
+
+  if (venueInfoLoading) {
+    return (
+      <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center">
+        <div className="text-white text-xl">Loading...</div>
+      </div>
+    );
   }
 
   if (!venueInfo) {
