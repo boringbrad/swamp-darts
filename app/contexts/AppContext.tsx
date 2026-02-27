@@ -76,6 +76,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           avatar: profile.avatar || 'avatar-1',
           photoUrl: profile.photo_url || null,
           accountType: profile.account_type || 'player',
+          isAdmin: profile.is_admin === true,
           friends: [],
           clubs: [],
           stats: {

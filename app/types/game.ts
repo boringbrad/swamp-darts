@@ -122,6 +122,7 @@ export interface UserProfile {
   avatar?: string;
   photoUrl?: string | null;
   accountType?: string;
+  isAdmin?: boolean;
   friends: string[]; // User IDs
   clubs: string[]; // Club IDs
   stats: UserStats;

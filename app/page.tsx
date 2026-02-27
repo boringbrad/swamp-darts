@@ -1,35 +1,22 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import Header from './components/Header';
 import PageWrapper from './components/PageWrapper';
 import GameModeCard from './components/GameModeCard';
 import { useAppContext } from './contexts/AppContext';
-import { checkIsAdmin } from './lib/adminAnalytics';
 import { useFriendRequests } from './hooks/useFriendRequests';
 import { useUserPresence } from './hooks/useUserPresence';
-import { useVenueMode } from './hooks/useVenue';
 
 export default function Home() {
   const { playMode, setPlayMode, userProfile } = useAppContext();
-  const [isAdmin, setIsAdmin] = useState(false);
   const { requestCount } = useFriendRequests();
 
-  // Check if user has a venue account (not just venue mode enabled)
+  // Derived from cached profile — available immediately on first render
   const isVenueAccount = userProfile?.accountType === 'venue';
+  const isAdmin = userProfile?.isAdmin === true;
 
   // Update user presence to track online status
   useUserPresence();
-
-  // Check if user is admin whenever page loads or user changes
-  useEffect(() => {
-    const checkAdmin = async () => {
-      const adminStatus = await checkIsAdmin();
-      console.log('Home: Admin status:', adminStatus);
-      setIsAdmin(adminStatus);
-    };
-    checkAdmin();
-  }, [userProfile]);
 
   return (
     <div className="min-h-screen bg-[#1a1a1a]">
