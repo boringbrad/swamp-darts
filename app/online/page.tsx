@@ -73,9 +73,15 @@ export default function OnlineLobbyPage() {
 
   const loadLobbies = useCallback(async () => {
     setLoading(true);
-    const data = await getOpenOnlineLobbies();
-    setLobbies(data);
-    setLoading(false);
+    try {
+      const data = await getOpenOnlineLobbies();
+      setLobbies(data);
+    } catch (err) {
+      console.error('[OnlineLobby] loadLobbies error:', err);
+      setLobbies([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -120,10 +126,11 @@ export default function OnlineLobbyPage() {
   const myId = (userProfile && userProfile.id !== 'default-user') ? userProfile.id : authUserId;
 
   return (
-    <div className="min-h-screen bg-[#1a1a1a]">
+    <div className="min-h-screen bg-[#1a1a1a] flex flex-col">
       <Header showBackButton={true} />
-      <PageWrapper>
-        <div className="px-4 sm:px-6 py-6 max-w-2xl mx-auto">
+      <PageWrapper className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 py-8">
+        <div className="w-full max-w-2xl">
           {/* Title + Create button */}
           <div className="flex flex-col items-center mb-6">
             <h1 className="text-2xl font-black text-white uppercase tracking-wider">Play Online</h1>
@@ -203,6 +210,7 @@ export default function OnlineLobbyPage() {
 
           {/* Refresh hint */}
           <p className="text-gray-600 text-xs text-center mt-6">Lobbies update in real-time</p>
+        </div>
         </div>
       </PageWrapper>
     </div>

@@ -670,39 +670,52 @@ export async function getOpenOnlineLobbies(): Promise<(GameSession & {
   hostPhotoUrl: string | null;
   currentParticipants: number;
 })[]> {
-  const { data, error } = await supabase
-    .from('game_sessions')
-    .select(`
-      *,
-      host:profiles!host_user_id(display_name, avatar, photo_url)
-    `)
-    .eq('status', 'lobby')
-    .eq('max_participants', 2)
-    .gt('expires_at', new Date().toISOString())
-    .order('created_at', { ascending: false });
+  try {
+    // Step 1: fetch lobby sessions (no join — avoids PostgREST FK ambiguity issues)
+    const { data: sessions, error } = await supabase
+      .from('game_sessions')
+      .select('*')
+      .eq('status', 'lobby')
+      .eq('max_participants', 2)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false });
 
-  if (error || !data) return [];
+    if (error || !sessions || sessions.length === 0) return [];
 
-  // For each session, count active participants
-  const withCounts = await Promise.all(
-    data.map(async (s) => {
-      const { count } = await supabase
-        .from('session_participants')
-        .select('*', { count: 'exact', head: true })
-        .eq('session_id', s.id)
-        .is('left_at', null);
+    // Step 2: batch-fetch host profiles
+    const hostIds = [...new Set(sessions.map((s: any) => s.host_user_id as string))];
+    const { data: profileRows } = await supabase
+      .from('profiles')
+      .select('id, display_name, avatar, photo_url')
+      .in('id', hostIds);
 
-      const host = Array.isArray(s.host) ? s.host[0] : s.host;
-      return {
-        ...formatSession(s),
-        hostDisplayName: host?.display_name || 'Unknown',
-        hostAvatar: host?.avatar || 'avatar-1',
-        hostPhotoUrl: host?.photo_url || null,
-        currentParticipants: count || 0,
-      };
-    })
-  );
+    const profileMap: Record<string, any> = {};
+    for (const p of profileRows || []) profileMap[p.id] = p;
 
-  // Only show lobbies that aren't full yet
-  return withCounts.filter(l => l.currentParticipants < 2);
+    // Step 3: count active participants per session
+    const withCounts = await Promise.all(
+      sessions.map(async (s: any) => {
+        const { count } = await supabase
+          .from('session_participants')
+          .select('*', { count: 'exact', head: true })
+          .eq('session_id', s.id)
+          .is('left_at', null);
+
+        const hostProfile = profileMap[s.host_user_id];
+        return {
+          ...formatSession(s),
+          hostDisplayName: hostProfile?.display_name || 'Unknown',
+          hostAvatar: hostProfile?.avatar || 'avatar-1',
+          hostPhotoUrl: hostProfile?.photo_url || null,
+          currentParticipants: count || 0,
+        };
+      })
+    );
+
+    // Only show lobbies that aren't full yet
+    return withCounts.filter((l: any) => l.currentParticipants < 2);
+  } catch (err) {
+    console.error('[getOpenOnlineLobbies] error:', err);
+    return [];
+  }
 }
