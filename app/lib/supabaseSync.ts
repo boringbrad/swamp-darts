@@ -389,21 +389,29 @@ export async function syncSessionMatchResults(
 }
 
 /**
- * Create match copies for all participants in a venue
- * This ensures each venue participant gets the match in their stats
+ * Create match copies for venue participants who actually played.
+ * playerUserIds must contain the Supabase user IDs of the players in the match —
+ * only those users get a copy, preventing scores being attributed to bystanders.
  */
 export async function syncVenueMatchResults(
   venueId: string,
   matchId: string,
-  matchTable: 'cricket_matches' | 'golf_matches'
+  matchTable: 'cricket_matches' | 'golf_matches',
+  playerUserIds: string[],
 ): Promise<void> {
+  if (playerUserIds.length === 0) {
+    console.log('⏭️ syncVenueMatchResults: no playerUserIds provided, skipping');
+    return;
+  }
+
   try {
-    // Get all active participants in the venue
+    // Only fetch participants who actually played
     const { data: participants, error: participantsError } = await supabase
       .from('venue_participants')
       .select('id, user_id, guest_id')
       .eq('venue_id', venueId)
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .in('user_id', playerUserIds);
 
     if (participantsError || !participants) {
       console.error('Error fetching venue participants:', participantsError);
@@ -422,22 +430,13 @@ export async function syncVenueMatchResults(
       return;
     }
 
-    console.log(`🎯 Syncing match to ${participants.length} venue participants...`);
+    console.log(`🎯 Syncing match to ${participants.length} players (of ${playerUserIds.length} requested)...`);
 
-    // For each participant, create a copy of the match in their records
     for (const participant of participants) {
-      console.log(`  📝 Processing participant: ${participant.user_id || 'guest'}`);
+      if (!participant.user_id) continue;
 
-      // Only sync to authenticated users (skip guests)
-      if (!participant.user_id) {
-        console.log(`  ⏭️  Skipping guest participant`);
-        continue;
-      }
-
-      // Create a unique match_id for this participant (prevents conflicts)
       const participantMatchId = `${matchId}-${participant.user_id}`;
 
-      // Build the insert object based on match table type
       const insertData: any = {
         match_id: participantMatchId,
         user_id: participant.user_id,
@@ -449,30 +448,22 @@ export async function syncVenueMatchResults(
         board_id: matchData.board_id,
       };
 
-      // Only add course_id for golf matches
       if (matchTable === 'golf_matches' && matchData.course_id) {
         insertData.course_id = matchData.course_id;
       }
 
-      console.log(`  💾 Upserting match for participant ${participant.user_id}...`);
-
-      // Create or update a copy of the match for this participant (use upsert to prevent duplicates)
       const { error: syncError } = await supabase
         .from(matchTable)
-        .upsert(insertData, {
-          onConflict: 'match_id',
-          ignoreDuplicates: false, // Update if exists
-        });
+        .upsert(insertData, { onConflict: 'match_id', ignoreDuplicates: false });
 
       if (syncError) {
-        console.error(`  ❌ Error syncing match to participant ${participant.user_id}:`, syncError);
-        continue;
+        console.error(`  ❌ Error syncing match to ${participant.user_id}:`, syncError);
+      } else {
+        console.log(`  ✓ Match synced for ${participant.user_id}`);
       }
-
-      console.log(`  ✓ Match created for participant ${participant.user_id}`);
     }
 
-    console.log(`✅ Venue match sync complete for ${participants.length} participants`);
+    console.log(`✅ Venue match sync complete`);
   } catch (error) {
     console.error('Unexpected error syncing venue match results:', error);
   }

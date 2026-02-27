@@ -67,6 +67,7 @@ export default function GolfGame({ variant }: GolfGameProps) {
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const isSavingRef = useRef(false); // prevents double-save on rapid button taps
   const [inTieBreaker, setInTieBreaker] = useState(false);
   const [tieBreakerHoles, setTieBreakerHoles] = useState<(number | null)[][]>([]); // [playerIndex][holeIndex]
   const [tieBreakerRound, setTieBreakerRound] = useState(0); // 0 = first round (holes 19-20), 1 = second round, etc.
@@ -563,6 +564,9 @@ export default function GolfGame({ variant }: GolfGameProps) {
   };
 
   const saveGameToDatabase = async () => {
+    if (isSavingRef.current) return;
+    isSavingRef.current = true;
+
     // Generate unique match ID
     const matchId = `GOLF_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -691,8 +695,9 @@ export default function GolfGame({ variant }: GolfGameProps) {
         ];
 
         if (venueId) {
-          console.log('🏢 Will sync match to all venue participants...');
-          syncPromises.push(syncVenueMatchResults(venueId, matchData.matchId, 'golf_matches'));
+          const playerUserIds = realPlayersData.map(p => p.userId).filter((id): id is string => !!id);
+          console.log('🏢 Syncing match to playing users:', playerUserIds);
+          syncPromises.push(syncVenueMatchResults(venueId, matchData.matchId, 'golf_matches', playerUserIds));
         } else {
           console.log('⏭️ No venueId - skipping venue participant sync');
         }

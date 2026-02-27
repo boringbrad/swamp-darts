@@ -424,9 +424,10 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
 
         // Add venue participant sync if this is a venue game
         if (venueId) {
-          console.log('🏢 Will sync match to all venue participants...');
+          const playerUserIds = matchData.players.map((p: any) => p.userId).filter((id: any): id is string => !!id);
+          console.log('🏢 Syncing match to playing users:', playerUserIds);
           syncPromises.push(
-            syncVenueMatchResults(venueId, matchData.matchId, 'cricket_matches')
+            syncVenueMatchResults(venueId, matchData.matchId, 'cricket_matches', playerUserIds)
           );
         } else {
           console.log('⏭️ No venueId - skipping venue participant sync');

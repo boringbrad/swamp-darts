@@ -10,6 +10,9 @@ const STATIC_ASSETS = [
 ];
 
 // Install event - cache static assets
+// Do NOT call skipWaiting() here — the new SW waits until the user
+// explicitly approves the update. This prevents mid-game page reloads
+// caused by stale controllerchange listeners firing on auto-activation.
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
@@ -18,7 +21,6 @@ self.addEventListener('install', (event) => {
       });
     })
   );
-  self.skipWaiting();
 });
 
 // Activate event - clean up old caches

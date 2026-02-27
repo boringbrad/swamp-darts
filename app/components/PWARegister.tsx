@@ -14,19 +14,13 @@ export default function PWARegister() {
         .then((registration) => {
           console.log('Service Worker registered:', registration);
 
-          // Check for updates every 60 seconds
-          const updateInterval = setInterval(() => {
-            registration.update();
-          }, 60000);
-
-          // Listen for updates
+          // Listen for a new SW waiting to activate
           registration.addEventListener('updatefound', () => {
             const newWorker = registration.installing;
             if (!newWorker) return;
 
             newWorker.addEventListener('statechange', () => {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                // New service worker available
                 console.log('New service worker available!');
                 setWaitingWorker(newWorker);
                 setShowUpdatePrompt(true);
@@ -34,37 +28,26 @@ export default function PWARegister() {
             });
           });
 
-          // Check immediately on load
+          // Check for a new version once on page load (no polling interval —
+          // avoids surfacing update prompts in the middle of active games)
           registration.update();
-
-          return () => clearInterval(updateInterval);
         })
         .catch((error) => {
           console.error('Service Worker registration failed:', error);
         });
-
-      // Listen for SW_UPDATED messages from service worker
-      navigator.serviceWorker.addEventListener('message', (event) => {
-        if (event.data && event.data.type === 'SW_UPDATED') {
-          console.log('Service worker updated to version:', event.data.version);
-          setShowUpdatePrompt(true);
-        }
-      });
     }
   }, []);
 
   const handleUpdate = () => {
+    setShowUpdatePrompt(false);
     if (waitingWorker) {
-      // Tell the waiting service worker to activate
-      waitingWorker.postMessage({ type: 'SKIP_WAITING' });
-
-      // Listen for the controlling service worker to change
+      // Tell the waiting SW to activate, then reload once — { once: true }
+      // prevents stale listeners from firing on future controllerchange events
       navigator.serviceWorker.addEventListener('controllerchange', () => {
-        // Reload the page to load the new version
         window.location.reload();
-      });
+      }, { once: true });
+      waitingWorker.postMessage({ type: 'SKIP_WAITING' });
     } else {
-      // Just reload if no waiting worker
       window.location.reload();
     }
   };
