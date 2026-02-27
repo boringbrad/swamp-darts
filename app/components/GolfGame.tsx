@@ -31,7 +31,7 @@ const TOTAL_HOLES = 18;
 export default function GolfGame({ variant }: GolfGameProps) {
   const router = useRouter();
   const { localPlayers, updateLocalPlayer } = usePlayerContext();
-  const { selectedPlayers, tieBreakerEnabled, golfCourseName, playMode, courseBannerImage, courseBannerOpacity, cameraEnabled, setCameraEnabled, showCourseRecord, showCourseName } = useAppContext();
+  const { selectedPlayers, tieBreakerEnabled, golfCourseName, playMode, courseBannerImage, courseBannerOpacity, cameraEnabled, setCameraEnabled, showCourseRecord, showCourseName, userProfile } = useAppContext();
   const { venueId, venuePlayersForSelection: venuePlayers } = useVenueContext();
   const [players, setPlayers] = useState<StoredPlayer[]>([]);
   const [scores, setScores] = useState<PlayerScore[]>([]);
@@ -596,9 +596,8 @@ export default function GolfGame({ variant }: GolfGameProps) {
     const matchPlayPoints = variant === 'match-play' ? calculateMatchPlayPoints(0, 18) : undefined;
     const skinsPoints = variant === 'skins' ? calculateSkinsPoints(0, 18) : undefined;
 
-    // Get current user ID to link their player data
-    const { data: { user } } = await supabase.auth.getUser();
-    const currentUserId = user?.id;
+    // Get current user ID to link their player data (use cached profile — no async call needed)
+    const currentUserId = userProfile?.id;
 
     // Filter out ghost players - we don't want to save their stats
     const realPlayersData = players
@@ -661,58 +660,69 @@ export default function GolfGame({ variant }: GolfGameProps) {
       localStorage.setItem('golfMatches', JSON.stringify(existingMatches));
       console.log('Match saved successfully!');
 
-      // Sync to Supabase for analytics and cross-device stats
-      const canSync = await canSyncToSupabase();
-      console.log('[GolfGame] venueId at save time:', venueId);
-      console.log('[GolfGame] venuePlayers count:', venuePlayers.length);
-      if (canSync) {
-        console.log('🔄 Starting Supabase sync for golf match...');
-
-        // Auto-assign board based on course name for venue games
-        let boardId: string | undefined = undefined;
-        if (venueId && golfCourseName) {
-          console.log(`🎯 Finding or creating board for course: "${golfCourseName}"`);
-          const boardResult = await findOrCreateBoardByName(venueId, golfCourseName);
-          if (boardResult.success && boardResult.boardId) {
-            boardId = boardResult.boardId;
-            console.log(`✅ Board assigned: ${boardId}`);
-          } else {
-            console.error(`⚠️ Failed to assign board: ${boardResult.error}`);
+      // Sync to Supabase in the background — don't block navigation
+      const capturedVenueId = venueId;
+      const capturedCourseName = golfCourseName;
+      const capturedMatchData = matchData;
+      const capturedRealPlayersData = realPlayersData;
+      ;(async () => {
+        try {
+          const canSync = await canSyncToSupabase();
+          console.log('[GolfGame] venueId at save time:', capturedVenueId);
+          console.log('[GolfGame] venuePlayers count:', venuePlayers.length);
+          if (!canSync) {
+            console.log('⏭️ Not authenticated, skipping Supabase sync');
+            return;
           }
-        }
 
-        const syncPromises = [
-          syncGolfMatch({
-            matchId: matchData.matchId,
-            matchData: matchData,
-            players: matchData.players,
-            courseId: matchData.courseName,
-            gameMode: matchData.variant,
-            completedAt: new Date(matchData.date),
-            venueId: venueId || undefined,
-            boardId: boardId,
-          })
-        ];
+          console.log('🔄 Starting Supabase sync for golf match...');
 
-        if (venueId) {
-          const playerUserIds = realPlayersData.map(p => p.userId).filter((id): id is string => !!id);
-          console.log('🏢 Syncing match to playing users:', playerUserIds);
-          syncPromises.push(syncVenueMatchResults(venueId, matchData.matchId, 'golf_matches', playerUserIds));
-        } else {
-          console.log('⏭️ No venueId - skipping venue participant sync');
-        }
+          // Auto-assign board based on course name for venue games
+          let boardId: string | undefined = undefined;
+          if (capturedVenueId && capturedCourseName) {
+            console.log(`🎯 Finding or creating board for course: "${capturedCourseName}"`);
+            const boardResult = await findOrCreateBoardByName(capturedVenueId, capturedCourseName);
+            if (boardResult.success && boardResult.boardId) {
+              boardId = boardResult.boardId;
+              console.log(`✅ Board assigned: ${boardId}`);
+            } else {
+              console.error(`⚠️ Failed to assign board: ${boardResult.error}`);
+            }
+          }
 
-        // allSettled means one failure won't kill the other sync
-        const results = await Promise.allSettled(syncPromises);
-        const failed = results.filter(r => r.status === 'rejected');
-        if (failed.length > 0) {
-          console.error('❌ Some Supabase syncs failed:', failed.map(r => (r as PromiseRejectedResult).reason));
-        } else {
-          console.log('✅ All Supabase syncs complete!');
+          const syncPromises = [
+            syncGolfMatch({
+              matchId: capturedMatchData.matchId,
+              matchData: capturedMatchData,
+              players: capturedMatchData.players,
+              courseId: capturedMatchData.courseName,
+              gameMode: capturedMatchData.variant,
+              completedAt: new Date(capturedMatchData.date),
+              venueId: capturedVenueId || undefined,
+              boardId: boardId,
+            })
+          ];
+
+          if (capturedVenueId) {
+            const playerUserIds = capturedRealPlayersData.map(p => p.userId).filter((id): id is string => !!id);
+            console.log('🏢 Syncing match to playing users:', playerUserIds);
+            syncPromises.push(syncVenueMatchResults(capturedVenueId, capturedMatchData.matchId, 'golf_matches', playerUserIds));
+          } else {
+            console.log('⏭️ No venueId - skipping venue participant sync');
+          }
+
+          // allSettled means one failure won't kill the other sync
+          const results = await Promise.allSettled(syncPromises);
+          const failed = results.filter(r => r.status === 'rejected');
+          if (failed.length > 0) {
+            console.error('❌ Some Supabase syncs failed:', failed.map(r => (r as PromiseRejectedResult).reason));
+          } else {
+            console.log('✅ All Supabase syncs complete!');
+          }
+        } catch (bgErr) {
+          console.error('❌ Background Supabase sync error:', bgErr);
         }
-      } else {
-        console.log('⏭️ Not authenticated, skipping Supabase sync');
-      }
+      })();
 
       // Update lastUsed timestamp for all real players (not ghosts)
       const realPlayers = players.filter(p => !p.isGhost);
@@ -735,6 +745,7 @@ export default function GolfGame({ variant }: GolfGameProps) {
       });
     } catch (error) {
       console.error('Error saving match:', error);
+      isSavingRef.current = false; // Allow retry after error
     }
   };
 

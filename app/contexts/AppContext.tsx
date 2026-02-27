@@ -27,7 +27,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
   const [playMode, setPlayModeState] = useState<PlayMode>('practice');
   const [tieBreakerEnabled, setTieBreakerEnabledState] = useState(true);
-  const [golfCourseName, setGolfCourseNameState] = useState('SWAMPY MEADOWS');
+  const [golfCourseName, setGolfCourseNameState] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('golfCourseName');
+      if (saved !== null) return saved; // includes empty string (user deleted the name)
+    }
+    return 'SWAMPY MEADOWS';
+  });
   const [courseBannerImage, setCourseBannerImageState] = useState('');
   const [courseBannerOpacity, setCourseBannerOpacityState] = useState(50);
   const [cameraEnabled, setCameraEnabledState] = useState(false);
@@ -275,11 +281,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCricketRulesState(storage.getCricketRules());
     setPlayModeState(storage.getPlayMode());
 
-    // Load golf course name from localStorage
-    const savedCourseName = localStorage.getItem('golfCourseName');
-    if (savedCourseName) {
-      setGolfCourseNameState(savedCourseName);
-    }
+    // Load golf course name from localStorage (already set via lazy useState, skip re-read)
 
     // Load course banner settings from localStorage
     const savedBannerImage = localStorage.getItem('courseBannerImage');
