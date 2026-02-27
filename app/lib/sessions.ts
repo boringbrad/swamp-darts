@@ -2,6 +2,19 @@ import { createClient } from './supabase/client';
 
 const supabase = createClient();
 
+export interface OnlineGameSettings {
+  gameType: 'cricket' | 'x01' | 'golf';
+  variant: string; // 'singles' | 'stroke-play' | 'match-play' | 'skins' | 'default'
+  // Cricket
+  swampRules?: boolean;
+  // x01
+  x01StartingScore?: number;
+  x01DoubleIn?: boolean;
+  x01DoubleOut?: boolean;
+  // Golf
+  tieBreakerEnabled?: boolean;
+}
+
 export interface GameSession {
   id: string;
   roomCode: string;
@@ -11,6 +24,7 @@ export interface GameSession {
   maxParticipants: number | null;
   gameId: string | null;
   gamesPlayed: number;
+  gameSettings: OnlineGameSettings | null;
   expiresAt: string;
   createdAt: string;
   completedAt: string | null;
@@ -537,8 +551,158 @@ function formatSession(data: any): GameSession {
     maxParticipants: data.max_participants,
     gameId: data.game_id,
     gamesPlayed: data.games_played || 0,
+    gameSettings: data.game_settings || null,
     expiresAt: data.expires_at,
     createdAt: data.created_at,
     completedAt: data.completed_at,
   };
+}
+
+// ============================================================================
+// ONLINE 1v1 SESSION HELPERS
+// ============================================================================
+
+/**
+ * Create a 1v1 online session with specific game settings.
+ * Always sets max_participants = 2.
+ */
+export async function createOnlineSession(settings: OnlineGameSettings): Promise<{
+  success: boolean;
+  session?: GameSession;
+  error?: string;
+}> {
+  try {
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Not authenticated' };
+
+    // Expire any of this user's existing lobby sessions before creating a new one
+    await supabase
+      .from('game_sessions')
+      .update({ status: 'expired' })
+      .eq('host_user_id', user.id)
+      .eq('status', 'lobby');
+
+    // Generate unique room code
+    const roomCode = generateRoomCode();
+
+    const { data: session, error } = await supabase
+      .from('game_sessions')
+      .insert({
+        room_code: roomCode,
+        host_user_id: user.id,
+        max_participants: 2,
+        game_settings: settings,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[createOnlineSession] insert error:', error);
+      return { success: false, error: error.message };
+    }
+    if (!session) return { success: false, error: 'Session not created — please try again' };
+
+    // Add host as first participant
+    const { error: partError } = await supabase
+      .from('session_participants')
+      .insert({ session_id: session.id, user_id: user.id, is_host: true });
+
+    if (partError) {
+      console.error('[createOnlineSession] participant error:', partError);
+      return { success: false, error: partError.message };
+    }
+
+    return { success: true, session: formatSession(session) };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to create online session' };
+  }
+}
+
+/**
+ * Host kicks a guest from the waiting room.
+ */
+export async function kickParticipant(sessionId: string, participantUserId: string): Promise<void> {
+  await supabase
+    .from('session_participants')
+    .update({ left_at: new Date().toISOString() })
+    .eq('session_id', sessionId)
+    .eq('user_id', participantUserId)
+    .is('left_at', null);
+}
+
+/**
+ * Host starts the game — transitions session from 'lobby' to 'in_game'.
+ */
+export async function startOnlineGame(sessionId: string): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    const { error } = await supabase
+      .from('game_sessions')
+      .update({ status: 'in_game' })
+      .eq('id', sessionId);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to start game' };
+  }
+}
+
+/**
+ * Mark an online session as completed.
+ */
+export async function completeOnlineSession(sessionId: string): Promise<void> {
+  await supabase
+    .from('game_sessions')
+    .update({ status: 'completed', completed_at: new Date().toISOString() })
+    .eq('id', sessionId);
+}
+
+/**
+ * Fetch all open online lobbies (status = 'lobby', max_participants = 2)
+ * with host profile info.
+ */
+export async function getOpenOnlineLobbies(): Promise<(GameSession & {
+  hostDisplayName: string;
+  hostAvatar: string;
+  hostPhotoUrl: string | null;
+  currentParticipants: number;
+})[]> {
+  const { data, error } = await supabase
+    .from('game_sessions')
+    .select(`
+      *,
+      host:profiles!host_user_id(display_name, avatar, photo_url)
+    `)
+    .eq('status', 'lobby')
+    .eq('max_participants', 2)
+    .gt('expires_at', new Date().toISOString())
+    .order('created_at', { ascending: false });
+
+  if (error || !data) return [];
+
+  // For each session, count active participants
+  const withCounts = await Promise.all(
+    data.map(async (s) => {
+      const { count } = await supabase
+        .from('session_participants')
+        .select('*', { count: 'exact', head: true })
+        .eq('session_id', s.id)
+        .is('left_at', null);
+
+      const host = Array.isArray(s.host) ? s.host[0] : s.host;
+      return {
+        ...formatSession(s),
+        hostDisplayName: host?.display_name || 'Unknown',
+        hostAvatar: host?.avatar || 'avatar-1',
+        hostPhotoUrl: host?.photo_url || null,
+        currentParticipants: count || 0,
+      };
+    })
+  );
+
+  // Only show lobbies that aren't full yet
+  return withCounts.filter(l => l.currentParticipants < 2);
 }

@@ -75,6 +75,7 @@ function formatSession(data: any): GameSession {
     maxParticipants: data.max_participants,
     gameId: data.game_id,
     gamesPlayed: data.games_played || 0,
+    gameSettings: data.game_settings || null,
     expiresAt: data.expires_at,
     createdAt: data.created_at,
     completedAt: data.completed_at,

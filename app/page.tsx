@@ -34,7 +34,7 @@ export default function Home() {
             <GameModeCard title="CRICKET" href="/cricket" color="cricket" />
             <GameModeCard title="GOLF" href="/golf" color="golf" />
             <GameModeCard title="EXTRA GAMES" href="/extra" color="extra" />
-            <GameModeCard title="PLAY ONLINE" href="/tbd" color="tbd" disabled={true} />
+            <GameModeCard title="PLAY ONLINE" href="/online" color="tbd" />
             {/* Portrait only - show profile buttons AND venue hub if applicable */}
             <div className="landscape:hidden lg:hidden contents">
               <GameModeCard title="PROFILE" href="/stats" color="gray" />

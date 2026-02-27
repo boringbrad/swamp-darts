@@ -9,6 +9,8 @@ import { CricketNumber, CricketVariant, CricketRules, Player } from '../types/ga
 import { STOCK_AVATARS } from '../lib/avatars';
 import { syncCricketMatch, syncVenueMatchResults, canSyncToSupabase } from '../lib/supabaseSync';
 import { createClient } from '../lib/supabase/client';
+import { useOnlineGameState, OnlineConfig } from '../hooks/useOnlineGameState';
+import { completeOnlineSession } from '../lib/sessions';
 
 const supabase = createClient();
 
@@ -16,6 +18,8 @@ interface CricketGameProps {
   variant: CricketVariant;
   players: Player[];
   rules: CricketRules;
+  onlineConfig?: OnlineConfig;
+  onRematch?: () => void;
 }
 
 interface PlayerScore {
@@ -69,7 +73,7 @@ interface HistoryEntry {
   lastSkippedPlayerSnapshot?: string | null;
 }
 
-export default function CricketGame({ variant, players: initialPlayers, rules }: CricketGameProps) {
+export default function CricketGame({ variant, players: initialPlayers, rules, onlineConfig, onRematch }: CricketGameProps) {
   const router = useRouter();
   const { cameraEnabled, selectedPlayers } = useAppContext();
   const { updateLocalPlayer, localPlayers } = usePlayerContext();
@@ -136,6 +140,46 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
   const [gameWinner, setGameWinner] = useState<string | null>(null);
   const [isSavingGame, setIsSavingGame] = useState(false); // Track game save progress
   const [history, setHistory] = useState<HistoryEntry[]>([]); // Complete action history for undo
+
+  // ── Online 1v1 ──────────────────────────────────────────────────────────────
+  const { isMyTurn, opponentState, submitTurn, opponentLeft, iWantRematch, opponentWantsRematch, bothWantRematch, requestRematch, resetForRematch } = useOnlineGameState(onlineConfig ?? null);
+  const inputDisabled = !!onlineConfig && !isMyTurn;
+
+  // When both players vote for a rematch, trigger remount
+  useEffect(() => {
+    if (!bothWantRematch || !onlineConfig) return;
+    const doRematch = async () => {
+      // Host clears DB first so remounting component won't see stale votes
+      if (onlineConfig.myUserId === onlineConfig.hostUserId) {
+        await resetForRematch();
+      }
+      onRematch?.();
+    };
+    doRematch();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bothWantRematch]);
+
+  // After our turn ends (currentPlayerIndex changed to opponent) → push state to Supabase
+  useEffect(() => {
+    if (!onlineConfig || !players.length) return;
+    const currentId = players[currentPlayerIndex]?.id;
+    if (!currentId) return;
+    // If it's now the opponent's turn, we just finished ours → sync
+    if (currentId !== onlineConfig.myUserId) {
+      const snapshot = { playerScores, currentPlayerIndex, gameWinner };
+      submitTurn(snapshot, currentId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPlayerIndex]);
+
+  // When opponent submits their turn → apply their state snapshot
+  useEffect(() => {
+    if (!opponentState || !onlineConfig) return;
+    setPlayerScores(opponentState.playerScores);
+    setCurrentPlayerIndex(opponentState.currentPlayerIndex);
+    if (opponentState.gameWinner) setGameWinner(opponentState.gameWinner);
+  }, [opponentState]);
+  // ────────────────────────────────────────────────────────────────────────────
 
   // Helper to get team index for a player (for tag-team mode)
   const getTeamIndex = (playerIndex: number): number => {
@@ -1456,6 +1500,22 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
 
   return (
     <div ref={containerRef} className="min-h-screen bg-[#333333] flex flex-col select-none">
+      {/* Opponent left banner */}
+      {opponentLeft && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-red-800 text-white text-center py-2 px-4 font-bold text-sm">
+          Opponent disconnected — game paused
+        </div>
+      )}
+      {/* Waiting for opponent overlay */}
+      {inputDisabled && !gameWinner && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 bg-black/80 text-white px-5 py-2 rounded-full text-sm font-bold flex items-center gap-2 pointer-events-none">
+          <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          Waiting for opponent…
+        </div>
+      )}
       {/* Empty container matching header height to prevent accidental clicks */}
       <div className="h-20 bg-[#333333]"></div>
 
@@ -1916,7 +1976,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
                 {(variant === 'triple-threat' || variant === 'fatal-4-way') && (
                   <button
                     onClick={() => handleTargetClick(target)}
-                    disabled={currentDartIndex >= 3}
+                    disabled={inputDisabled || currentDartIndex >= 3}
                     className="flex items-center justify-center hover:opacity-80 transition-opacity disabled:cursor-not-allowed"
                     style={{ backgroundColor: rowIndex % 2 === 0 ? '#333333' : '#555555' }}
                   >
@@ -1926,7 +1986,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
 
                 {/* For triple-threat and fatal-4-way: All players in order */}
                 {(variant === 'triple-threat' || variant === 'fatal-4-way') && playerScores.map((score, scoreIndex) => {
-                  const isDisabled = currentDartIndex >= 3 || scoreIndex !== currentPlayerIndex;
+                  const isDisabled = inputDisabled || currentDartIndex >= 3 || scoreIndex !== currentPlayerIndex;
                   const isEliminated = score.isEliminated || false;
 
                   return (
@@ -1945,9 +2005,9 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
                 {/* For singles and tag-team: Original layout - Team 0 / First half of players */}
                 {!(variant === 'triple-threat' || variant === 'fatal-4-way') && (variant === 'tag-team' ? playerScores.slice(0, 1) : playerScores.slice(0, Math.ceil(players.length / 2))).map((score, scoreIndex) => {
                   // For tag-team, always enabled (any team member can click)
-                  const isDisabled = variant === 'tag-team'
+                  const isDisabled = inputDisabled || (variant === 'tag-team'
                     ? currentDartIndex >= 3 || getTeamIndex(currentPlayerIndex) !== 0
-                    : currentDartIndex >= 3 || scoreIndex !== currentPlayerIndex;
+                    : currentDartIndex >= 3 || scoreIndex !== currentPlayerIndex);
 
                   return (
                     <button
@@ -1966,7 +2026,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
                 {!(variant === 'triple-threat' || variant === 'fatal-4-way') && (
                   <button
                     onClick={() => handleTargetClick(target)}
-                    disabled={currentDartIndex >= 3}
+                    disabled={inputDisabled || currentDartIndex >= 3}
                     className="flex items-center justify-center hover:opacity-80 transition-opacity disabled:cursor-not-allowed"
                     style={{ backgroundColor: rowIndex % 2 === 0 ? '#333333' : '#555555' }}
                   >
@@ -1977,12 +2037,12 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
                 {/* For singles and tag-team: Team 1 / Second half of players */}
                 {!(variant === 'triple-threat' || variant === 'fatal-4-way') && (variant === 'tag-team' ? playerScores.slice(1, 2) : playerScores.slice(Math.ceil(players.length / 2))).map((score, scoreIndex) => {
                   // For tag-team, check if current team, for regular check player index
-                  const isDisabled = variant === 'tag-team'
+                  const isDisabled = inputDisabled || (variant === 'tag-team'
                     ? currentDartIndex >= 3 || getTeamIndex(currentPlayerIndex) !== 1
                     : (() => {
                         const actualPlayerIndex = Math.ceil(players.length / 2) + scoreIndex;
                         return currentDartIndex >= 3 || actualPlayerIndex !== currentPlayerIndex;
-                      })();
+                      })());
 
                   return (
                     <button
@@ -2020,7 +2080,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
             </button>
             <button
               onClick={handleMiss}
-              disabled={currentDartIndex >= 3}
+              disabled={inputDisabled || currentDartIndex >= 3}
               className="bg-[#666666] text-white rounded font-bold text-lg xl:text-5xl hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               MISS
@@ -2066,15 +2126,49 @@ export default function CricketGame({ variant, players: initialPlayers, rules }:
               </div>
             )}
 
-            <button
-              onClick={() => !isSavingGame && router.push('/')}
-              disabled={isSavingGame}
-              className={`bg-[#9d8b1a] text-white px-12 py-6 rounded text-4xl font-bold transition-colors ${
-                isSavingGame ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#b39f2a]'
-              }`}
-            >
-              {isSavingGame ? 'Saving...' : 'Return to Home'}
-            </button>
+            {onlineConfig ? (
+              /* Online end-game buttons */
+              <div className="flex flex-col items-center gap-4">
+                {opponentWantsRematch && !iWantRematch && (
+                  <p className="text-yellow-400 text-xl font-bold animate-pulse">
+                    Opponent wants a rematch!
+                  </p>
+                )}
+                {iWantRematch && !opponentWantsRematch && (
+                  <p className="text-gray-400 text-lg">Waiting for opponent...</p>
+                )}
+                <button
+                  onClick={requestRematch}
+                  disabled={iWantRematch || isSavingGame}
+                  className={`bg-[#2d5016] text-white px-10 py-5 rounded text-3xl font-bold transition-colors ${
+                    iWantRematch ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#3d6026]'
+                  }`}
+                >
+                  {iWantRematch ? 'Waiting...' : 'Play Again'}
+                </button>
+                <button
+                  onClick={async () => {
+                    await completeOnlineSession(onlineConfig.sessionId);
+                    router.push('/');
+                  }}
+                  disabled={isSavingGame}
+                  className="bg-[#666666] text-white px-10 py-5 rounded text-3xl font-bold hover:bg-[#777777] transition-colors"
+                >
+                  Return Home
+                </button>
+              </div>
+            ) : (
+              /* Offline end-game button */
+              <button
+                onClick={() => !isSavingGame && router.push('/')}
+                disabled={isSavingGame}
+                className={`bg-[#9d8b1a] text-white px-12 py-6 rounded text-4xl font-bold transition-colors ${
+                  isSavingGame ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#b39f2a]'
+                }`}
+              >
+                {isSavingGame ? 'Saving...' : 'Return to Home'}
+              </button>
+            )}
           </div>
         </div>
       )}

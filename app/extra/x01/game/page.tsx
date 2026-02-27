@@ -6,6 +6,7 @@ import { useAppContext } from '@/app/contexts/AppContext';
 import Header from '@/app/components/Header';
 import { StoredPlayer } from '@/app/types/storage';
 import { canSyncToSupabase } from '@/app/lib/supabaseSync';
+import { useOnlineGameState, OnlineConfig } from '@/app/hooks/useOnlineGameState';
 
 const PLAYER_COLORS = ['blue', 'red', 'purple', 'green'] as const;
 const TEAM_ORDER = [0, 2, 1, 3];
@@ -111,6 +112,38 @@ export default function X01GamePage() {
   const [currentTurnDarts, setCurrentTurnDarts] = useState<DartThrow[]>([]);
   const [winner, setWinner] = useState<number | null>(null);
   const [bustMsg, setBustMsg] = useState('');
+
+  // ── Online 1v1 ─────────────────────────────────────────────────────────────
+  // The game router stores onlineConfig in sessionStorage before navigating here
+  const [onlineConfig] = useState<OnlineConfig | null>(() => {
+    try {
+      const raw = sessionStorage.getItem('onlineConfig');
+      if (raw) { sessionStorage.removeItem('onlineConfig'); return JSON.parse(raw); }
+    } catch (_) {}
+    return null;
+  });
+  const { isMyTurn, opponentState, submitTurn, opponentLeft } = useOnlineGameState(onlineConfig);
+  const inputDisabled = !!onlineConfig && !isMyTurn;
+
+  // After each turn commit, sync state if it's now the opponent's turn
+  useEffect(() => {
+    if (!onlineConfig || players.length === 0) return;
+    const currentId = players[getCurrentIdx(turnStep)]?.id;
+    if (!currentId) return;
+    if (currentId !== onlineConfig.myUserId) {
+      submitTurn({ playerStates, turnStep, winner }, currentId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turnStep]);
+
+  // Apply opponent's state when they complete their turn
+  useEffect(() => {
+    if (!opponentState || !onlineConfig) return;
+    setPlayerStates(opponentState.playerStates);
+    setTurnStep(opponentState.turnStep);
+    if (opponentState.winner !== null) setWinner(opponentState.winner);
+  }, [opponentState]);
+  // ───────────────────────────────────────────────────────────────────────────
 
   const numPlayers = playerStates.length;
 
@@ -265,6 +298,20 @@ export default function X01GamePage() {
 
   return (
     <div className="h-screen bg-[#1a2a2a] flex flex-col overflow-hidden">
+      {opponentLeft && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-red-800 text-white text-center py-2 px-4 font-bold text-sm">
+          Opponent disconnected — game paused
+        </div>
+      )}
+      {inputDisabled && winner === null && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-40 bg-black/80 text-white px-5 py-2 rounded-full text-sm font-bold flex items-center gap-2 pointer-events-none">
+          <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          Waiting for opponent…
+        </div>
+      )}
       <Header title={`X01 — ${x01StartingScore}`} showBackButton={winner === null} />
 
       <main className="flex-1 flex flex-col overflow-hidden" style={{ paddingTop: '64px' }}>
@@ -440,7 +487,8 @@ export default function X01GamePage() {
                   <button
                     key={n}
                     onClick={() => handleDart(n, sec.mult)}
-                    className={`flex flex-col items-center justify-center rounded active:scale-95 transition-transform select-none ${sec.bgClass}`}
+                    disabled={inputDisabled}
+                    className={`flex flex-col items-center justify-center rounded active:scale-95 transition-transform select-none disabled:opacity-40 ${sec.bgClass}`}
                   >
                     <span className={`font-black leading-none ${sec.numClass}`} style={{ fontSize: 'clamp(13px, 4vw, 24px)' }}>
                       {n}
@@ -457,21 +505,24 @@ export default function X01GamePage() {
             <div className="flex gap-0.5 shrink-0 h-14">
               <button
                 onClick={() => handleDart(25, 1)}
-                className="flex-1 flex flex-col items-center justify-center bg-[#4a4010] hover:bg-[#5a5018] rounded active:scale-95 transition-all"
+                disabled={inputDisabled}
+                className="flex-1 flex flex-col items-center justify-center bg-[#4a4010] hover:bg-[#5a5018] rounded active:scale-95 transition-all disabled:opacity-40"
               >
                 <span className="text-yellow-400 font-bold text-sm leading-none">Bull</span>
                 <span className="text-yellow-600 text-xs">25</span>
               </button>
               <button
                 onClick={() => handleDart(25, 2)}
-                className="flex-1 flex flex-col items-center justify-center bg-[#0a2a45] hover:bg-[#18405e] rounded active:scale-95 transition-all"
+                disabled={inputDisabled}
+                className="flex-1 flex flex-col items-center justify-center bg-[#0a2a45] hover:bg-[#18405e] rounded active:scale-95 transition-all disabled:opacity-40"
               >
                 <span className="text-[#74b9ff] font-bold text-sm leading-none">D-Bull</span>
                 <span className="text-[#4a7aaf] text-xs">50</span>
               </button>
               <button
                 onClick={() => handleDart(0, 1, true)}
-                className="flex-1 flex items-center justify-center bg-[#3a2020] hover:bg-[#4a2a2a] rounded active:scale-95 transition-all"
+                disabled={inputDisabled}
+                className="flex-1 flex items-center justify-center bg-[#3a2020] hover:bg-[#4a2a2a] rounded active:scale-95 transition-all disabled:opacity-40"
               >
                 <span className="text-red-400 font-bold text-sm">MISS</span>
               </button>

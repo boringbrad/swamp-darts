@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { GolfVariant } from '../types/game';
+import { GolfVariant, Player } from '../types/game';
 import { StoredPlayer } from '../types/storage';
 import { usePlayerContext } from '../contexts/PlayerContext';
 import { useAppContext } from '../contexts/AppContext';
@@ -13,11 +13,16 @@ import { trackGolfGame } from '../lib/analytics';
 import { syncGolfMatch, syncVenueMatchResults, canSyncToSupabase } from '../lib/supabaseSync';
 import { findOrCreateBoardByName } from '../lib/venue';
 import { createClient } from '../lib/supabase/client';
+import { useOnlineGameState, OnlineConfig } from '../hooks/useOnlineGameState';
+import { completeOnlineSession } from '../lib/sessions';
 
 const supabase = createClient();
 
 interface GolfGameProps {
   variant: GolfVariant;
+  initialPlayers?: Player[];
+  onlineConfig?: OnlineConfig;
+  onRematch?: () => void;
 }
 
 interface PlayerScore {
@@ -28,7 +33,7 @@ interface PlayerScore {
 const PAR_PER_HOLE = 4;
 const TOTAL_HOLES = 18;
 
-export default function GolfGame({ variant }: GolfGameProps) {
+export default function GolfGame({ variant, initialPlayers, onlineConfig, onRematch }: GolfGameProps) {
   const router = useRouter();
   const { localPlayers, updateLocalPlayer } = usePlayerContext();
   const { selectedPlayers, tieBreakerEnabled, golfCourseName, playMode, courseBannerImage, courseBannerOpacity, cameraEnabled, setCameraEnabled, showCourseRecord, showCourseName, userProfile } = useAppContext();
@@ -72,6 +77,62 @@ export default function GolfGame({ variant }: GolfGameProps) {
   const [tieBreakerHoles, setTieBreakerHoles] = useState<(number | null)[][]>([]); // [playerIndex][holeIndex]
   const [tieBreakerRound, setTieBreakerRound] = useState(0); // 0 = first round (holes 19-20), 1 = second round, etc.
 
+  // Online play
+  const { isMyTurn, opponentState, submitTurn, opponentLeft, iWantRematch, opponentWantsRematch, bothWantRematch, requestRematch, resetForRematch } = useOnlineGameState(onlineConfig ?? null);
+  const inputDisabled = !!onlineConfig && !isMyTurn;
+
+  // When both players vote for a rematch, trigger remount
+  useEffect(() => {
+    if (!bothWantRematch || !onlineConfig) return;
+    const doRematch = async () => {
+      // Host clears DB first so remounting component won't see stale votes
+      if (onlineConfig.myUserId === onlineConfig.hostUserId) {
+        await resetForRematch();
+      }
+      onRematch?.();
+    };
+    doRematch();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bothWantRematch]);
+
+  // After our turn ends → push state to Supabase
+  useEffect(() => {
+    if (!onlineConfig || !players.length) return;
+
+    if (gameComplete) {
+      // Submit final state so opponent can see game over
+      const opponentId = players.find(p => p.id !== onlineConfig.myUserId)?.id;
+      if (opponentId) {
+        submitTurn(
+          { scores, currentHole, currentPlayerIndex, gameComplete, inTieBreaker, tieBreakerHoles, tieBreakerRound },
+          opponentId
+        );
+      }
+      return;
+    }
+
+    const currentId = players[currentPlayerIndex]?.id;
+    if (!currentId || currentId === onlineConfig.myUserId) return;
+
+    // It's now opponent's turn — push our state update
+    submitTurn(
+      { scores, currentHole, currentPlayerIndex, gameComplete, inTieBreaker, tieBreakerHoles, tieBreakerRound },
+      currentId
+    );
+  }, [currentPlayerIndex, gameComplete]);
+
+  // Apply opponent's state when they complete their turn
+  useEffect(() => {
+    if (!opponentState || !onlineConfig) return;
+    setScores(opponentState.scores);
+    setCurrentHole(opponentState.currentHole);
+    setCurrentPlayerIndex(opponentState.currentPlayerIndex);
+    setGameComplete(opponentState.gameComplete);
+    if (opponentState.inTieBreaker !== undefined) setInTieBreaker(opponentState.inTieBreaker);
+    if (opponentState.tieBreakerHoles !== undefined) setTieBreakerHoles(opponentState.tieBreakerHoles);
+    if (opponentState.tieBreakerRound !== undefined) setTieBreakerRound(opponentState.tieBreakerRound);
+  }, [opponentState]);
+
   // Load course record
   useEffect(() => {
     const loadRecord = async () => {
@@ -86,11 +147,14 @@ export default function GolfGame({ variant }: GolfGameProps) {
   // localPlayers can update asynchronously from Supabase after the game starts —
   // we must not let that re-fire wipe all the entered hole scores back to null.
   useEffect(() => {
-    const golfPlayers = selectedPlayers.golf[variant] || [];
+    // For online play, use the provided initialPlayers prop directly
+    const sourcePlayers = initialPlayers && initialPlayers.length > 0
+      ? initialPlayers
+      : selectedPlayers.golf[variant] || [];
 
-    if (golfPlayers.length > 0) {
+    if (sourcePlayers.length > 0) {
       // Convert Player[] to StoredPlayer[] by looking up in localPlayers
-      const storedPlayers = golfPlayers.map(p => {
+      const storedPlayers = sourcePlayers.map(p => {
         const localPlayer = localPlayers.find(lp => lp.id === p.id);
         return localPlayer || {
           ...p,
@@ -102,10 +166,10 @@ export default function GolfGame({ variant }: GolfGameProps) {
       // Only reset scores if the player lineup changed — preserve scores across
       // metadata updates (e.g. localPlayers finishing its async Supabase load)
       setScores(prev => {
-        const newIds = golfPlayers.map(p => p.id).join(',');
+        const newIds = sourcePlayers.map(p => p.id).join(',');
         const prevIds = prev.map(s => s.playerId).join(',');
         if (newIds === prevIds) return prev;
-        return golfPlayers.map(p => ({
+        return sourcePlayers.map(p => ({
           playerId: p.id,
           holes: Array(TOTAL_HOLES).fill(null),
         }));
@@ -123,7 +187,7 @@ export default function GolfGame({ variant }: GolfGameProps) {
         holes: Array(TOTAL_HOLES).fill(null),
       })));
     }
-  }, [selectedPlayers, localPlayers, variant]);
+  }, [selectedPlayers, localPlayers, variant, initialPlayers]);
 
   // Handle divider dragging
   const handleMouseDown = () => setIsDragging(true);
@@ -962,6 +1026,22 @@ export default function GolfGame({ variant }: GolfGameProps) {
       {/* Right Side - Scorecard */}
       <div className="flex-1 bg-[#1a1a1a] flex flex-col overflow-hidden relative" style={{ width: cameraEnabled ? `${100 - dividerPosition}%` : '100%' }}>
 
+        {/* Online: opponent disconnected banner */}
+        {opponentLeft && (
+          <div className="fixed top-0 left-0 right-0 z-50 bg-red-800 text-white text-center py-2 text-sm font-bold">
+            Opponent disconnected
+          </div>
+        )}
+
+        {/* Online: waiting for opponent overlay */}
+        {inputDisabled && !gameComplete && (
+          <div className="fixed bottom-24 left-0 right-0 z-40 flex justify-center pointer-events-none">
+            <div className="bg-black/80 text-white text-sm font-bold px-4 py-2 rounded-full">
+              Waiting for opponent…
+            </div>
+          </div>
+        )}
+
         {/* Course Header - fills available space with max limit */}
         <div className="bg-[#5a7a4a] text-center px-4 relative flex-grow py-4 landscape:max-lg:py-1 min-h-[120px] landscape:max-lg:min-h-[40px] max-h-[35vh] landscape:max-lg:max-h-[15vh] flex flex-col">
           {/* Background image with opacity */}
@@ -1451,7 +1531,7 @@ export default function GolfGame({ variant }: GolfGameProps) {
               <button
                 key={score}
                 onClick={() => handleScoreInput(score)}
-                disabled={gameComplete}
+                disabled={gameComplete || inputDisabled}
                 className="golf-button bg-[#FFD700] text-black font-bold rounded hover:bg-[#FFC700] transition-colors opacity-50 hover:opacity-60 active:opacity-80 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center"
               >
                 <span className="golf-number-text">{score}</span>
@@ -1468,20 +1548,55 @@ export default function GolfGame({ variant }: GolfGameProps) {
 
           {/* End-of-game buttons */}
           {gameComplete && (
-            <div className="grid grid-cols-2 gap-4 mt-4">
-              <button
-                onClick={handleSaveAndPlayAgain}
-                className="bg-[#2d5016] text-white text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold rounded hover:bg-[#3d6026] transition-colors h-[80px] flex items-center justify-center px-2"
-              >
-                PLAY AGAIN
-              </button>
-              <button
-                onClick={handleReturnHome}
-                className="bg-[#666666] text-white text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold rounded hover:bg-[#777777] transition-colors h-[80px] flex items-center justify-center px-2"
-              >
-                RETURN HOME
-              </button>
-            </div>
+            onlineConfig ? (
+              /* Online end-game buttons */
+              <div className="flex flex-col items-center gap-3 mt-4">
+                {opponentWantsRematch && !iWantRematch && (
+                  <p className="text-yellow-400 text-lg font-bold animate-pulse">
+                    Opponent wants a rematch!
+                  </p>
+                )}
+                {iWantRematch && !opponentWantsRematch && (
+                  <p className="text-gray-400 text-base">Waiting for opponent...</p>
+                )}
+                <div className="grid grid-cols-2 gap-4 w-full">
+                  <button
+                    onClick={requestRematch}
+                    disabled={iWantRematch}
+                    className={`bg-[#2d5016] text-white text-xl sm:text-2xl font-bold rounded transition-colors h-[80px] flex items-center justify-center px-2 ${
+                      iWantRematch ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#3d6026]'
+                    }`}
+                  >
+                    {iWantRematch ? 'WAITING...' : 'PLAY AGAIN'}
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await completeOnlineSession(onlineConfig.sessionId);
+                      router.push('/');
+                    }}
+                    className="bg-[#666666] text-white text-xl sm:text-2xl font-bold rounded hover:bg-[#777777] transition-colors h-[80px] flex items-center justify-center px-2"
+                  >
+                    RETURN HOME
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Offline end-game buttons */
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                <button
+                  onClick={handleSaveAndPlayAgain}
+                  className="bg-[#2d5016] text-white text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold rounded hover:bg-[#3d6026] transition-colors h-[80px] flex items-center justify-center px-2"
+                >
+                  PLAY AGAIN
+                </button>
+                <button
+                  onClick={handleReturnHome}
+                  className="bg-[#666666] text-white text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold rounded hover:bg-[#777777] transition-colors h-[80px] flex items-center justify-center px-2"
+                >
+                  RETURN HOME
+                </button>
+              </div>
+            )
           )}
         </div>
       </div>
