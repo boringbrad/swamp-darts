@@ -754,7 +754,7 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
             }
           }
 
-          const syncPromises = [
+          const syncPromises: Promise<boolean | void>[] = [
             syncGolfMatch({
               matchId: capturedMatchData.matchId,
               matchData: capturedMatchData,

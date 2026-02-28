@@ -455,7 +455,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
         console.log('🔄 Starting Supabase sync for cricket match...');
 
         // Run syncs in parallel for better performance
-        const syncPromises = [
+        const syncPromises: Promise<boolean | void>[] = [
           syncCricketMatch({
             matchId: matchData.matchId,
             matchData: matchData,
