@@ -10,9 +10,10 @@
 // In development (`next dev`), public/sw.js is regenerated from this template
 // with only the core assets — full precaching only applies to production builds.
 
-const CACHE_NAME = 'swamp-darts-v1';
+const CACHE_NAME = 'swamp-darts-v2';
 
 // Core assets always pre-cached.
+// Includes all known app pages so they work offline even on first install.
 // Production builds append all /_next/static/ JS and CSS bundles below.
 const PRECACHE_ASSETS = [
   '/',
@@ -20,6 +21,27 @@ const PRECACHE_ASSETS = [
   '/icon-192.png',
   '/icon-512.png',
   '/icon-180.png',
+  // App pages — pre-cached so full-page loads work offline
+  '/cricket',
+  '/cricket/singles/players',
+  '/cricket/singles/game',
+  '/cricket/tag-team/players',
+  '/cricket/tag-team/game',
+  '/cricket/triple-threat/players',
+  '/cricket/triple-threat/game',
+  '/cricket/fatal-4-way/players',
+  '/cricket/fatal-4-way/game',
+  '/golf',
+  '/golf/stroke-play/players',
+  '/golf/stroke-play/game',
+  '/golf/match-play/players',
+  '/golf/match-play/game',
+  '/golf/skins/players',
+  '/golf/skins/game',
+  '/extra/x01',
+  '/extra/x01/game',
+  '/stats',
+  '/profile',
   // BUILD_ASSETS_PLACEHOLDER
 ];
 
@@ -60,12 +82,13 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// Fetch — four-tier strategy:
+// Fetch — five-tier strategy:
 //   1. Supabase / API requests       → pass through (no interception)
-//   2. Next.js RSC / prefetch reqs   → network-only; offline error lets Next.js
-//                                       show its error boundary (not a broken page)
-//   3. /_next/static/ assets         → cache-first (content-hashed, safe forever)
-//   4. HTML page navigations         → network-first with cache fallback to '/'
+//   2. Next.js prefetch reqs         → pass through (speculative, don't cache)
+//   3. Next.js RSC navigation reqs   → network-first, cache RSC payload on success,
+//                                       serve cached payload when offline
+//   4. /_next/static/ assets         → cache-first (content-hashed, safe forever)
+//   5. HTML page navigations         → network-first with cache fallback to '/'
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
@@ -78,14 +101,31 @@ self.addEventListener('fetch', (event) => {
   // Let Next.js internal API routes go straight to the network.
   if (url.pathname.startsWith('/api/')) return;
 
-  // Next.js RSC (React Server Component) navigation requests carry an 'RSC: 1'
-  // header. If we return cached HTML for these, Next.js receives the wrong
-  // content type and shows "can't load the page". Instead, pass them straight
-  // to the network. When offline they fail, and Next.js shows its error
-  // boundary rather than a broken page.
   const isRSC      = event.request.headers.get('RSC') === '1';
   const isPrefetch = event.request.headers.get('Next-Router-Prefetch') === '1';
-  if (isRSC || isPrefetch) return;
+
+  // Next.js prefetch requests are speculative — don't intercept or cache them.
+  if (isPrefetch) return;
+
+  // Next.js RSC navigation requests — network-first, cache the RSC payload so
+  // pages that were visited while online are navigable offline.
+  // We store RSC responses separately from HTML (the Vary header ensures they
+  // don't collide in the Cache API).
+  if (isRSC) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response && response.status === 200) {
+            caches.open(CACHE_NAME).then((cache) =>
+              cache.put(event.request, response.clone())
+            );
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
 
   // /_next/static/ assets are content-hashed by Next.js.
   // Cache-first: serve from cache instantly; fetch-and-cache on first miss.
@@ -107,8 +147,8 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Full HTML page navigations — network-first, cache on success.
-  // Offline fallback: serve cached version of this URL, or '/' so Next.js
-  // client-side routing can take over from the cached app shell.
+  // Offline fallback: serve cached version of this URL, or '/' so the
+  // pre-cached app shell is shown (client-side routing takes over from there).
   event.respondWith(
     fetch(event.request)
       .then((response) => {

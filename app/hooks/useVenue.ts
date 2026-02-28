@@ -171,6 +171,8 @@ export function useVenueInfo() {
  * Hook to get all participants for a venue with real-time updates
  * This is the universal player pool that works across all boards
  */
+const PARTICIPANTS_CACHE_PREFIX = 'swamp-darts:venue-participants:';
+
 export function useVenueParticipants(venueId: string | null) {
   const [participants, setParticipants] = useState<VenueParticipant[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -189,16 +191,30 @@ export function useVenueParticipants(venueId: string | null) {
     console.log('[useVenueParticipants] Calling getVenueParticipants with venueId:', venueId);
     setIsLoading(true);
     setError(null);
+    const cacheKey = PARTICIPANTS_CACHE_PREFIX + venueId;
     try {
       const data = await getVenueParticipants(venueId);
       console.log('[useVenueParticipants] Got data:', data);
       console.log('[useVenueParticipants] Setting participants state to:', data.length, 'participants');
       setParticipants(data);
+      // Cache for offline use
+      try { localStorage.setItem(cacheKey, JSON.stringify(data)); } catch {}
       console.log('[useVenueParticipants] Participants state updated');
     } catch (err) {
       console.error('[useVenueParticipants] Error:', err);
       setError(err instanceof Error ? err : new Error('Unknown error'));
-      setParticipants([]);
+      // Try to serve from cache when offline
+      try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          console.log('[useVenueParticipants] Using cached participants');
+          setParticipants(JSON.parse(cached));
+        } else {
+          setParticipants([]);
+        }
+      } catch {
+        setParticipants([]);
+      }
     } finally {
       setIsLoading(false);
     }

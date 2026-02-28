@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import Header from '@/app/components/Header';
 import PageWrapper from '@/app/components/PageWrapper';
 import PlayerAvatar, { PlayerColor } from '@/app/components/PlayerAvatar';
@@ -19,7 +18,6 @@ const COLOR_BORDERS: Record<string, string> = {
 };
 
 export default function X01PlayerSelectPage() {
-  const router = useRouter();
   const { localPlayers, addGuestPlayer, updateLocalPlayer } = usePlayerContext();
   const { setSelectedPlayers, x01StartingScore, x01DoubleIn, x01DoubleOut } = useAppContext();
   const { venueId, venuePlayersForSelection: venuePlayers, refreshParticipants } = useVenueContext();
@@ -80,13 +78,15 @@ export default function X01PlayerSelectPage() {
   const handleDragEnd = () => setDraggedIdx(null);
 
   const handleAddGuest = async (name: string, avatar: string, photoUrl?: string) => {
-    if (venueId) {
+    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    if (venueId && isOnline) {
       try {
         const result = await createVenueGuest(venueId, name, avatar, photoUrl);
         if (result.success) refreshParticipants();
         else alert(result.error || 'Failed to create guest');
       } catch { alert('Failed to create guest'); }
     } else {
+      // Normal mode or offline: add to local storage
       const player = addGuestPlayer(name, avatar);
       if (photoUrl) updateLocalPlayer(player.id, { photoUrl });
     }
@@ -98,7 +98,8 @@ export default function X01PlayerSelectPage() {
   const handleStart = () => {
     const players = selectedIds.map(id => getPlayerById(id)).filter(Boolean) as StoredPlayer[];
     setSelectedPlayers('x01', 'default', { players, isTeams: isTeamMode });
-    router.push('/extra/x01/game');
+    // Hard navigation so the SW-cached HTML is served when offline
+    window.location.href = '/extra/x01/game';
   };
 
   const handleRandomizeOrder = () => {

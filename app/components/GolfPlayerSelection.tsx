@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import PlayerAvatar, { PlayerColor } from './PlayerAvatar';
 import AddGuestPlayerModal from './AddGuestPlayerModal';
 import { usePlayerContext } from '../contexts/PlayerContext';
@@ -28,7 +27,6 @@ const VARIANT_TITLES: Record<GolfVariant, string> = {
 };
 
 export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProps) {
-  const router = useRouter();
   const { localPlayers, addGuestPlayer, updateLocalPlayer } = usePlayerContext();
   const { setSelectedPlayers: setGlobalSelectedPlayers, playMode } = useAppContext();
   const sessionPlayers = useSessionPlayers();
@@ -131,8 +129,9 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
   };
 
   const handleAddGuestPlayer = async (name: string, avatar: string, photoUrl?: string) => {
-    if (venueId) {
-      // In venue mode: create a venue guest (will automatically add to participants)
+    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    if (venueId && isOnline) {
+      // In venue mode (online): create a venue guest (will automatically add to participants)
       try {
         const result = await createVenueGuest(venueId, name, avatar, photoUrl);
         if (result.success) {
@@ -146,7 +145,7 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
         alert('Failed to create guest');
       }
     } else {
-      // Normal mode: add to local storage
+      // Normal mode or offline: add to local storage
       const player = addGuestPlayer(name, avatar);
       if (photoUrl) {
         updateLocalPlayer(player.id, { photoUrl });
@@ -336,8 +335,8 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
 
     setGlobalSelectedPlayers('golf', variant, players);
 
-    // Navigate to game
-    router.push(`/golf/${variant}/game`);
+    // Hard navigation so the SW-cached HTML is served when offline
+    window.location.href = `/golf/${variant}/game`;
   };
 
   const handleRandomizeOrder = () => {

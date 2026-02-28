@@ -6,6 +6,8 @@ import { useVenueMode } from '../hooks/useVenue';
 import { useVenueParticipants } from '../hooks/useVenue';
 import { StoredPlayer } from '../types/storage';
 
+const VENUE_ID_CACHE_KEY = 'swamp-darts:venue-id-cache';
+
 interface VenueContextType {
   // Venue info
   venueId: string | null;
@@ -54,13 +56,37 @@ export function VenueProvider({ children }: { children: ReactNode }) {
       if (info) {
         console.log('[VenueContext] Venue info loaded:', info.id, info.venueName);
         setVenueId(info.id);
-      } else {
-        console.log('[VenueContext] No venue info found');
+        // Cache venueId so it's available when offline
+        try { localStorage.setItem(VENUE_ID_CACHE_KEY, info.id); } catch {}
+      } else if (typeof navigator !== 'undefined' && navigator.onLine) {
+        // Confirmed online but no venue account — clear any stale cache
+        console.log('[VenueContext] No venue info found (online)');
         setVenueId(null);
+        try { localStorage.removeItem(VENUE_ID_CACHE_KEY); } catch {}
+      } else {
+        // Offline — Supabase queries returned null; use cached venueId
+        console.log('[VenueContext] Offline — using cached venueId');
+        try {
+          const cachedId = localStorage.getItem(VENUE_ID_CACHE_KEY);
+          setVenueId(cachedId || null);
+        } catch {
+          setVenueId(null);
+        }
       }
     } catch (error) {
-      console.error('[VenueContext] Error loading venue info:', error);
-      setVenueId(null);
+      // Network failure (offline) — use cached venueId so the player pool stays populated
+      console.warn('[VenueContext] Could not reach server, using cached venueId');
+      try {
+        const cachedId = localStorage.getItem(VENUE_ID_CACHE_KEY);
+        if (cachedId) {
+          console.log('[VenueContext] Using cached venueId:', cachedId);
+          setVenueId(cachedId);
+        } else {
+          setVenueId(null);
+        }
+      } catch {
+        setVenueId(null);
+      }
     }
   };
 
