@@ -7,43 +7,73 @@
 //   2. Injects them below the BUILD_ASSETS_PLACEHOLDER comment
 //   3. Writes the result to public/sw.js
 
-const CACHE_NAME = 'swamp-darts-v2';
+const CACHE_NAME = 'swamp-darts-v3';
 
-// Only precache true static assets (icons, manifest) that never redirect.
-// HTML pages are cached dynamically by the fetch handler when visited online —
-// precaching them risks storing redirect responses, which Safari/iOS refuses
-// to serve ("Response served by service worker has redirections").
+// Pages to precache at install time so hard navigation to game pages
+// works offline even on first visit.
+// Install uses individual fetch calls (not cache.addAll) with a
+// !response.redirected guard — one failure doesn't block the rest, and
+// Safari's "Response served by service worker has redirections" is avoided.
 // Production builds append all /_next/static/ JS and CSS bundles below.
 const PRECACHE_ASSETS = [
+  '/',
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png',
   '/icon-180.png',
+  // App pages — hard navigation works offline once these are cached
+  '/cricket',
+  '/cricket/singles/players',
+  '/cricket/singles/game',
+  '/cricket/tag-team/players',
+  '/cricket/tag-team/game',
+  '/cricket/triple-threat/players',
+  '/cricket/triple-threat/game',
+  '/cricket/fatal-4-way/players',
+  '/cricket/fatal-4-way/game',
+  '/golf',
+  '/golf/stroke-play/players',
+  '/golf/stroke-play/game',
+  '/golf/match-play/players',
+  '/golf/match-play/game',
+  '/golf/skins/players',
+  '/golf/skins/game',
+  '/extra/x01',
+  '/extra/x01/game',
+  '/stats',
+  '/profile',
   // BUILD_ASSETS_PLACEHOLDER
 ];
 
-// Install — download and cache static assets.
-// Uses individual fetches so one failure doesn't block the rest.
+// Install — download and cache every asset individually.
+// Individual fetches: one redirect/failure doesn't block the rest.
 // Do NOT call skipWaiting() here; the new SW waits until the user
 // approves via the update prompt in PWARegister.tsx.
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(async (cache) => {
-      const results = await Promise.allSettled(
+      let cached = 0;
+      let skipped = 0;
+      await Promise.allSettled(
         PRECACHE_ASSETS.map(async (url) => {
           try {
             const response = await fetch(url);
-            // Safari refuses to serve redirected responses from SW cache
+            // Safari refuses to serve redirected responses from the SW cache.
+            // Skip any URL that redirected — it will be cached on first visit instead.
             if (response.ok && !response.redirected) {
               await cache.put(url, response);
+              cached++;
+            } else {
+              skipped++;
+              console.warn('[SW] Pre-cache skipped (redirect or error):', url, response.status);
             }
           } catch (err) {
-            console.warn('[SW] Pre-cache skipped:', url, err);
+            skipped++;
+            console.warn('[SW] Pre-cache fetch failed:', url, err);
           }
         })
       );
-      const failed = results.filter(r => r.status === 'rejected').length;
-      if (failed > 0) console.warn(`[SW] ${failed} precache entries skipped`);
+      console.log(`[SW] Pre-cached ${cached} assets, skipped ${skipped}`);
     })
   );
 });
@@ -72,8 +102,8 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// Helper: cache a response only if it's a clean, non-redirected success.
-// Safari/iOS will refuse to serve a response that was a redirect.
+// Helper: only cache a clean, non-redirected 200 response.
+// Safari/iOS refuses to serve a cached response that involved a redirect.
 function safeCachePut(cache, request, response) {
   if (response && response.status === 200 && !response.redirected) {
     cache.put(request, response.clone());
@@ -86,7 +116,8 @@ function safeCachePut(cache, request, response) {
 //   3. Next.js RSC navigation reqs   → network-first, cache RSC payload on success,
 //                                       serve cached payload when offline
 //   4. /_next/static/ assets         → cache-first (content-hashed, safe forever)
-//   5. HTML page navigations         → network-first with cache fallback to '/'
+//   5. HTML page navigations         → network-first, cache on success,
+//                                       offline fallback: this URL → '/' → error()
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
@@ -105,8 +136,9 @@ self.addEventListener('fetch', (event) => {
   // Next.js prefetch requests are speculative — don't intercept or cache them.
   if (isPrefetch) return;
 
-  // Next.js RSC navigation requests — network-first, cache the RSC payload so
-  // pages that were visited while online are navigable offline.
+  // Next.js RSC navigation requests — network-first, cache on success.
+  // Serves cached RSC payload when offline so previously-visited pages
+  // work without a network connection.
   if (isRSC) {
     event.respondWith(
       fetch(event.request)
@@ -120,8 +152,8 @@ self.addEventListener('fetch', (event) => {
         })
         .catch(async () => {
           const cached = await caches.match(event.request);
-          // Return cached RSC payload if available; otherwise return a network-
-          // error response so Safari doesn't crash with "Returned response is null"
+          // Return cached RSC payload if available; otherwise a network-error
+          // response — Safari crashes if event.respondWith resolves to null/undefined.
           return cached || Response.error();
         })
     );
@@ -129,7 +161,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   // /_next/static/ assets are content-hashed by Next.js.
-  // Cache-first: serve from cache instantly; fetch-and-cache on first miss.
+  // Cache-first: serve instantly; fetch-and-cache on first miss.
   if (url.pathname.startsWith('/_next/static/')) {
     event.respondWith(
       caches.match(event.request).then((cached) => {
@@ -146,8 +178,8 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Full HTML page navigations — network-first, cache on success.
-  // Offline fallback: serve cached version of this URL, or '/' so the
-  // pre-cached app shell is shown (client-side routing takes over from there).
+  // Offline fallback chain: cached version of this URL → cached '/' (app shell)
+  // → Response.error() so Safari never crashes with "Returned response is null".
   event.respondWith(
     fetch(event.request)
       .then((response) => {
@@ -156,10 +188,11 @@ self.addEventListener('fetch', (event) => {
         );
         return response;
       })
-      .catch(() => {
-        return caches.match(event.request).then(
-          (cached) => cached || caches.match('/')
-        );
+      .catch(async () => {
+        const cached = await caches.match(event.request);
+        if (cached) return cached;
+        const root = await caches.match('/');
+        return root || Response.error();
       })
   );
 });
