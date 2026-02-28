@@ -49,16 +49,16 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Protected routes that require authentication
+  // Protected routes that require authentication.
+  // Game routes (/cricket, /golf, /extra) are intentionally NOT protected so
+  // they work offline and without an account.
   const protectedRoutes = [
     '/',
-    '/cricket',
-    '/golf',
-    '/extra',
     '/stats',
     '/profile',
     '/league',
     '/friends',
+    '/venue',
   ]
 
   const isProtectedRoute = protectedRoutes.some(route =>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/app/components/Header';
 import PageWrapper from '@/app/components/PageWrapper';
@@ -8,8 +8,6 @@ import PlayerAvatar, { PlayerColor } from '@/app/components/PlayerAvatar';
 import AddGuestPlayerModal from '@/app/components/AddGuestPlayerModal';
 import { usePlayerContext } from '@/app/contexts/PlayerContext';
 import { useAppContext } from '@/app/contexts/AppContext';
-import { useVenueContext } from '@/app/contexts/VenueContext';
-import { createVenueGuest } from '@/app/lib/venue';
 import { StoredPlayer } from '@/app/types/storage';
 import { STOCK_AVATARS } from '@/app/lib/avatars';
 
@@ -22,7 +20,6 @@ export default function X01PlayerSelectPage() {
   const router = useRouter();
   const { localPlayers, addGuestPlayer, updateLocalPlayer } = usePlayerContext();
   const { setSelectedPlayers, x01StartingScore, x01DoubleIn, x01DoubleOut } = useAppContext();
-  const { venueId, venuePlayersForSelection: venuePlayers, refreshParticipants } = useVenueContext();
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [teamPlay, setTeamPlay] = useState(false);
@@ -31,14 +28,8 @@ export default function X01PlayerSelectPage() {
   const [playerFilter, setPlayerFilter] = useState<'all' | 'league' | 'guests'>('all');
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (venueId) refreshParticipants();
-  }, [venueId, refreshParticipants]);
-
-  // Build player pool
-  const allPlayers: StoredPlayer[] = venueId
-    ? [...venuePlayers, ...localPlayers.filter(lp => !venuePlayers.find(vp => vp.id === lp.id))]
-    : localPlayers;
+  // Build player pool from local storage only
+  const allPlayers: StoredPlayer[] = localPlayers;
 
   let filteredPool = [...allPlayers];
   if (playerFilter === 'league') filteredPool = filteredPool.filter(p => !p.isGuest);
@@ -79,19 +70,9 @@ export default function X01PlayerSelectPage() {
   };
   const handleDragEnd = () => setDraggedIdx(null);
 
-  const handleAddGuest = async (name: string, avatar: string, photoUrl?: string) => {
-    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
-    if (venueId && isOnline) {
-      try {
-        const result = await createVenueGuest(venueId, name, avatar, photoUrl);
-        if (result.success) refreshParticipants();
-        else alert(result.error || 'Failed to create guest');
-      } catch { alert('Failed to create guest'); }
-    } else {
-      // Normal mode or offline: add to local storage
-      const player = addGuestPlayer(name, avatar);
-      if (photoUrl) updateLocalPlayer(player.id, { photoUrl });
-    }
+  const handleAddGuest = (name: string, avatar: string, photoUrl?: string) => {
+    const player = addGuestPlayer(name, avatar);
+    if (photoUrl) updateLocalPlayer(player.id, { photoUrl });
   };
 
   const isTeamMode = teamPlay && selectedIds.length === 4;
@@ -247,21 +228,19 @@ export default function X01PlayerSelectPage() {
           {/* ── Filter & Sort ── */}
           <div className="px-2 mb-3">
             <div className="flex justify-between items-center gap-4">
-              {venueId ? (
-                <div className="flex gap-2">
-                  {(['all', 'league', 'guests'] as const).map(f => (
-                    <button
-                      key={f}
-                      onClick={() => setPlayerFilter(f)}
-                      className={`px-3 py-1 text-xs font-bold rounded transition-colors ${
-                        playerFilter === f ? 'bg-white text-[#1a5a5a]' : 'bg-[#666666] text-white hover:bg-[#777777]'
-                      }`}
-                    >
-                      {f === 'all' ? 'ALL' : f === 'league' ? 'PLAYERS' : 'GUESTS'}
-                    </button>
-                  ))}
-                </div>
-              ) : <div />}
+              <div className="flex gap-2">
+                {(['all', 'league', 'guests'] as const).map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setPlayerFilter(f)}
+                    className={`px-3 py-1 text-xs font-bold rounded transition-colors ${
+                      playerFilter === f ? 'bg-white text-[#1a5a5a]' : 'bg-[#666666] text-white hover:bg-[#777777]'
+                    }`}
+                  >
+                    {f === 'all' ? 'ALL' : f === 'league' ? 'PLAYERS' : 'GUESTS'}
+                  </button>
+                ))}
+              </div>
               <div className="flex gap-2">
                 {(['recent', 'alphabetical'] as const).map(s => (
                   <button
@@ -308,7 +287,7 @@ export default function X01PlayerSelectPage() {
                 >
                   <span className="text-white text-2xl sm:text-4xl">+</span>
                 </button>
-                <span className="text-white text-sm font-bold">{venueId ? 'ADD GUEST' : 'ADD PLAYER'}</span>
+                <span className="text-white text-sm font-bold">ADD PLAYER</span>
               </div>
             </div>
           </div>
