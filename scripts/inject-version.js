@@ -1,20 +1,20 @@
 /**
- * Inject build version into service worker
- * This runs before build to ensure each deployment has a unique cache version
+ * prebuild: copy sw-template.js → public/sw.js
+ *
+ * This creates public/sw.js (from the source template) before `next build`
+ * runs. The postbuild script (generate-sw.js) then overwrites it with the
+ * full precache asset list once the Next.js build output is available.
+ *
+ * The old "inject __BUILD_VERSION__" approach was replaced by a static
+ * CACHE_NAME in the template. Cache busting now happens naturally because
+ * Next.js content-hashes all /_next/static/ asset filenames on each build.
  */
 
-const fs = require('fs');
+const fs   = require('fs');
 const path = require('path');
 
-const swPath = path.join(__dirname, '../public/sw.js');
-const swContent = fs.readFileSync(swPath, 'utf8');
+const src  = path.join(__dirname, 'sw-template.js');
+const dest = path.join(__dirname, '../public/sw.js');
 
-// Use current timestamp as version
-const buildVersion = Date.now().toString();
-
-// Replace the placeholder with actual version
-const updatedContent = swContent.replace(/__BUILD_VERSION__/g, buildVersion);
-
-fs.writeFileSync(swPath, updatedContent, 'utf8');
-
-console.log(`✓ Service worker updated with version: ${buildVersion}`);
+fs.copyFileSync(src, dest);
+console.log('✓ public/sw.js initialised from sw-template.js (postbuild will inject asset list)');
