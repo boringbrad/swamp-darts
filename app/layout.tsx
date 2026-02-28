@@ -9,6 +9,7 @@ import { VenueProvider } from "./contexts/VenueContext";
 import PWARegister from "./components/PWARegister";
 import GoogleAnalytics from "./components/GoogleAnalytics";
 import MobileOrientationLock from "./components/MobileOrientationLock";
+import OfflineBanner from "./components/OfflineBanner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -56,6 +57,7 @@ export default function RootLayout({
         <GoogleAnalytics />
         <PWARegister />
         <MobileOrientationLock />
+        <OfflineBanner />
         <AuthProvider>
           <AppProvider>
             <PlayerProvider>

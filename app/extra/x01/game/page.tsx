@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { useAppContext } from '@/app/contexts/AppContext';
 import Header from '@/app/components/Header';
 import { StoredPlayer } from '@/app/types/storage';
-import { canSyncToSupabase } from '@/app/lib/supabaseSync';
 import { useOnlineGameState, OnlineConfig } from '@/app/hooks/useOnlineGameState';
 
 const PLAYER_COLORS = ['blue', 'red', 'purple', 'green'] as const;
@@ -277,12 +276,8 @@ export default function X01GamePage() {
       localStorage.setItem('x01Matches', JSON.stringify(ex));
     } catch (e) { console.error(e); }
     (async () => {
-      try {
-        if (await canSyncToSupabase()) {
-          const { createClient } = await import('@/app/lib/supabase/client');
-          await createClient().from('x01_matches').insert({ match_id: matchData.matchId, match_data: matchData, created_at: matchData.date });
-        }
-      } catch (e) { console.log('x01 sync skipped:', e); }
+      const { syncX01Match } = await import('@/app/lib/supabaseSync');
+      await syncX01Match(matchData.matchId, matchData);
     })();
   }, [winner]);
 

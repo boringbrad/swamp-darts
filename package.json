@@ -6,6 +6,7 @@
     "dev": "next dev",
     "prebuild": "node scripts/inject-version.js",
     "build": "next build",
+    "postbuild": "node scripts/generate-sw.js",
     "start": "next start",
     "lint": "eslint"
   },

@@ -7,6 +7,7 @@ import { SelectedPlayersStorage } from '../types/storage';
 import { storage, initializeApp } from '../lib/storage';
 import { playerStorage } from '../lib/playerStorage';
 import { createClient } from '../lib/supabase/client';
+import { flushSyncQueue } from '../lib/supabaseSync';
 
 const AppContext = createContext<AppContextValue | undefined>(undefined);
 
@@ -323,9 +324,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const savedX01AverageMode = localStorage.getItem('x01AverageMode');
     if (savedX01AverageMode === 'per-dart' || savedX01AverageMode === 'per-turn') setX01AverageModeState(savedX01AverageMode);
 
+    // Flush any match syncs that were queued while offline
+    const handleOnline = () => { flushSyncQueue(); };
+    window.addEventListener('online', handleOnline);
+    if (navigator.onLine) flushSyncQueue();
+
     // Cleanup subscription on unmount
     return () => {
       subscription.unsubscribe();
+      window.removeEventListener('online', handleOnline);
     };
   }, []);
 

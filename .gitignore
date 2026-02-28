@@ -20,6 +20,10 @@
 # production
 /build
 
+# Generated service worker — rebuilt by scripts/generate-sw.js after `next build`.
+# Edit scripts/sw-template.js instead of public/sw.js.
+/public/sw.js
+
 # misc
 .DS_Store
 *.pem

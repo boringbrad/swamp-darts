@@ -5,6 +5,7 @@
  */
 
 import { createClient } from './supabase/client';
+import { addToSyncQueue, getSyncQueue, removeFromSyncQueue } from './offlineQueue';
 
 const supabase = createClient();
 
@@ -123,18 +124,26 @@ export interface CricketMatchData {
 
 /**
  * Sync a cricket match to Supabase
- * Called when a cricket match is completed
+ * Called when a cricket match is completed.
+ * If offline or Supabase is unreachable, queues for retry on reconnect.
+ * Returns true on success, false on failure.
  */
-export async function syncCricketMatch(matchData: CricketMatchData): Promise<void> {
+export async function syncCricketMatch(matchData: CricketMatchData): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    addToSyncQueue('cricket', matchData.matchId, matchData);
+    return false;
+  }
+
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    // getSession() reads from localStorage — no network call needed
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
 
     if (!user) {
       console.warn('No authenticated user, skipping cricket match sync');
-      return;
+      return false;
     }
 
-    // Save the match
     const { error } = await supabase
       .from('cricket_matches')
       .upsert({
@@ -152,12 +161,18 @@ export async function syncCricketMatch(matchData: CricketMatchData): Promise<voi
 
     if (error) {
       console.error('Error syncing cricket match:', error);
-      return;
+      addToSyncQueue('cricket', matchData.matchId, matchData);
+      return false;
     }
 
+    // Remove from queue if it was queued from a previous offline session
+    removeFromSyncQueue(matchData.matchId);
     console.log('Cricket match synced to Supabase:', matchData.matchId);
+    return true;
   } catch (error) {
     console.error('Unexpected error syncing cricket match:', error);
+    addToSyncQueue('cricket', matchData.matchId, matchData);
+    return false;
   }
 }
 
@@ -207,18 +222,26 @@ export interface GolfMatchData {
 
 /**
  * Sync a golf match to Supabase
- * Called when a golf match is completed
+ * Called when a golf match is completed.
+ * If offline or Supabase is unreachable, queues for retry on reconnect.
+ * Returns true on success, false on failure.
  */
-export async function syncGolfMatch(matchData: GolfMatchData): Promise<void> {
+export async function syncGolfMatch(matchData: GolfMatchData): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    addToSyncQueue('golf', matchData.matchId, matchData);
+    return false;
+  }
+
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    // getSession() reads from localStorage — no network call needed
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
 
     if (!user) {
       console.warn('No authenticated user, skipping golf match sync');
-      return;
+      return false;
     }
 
-    // Save the match
     const { error } = await supabase
       .from('golf_matches')
       .upsert({
@@ -237,12 +260,18 @@ export async function syncGolfMatch(matchData: GolfMatchData): Promise<void> {
 
     if (error) {
       console.error('Error syncing golf match:', error);
-      return;
+      addToSyncQueue('golf', matchData.matchId, matchData);
+      return false;
     }
 
+    // Remove from queue if it was queued from a previous offline session
+    removeFromSyncQueue(matchData.matchId);
     console.log('Golf match synced to Supabase:', matchData.matchId);
+    return true;
   } catch (error) {
     console.error('Unexpected error syncing golf match:', error);
+    addToSyncQueue('golf', matchData.matchId, matchData);
+    return false;
   }
 }
 
@@ -474,13 +503,96 @@ export async function syncVenueMatchResults(
 // ============================================================================
 
 /**
- * Check if user is authenticated and can sync data
+ * Check if user is authenticated and can sync data.
+ * Uses getSession() (reads localStorage) instead of getUser() (network call)
+ * so this is safe to call offline.
  */
 export async function canSyncToSupabase(): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return false;
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    return !!user;
+    const { data: { session } } = await supabase.auth.getSession();
+    return !!session?.user;
   } catch (error) {
     return false;
+  }
+}
+
+// ============================================================================
+// X01 MATCH SYNC
+// ============================================================================
+
+/**
+ * Sync an x01 match to Supabase.
+ * If offline or Supabase is unreachable, queues for retry on reconnect.
+ * Returns true on success, false on failure.
+ */
+export async function syncX01Match(matchId: string, matchData: any): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    addToSyncQueue('x01', matchId, matchData);
+    return false;
+  }
+
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
+
+    if (!user) {
+      console.warn('No authenticated user, skipping x01 match sync');
+      return false;
+    }
+
+    const { error } = await supabase
+      .from('x01_matches')
+      .upsert({
+        match_id: matchId,
+        user_id: user.id,
+        match_data: matchData,
+        created_at: matchData.date || new Date().toISOString(),
+      }, {
+        onConflict: 'match_id',
+      });
+
+    if (error) {
+      console.error('Error syncing x01 match:', error);
+      addToSyncQueue('x01', matchId, matchData);
+      return false;
+    }
+
+    removeFromSyncQueue(matchId);
+    console.log('x01 match synced to Supabase:', matchId);
+    return true;
+  } catch (error) {
+    console.error('Unexpected error syncing x01 match:', error);
+    addToSyncQueue('x01', matchId, matchData);
+    return false;
+  }
+}
+
+// ============================================================================
+// OFFLINE SYNC FLUSH
+// ============================================================================
+
+/**
+ * Attempt to sync all queued matches that failed while offline.
+ * Should be called when connectivity is restored.
+ */
+export async function flushSyncQueue(): Promise<void> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+
+  const queue = getSyncQueue();
+  if (queue.length === 0) return;
+
+  console.log(`[flushSyncQueue] Flushing ${queue.length} queued match(es)`);
+
+  for (const item of queue) {
+    if (item.type === 'cricket') {
+      await syncCricketMatch(item.data);
+    } else if (item.type === 'golf') {
+      await syncGolfMatch(item.data);
+    } else if (item.type === 'x01') {
+      await syncX01Match(item.id, item.data);
+    }
+    // Each sync function handles its own queue membership:
+    // success → removeFromSyncQueue, failure → stays in queue (deduped)
   }
 }
