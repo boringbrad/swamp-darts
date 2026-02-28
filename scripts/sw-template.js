@@ -9,11 +9,10 @@
 
 const CACHE_NAME = 'swamp-darts-v4';
 
-// Pages to precache at install time so hard navigation to game pages
-// works offline even on first visit.
-// Install uses individual fetch calls (not cache.addAll) with a
-// !response.redirected guard — one failure doesn't block the rest, and
-// Safari's "Response served by service worker has redirections" is avoided.
+// Pages to precache at install time.
+// If Vercel redirects a URL (e.g. trailing-slash normalisation), the precache
+// helper fetches the final URL and stores it under the original key so offline
+// lookups always succeed.
 // Production builds append all /_next/static/ JS and CSS bundles below.
 const PRECACHE_ASSETS = [
   '/',
@@ -21,7 +20,7 @@ const PRECACHE_ASSETS = [
   '/icon-192.png',
   '/icon-512.png',
   '/icon-180.png',
-  // App pages — hard navigation works offline once these are cached
+  // App pages
   '/cricket',
   '/cricket/singles/players',
   '/cricket/singles/game',
@@ -45,34 +44,56 @@ const PRECACHE_ASSETS = [
   // BUILD_ASSETS_PLACEHOLDER
 ];
 
-// Install — download and cache every asset individually, then immediately
-// skip waiting so this SW takes control without requiring a user prompt.
-// clients.claim() in activate handles existing open tabs.
+// When a player-select page is fetched online, also pre-cache the matching
+// game page so clicking "Play Game" works even without visiting game pages first.
+const WARM_CACHE_MAP = {
+  '/cricket/singles/players':       '/cricket/singles/game',
+  '/cricket/tag-team/players':      '/cricket/tag-team/game',
+  '/cricket/triple-threat/players': '/cricket/triple-threat/game',
+  '/cricket/fatal-4-way/players':   '/cricket/fatal-4-way/game',
+  '/golf/stroke-play/players':      '/golf/stroke-play/game',
+  '/golf/match-play/players':       '/golf/match-play/game',
+  '/golf/skins/players':            '/golf/skins/game',
+  '/extra/x01':                     '/extra/x01/game',
+};
+
+// Fetch a URL and store it in cache under `cacheKey`.
+// If the fetch redirects (Vercel trailing-slash etc.), re-fetch the final URL
+// so we never store a redirected response (Safari refuses to serve those).
+// Returns true on success.
+async function cacheUrl(cache, cacheKey, fetchUrl) {
+  try {
+    const response = await fetch(fetchUrl || cacheKey);
+    if (response.ok && !response.redirected) {
+      await cache.put(cacheKey, response);
+      return true;
+    }
+    if (response.redirected) {
+      // Re-fetch the redirect destination directly, then store under original key
+      const final = await fetch(response.url);
+      if (final.ok && !final.redirected) {
+        await cache.put(cacheKey, final);
+        return true;
+      }
+    }
+    console.warn('[SW] Pre-cache skipped:', cacheKey, response.status);
+    return false;
+  } catch (err) {
+    console.warn('[SW] Pre-cache fetch failed:', cacheKey, err);
+    return false;
+  }
+}
+
+// Install — cache every asset, then immediately take control (skipWaiting).
+// clients.claim() in activate handles open tabs.
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(async (cache) => {
-      let cached = 0;
-      let skipped = 0;
-      await Promise.allSettled(
-        PRECACHE_ASSETS.map(async (url) => {
-          try {
-            const response = await fetch(url);
-            // Safari refuses to serve redirected responses from the SW cache.
-            // Skip any URL that redirected — it will be cached on first visit instead.
-            if (response.ok && !response.redirected) {
-              await cache.put(url, response);
-              cached++;
-            } else {
-              skipped++;
-              console.warn('[SW] Pre-cache skipped (redirect or error):', url, response.status);
-            }
-          } catch (err) {
-            skipped++;
-            console.warn('[SW] Pre-cache fetch failed:', url, err);
-          }
-        })
+      const results = await Promise.allSettled(
+        PRECACHE_ASSETS.map((url) => cacheUrl(cache, url))
       );
-      console.log(`[SW] Pre-cached ${cached} assets, skipped ${skipped}`);
+      const cached = results.filter((r) => r.status === 'fulfilled' && r.value).length;
+      console.log(`[SW] Pre-cached ${cached}/${PRECACHE_ASSETS.length} assets`);
     }).then(() => self.skipWaiting())
   );
 });
@@ -116,6 +137,7 @@ function safeCachePut(cache, request, response) {
 //                                       serve cached payload when offline
 //   4. /_next/static/ assets         → cache-first (content-hashed, safe forever)
 //   5. HTML page navigations         → network-first, cache on success,
+//                                       warm-cache matching game page,
 //                                       offline fallback: this URL → '/' → error()
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
@@ -177,14 +199,21 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Full HTML page navigations — network-first, cache on success.
+  // When a player-select page loads online, also pre-cache the game page
+  // so "Play Game" works offline without requiring a prior game-page visit.
   // Offline fallback chain: cached version of this URL → cached '/' (app shell)
   // → Response.error() so Safari never crashes with "Returned response is null".
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        caches.open(CACHE_NAME).then((cache) =>
-          safeCachePut(cache, event.request, response)
-        );
+        caches.open(CACHE_NAME).then((cache) => {
+          safeCachePut(cache, event.request, response);
+          // Warm-cache the matching game page (fire-and-forget, non-blocking)
+          const gameUrl = WARM_CACHE_MAP[url.pathname];
+          if (gameUrl) {
+            cacheUrl(cache, gameUrl);
+          }
+        });
         return response;
       })
       .catch(async () => {
