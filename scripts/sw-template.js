@@ -118,7 +118,12 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         })
-        .catch(() => caches.match(event.request))
+        .catch(async () => {
+          const cached = await caches.match(event.request);
+          // Return cached RSC payload if available; otherwise return a network-
+          // error response so Safari doesn't crash with "Returned response is null"
+          return cached || Response.error();
+        })
     );
     return;
   }

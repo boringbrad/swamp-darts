@@ -17,10 +17,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(() => storage.getUserProfile() ?? null);
   const [headerVisible, setHeaderVisible] = useState(true);
   const [navigationHistory, setNavigationHistory] = useState<string[]>([]);
-  const [selectedPlayers, setSelectedPlayersState] = useState<SelectedPlayersStorage>({
-    cricket: {},
-    golf: {},
-  });
+  // Read selectedPlayers from sessionStorage synchronously so the game page
+  // sees the correct players on first render even after a hard navigation
+  // (window.location.href). If sessionStorage is unavailable (SSR), the
+  // try-catch inside getSelectedPlayers returns the safe default.
+  const [selectedPlayers, setSelectedPlayersState] = useState<SelectedPlayersStorage>(
+    () => storage.getSelectedPlayers()
+  );
   const [cricketRules, setCricketRulesState] = useState<CricketRules>({
     swampRules: true,
     noPoint: false,
@@ -279,7 +282,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // Load other state
     setHeaderVisible(storage.getHeaderVisible());
-    setSelectedPlayersState(storage.getSelectedPlayers());
+    // selectedPlayers already loaded from sessionStorage via useState initializer
     setCricketRulesState(storage.getCricketRules());
     setPlayModeState(storage.getPlayMode());
 
