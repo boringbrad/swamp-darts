@@ -100,7 +100,8 @@ export default function X01PlayerSelectPage() {
   const handleStart = () => {
     const players = selectedIds.map(id => getPlayerById(id)).filter(Boolean) as StoredPlayer[];
     setSelectedPlayers('x01', 'default', { players, isTeams: isTeamMode });
-    router.push('/extra/x01/game');
+    // Hard navigation so the SW-cached HTML is served when offline
+    window.location.href = '/extra/x01/game';
   };
 
   const handleRandomizeOrder = () => {

@@ -230,7 +230,8 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
       });
     }
 
-    router.push(`/cricket/${variant}/game`);
+    // Hard navigation so the SW-cached HTML is served when offline
+    window.location.href = `/cricket/${variant}/game`;
   };
 
   const handleRandomizeOrder = () => {

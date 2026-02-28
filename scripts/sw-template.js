@@ -7,7 +7,7 @@
 //   2. Injects them below the BUILD_ASSETS_PLACEHOLDER comment
 //   3. Writes the result to public/sw.js
 
-const CACHE_NAME = 'swamp-darts-v3';
+const CACHE_NAME = 'swamp-darts-v4';
 
 // Pages to precache at install time so hard navigation to game pages
 // works offline even on first visit.
@@ -45,10 +45,9 @@ const PRECACHE_ASSETS = [
   // BUILD_ASSETS_PLACEHOLDER
 ];
 
-// Install — download and cache every asset individually.
-// Individual fetches: one redirect/failure doesn't block the rest.
-// Do NOT call skipWaiting() here; the new SW waits until the user
-// approves via the update prompt in PWARegister.tsx.
+// Install — download and cache every asset individually, then immediately
+// skip waiting so this SW takes control without requiring a user prompt.
+// clients.claim() in activate handles existing open tabs.
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(async (cache) => {
@@ -74,7 +73,7 @@ self.addEventListener('install', (event) => {
         })
       );
       console.log(`[SW] Pre-cached ${cached} assets, skipped ${skipped}`);
-    })
+    }).then(() => self.skipWaiting())
   );
 });
 

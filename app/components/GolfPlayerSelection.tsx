@@ -337,7 +337,8 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
 
     setGlobalSelectedPlayers('golf', variant, players);
 
-    router.push(`/golf/${variant}/game`);
+    // Hard navigation so the SW-cached HTML is served when offline
+    window.location.href = `/golf/${variant}/game`;
   };
 
   const handleRandomizeOrder = () => {
