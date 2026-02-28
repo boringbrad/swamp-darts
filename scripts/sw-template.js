@@ -6,54 +6,44 @@
 //   1. Reads all /_next/static/ asset URLs from the build output
 //   2. Injects them below the BUILD_ASSETS_PLACEHOLDER comment
 //   3. Writes the result to public/sw.js
-//
-// In development (`next dev`), public/sw.js is regenerated from this template
-// with only the core assets — full precaching only applies to production builds.
 
 const CACHE_NAME = 'swamp-darts-v2';
 
-// Core assets always pre-cached.
-// Includes all known app pages so they work offline even on first install.
+// Only precache true static assets (icons, manifest) that never redirect.
+// HTML pages are cached dynamically by the fetch handler when visited online —
+// precaching them risks storing redirect responses, which Safari/iOS refuses
+// to serve ("Response served by service worker has redirections").
 // Production builds append all /_next/static/ JS and CSS bundles below.
 const PRECACHE_ASSETS = [
-  '/',
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png',
   '/icon-180.png',
-  // App pages — pre-cached so full-page loads work offline
-  '/cricket',
-  '/cricket/singles/players',
-  '/cricket/singles/game',
-  '/cricket/tag-team/players',
-  '/cricket/tag-team/game',
-  '/cricket/triple-threat/players',
-  '/cricket/triple-threat/game',
-  '/cricket/fatal-4-way/players',
-  '/cricket/fatal-4-way/game',
-  '/golf',
-  '/golf/stroke-play/players',
-  '/golf/stroke-play/game',
-  '/golf/match-play/players',
-  '/golf/match-play/game',
-  '/golf/skins/players',
-  '/golf/skins/game',
-  '/extra/x01',
-  '/extra/x01/game',
-  '/stats',
-  '/profile',
   // BUILD_ASSETS_PLACEHOLDER
 ];
 
-// Install — download and cache every asset in PRECACHE_ASSETS.
+// Install — download and cache static assets.
+// Uses individual fetches so one failure doesn't block the rest.
 // Do NOT call skipWaiting() here; the new SW waits until the user
 // approves via the update prompt in PWARegister.tsx.
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(PRECACHE_ASSETS).catch((err) => {
-        console.error('[SW] Pre-cache failed:', err);
-      });
+    caches.open(CACHE_NAME).then(async (cache) => {
+      const results = await Promise.allSettled(
+        PRECACHE_ASSETS.map(async (url) => {
+          try {
+            const response = await fetch(url);
+            // Safari refuses to serve redirected responses from SW cache
+            if (response.ok && !response.redirected) {
+              await cache.put(url, response);
+            }
+          } catch (err) {
+            console.warn('[SW] Pre-cache skipped:', url, err);
+          }
+        })
+      );
+      const failed = results.filter(r => r.status === 'rejected').length;
+      if (failed > 0) console.warn(`[SW] ${failed} precache entries skipped`);
     })
   );
 });
@@ -82,6 +72,14 @@ self.addEventListener('message', (event) => {
   }
 });
 
+// Helper: cache a response only if it's a clean, non-redirected success.
+// Safari/iOS will refuse to serve a response that was a redirect.
+function safeCachePut(cache, request, response) {
+  if (response && response.status === 200 && !response.redirected) {
+    cache.put(request, response.clone());
+  }
+}
+
 // Fetch — five-tier strategy:
 //   1. Supabase / API requests       → pass through (no interception)
 //   2. Next.js prefetch reqs         → pass through (speculative, don't cache)
@@ -109,13 +107,11 @@ self.addEventListener('fetch', (event) => {
 
   // Next.js RSC navigation requests — network-first, cache the RSC payload so
   // pages that were visited while online are navigable offline.
-  // We store RSC responses separately from HTML (the Vary header ensures they
-  // don't collide in the Cache API).
   if (isRSC) {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          if (response && response.status === 200) {
+          if (response && response.status === 200 && !response.redirected) {
             caches.open(CACHE_NAME).then((cache) =>
               cache.put(event.request, response.clone())
             );
@@ -134,11 +130,9 @@ self.addEventListener('fetch', (event) => {
       caches.match(event.request).then((cached) => {
         if (cached) return cached;
         return fetch(event.request).then((response) => {
-          if (response && response.status === 200) {
-            caches.open(CACHE_NAME).then((cache) =>
-              cache.put(event.request, response.clone())
-            );
-          }
+          caches.open(CACHE_NAME).then((cache) =>
+            safeCachePut(cache, event.request, response)
+          );
           return response;
         });
       })
@@ -152,11 +146,9 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        if (response && response.status === 200 && response.type === 'basic') {
-          caches.open(CACHE_NAME).then((cache) =>
-            cache.put(event.request, response.clone())
-          );
-        }
+        caches.open(CACHE_NAME).then((cache) =>
+          safeCachePut(cache, event.request, response)
+        );
         return response;
       })
       .catch(() => {
