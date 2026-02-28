@@ -58,7 +58,6 @@ export async function updateSession(request: NextRequest) {
     '/profile',
     '/league',
     '/friends',
-    '/venue',
   ]
 
   const isProtectedRoute = protectedRoutes.some(route =>

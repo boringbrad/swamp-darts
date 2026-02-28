@@ -6,12 +6,10 @@ import { GolfVariant, Player } from '../types/game';
 import { StoredPlayer } from '../types/storage';
 import { usePlayerContext } from '../contexts/PlayerContext';
 import { useAppContext } from '../contexts/AppContext';
-import { useVenueContext } from '../contexts/VenueContext';
 import { getCourseRecord } from '../lib/golfStats';
 import { getGhostPlayerHistory } from '../lib/ghostPlayer';
 import { trackGolfGame } from '../lib/analytics';
-import { syncGolfMatch, syncVenueMatchResults, canSyncToSupabase } from '../lib/supabaseSync';
-import { findOrCreateBoardByName } from '../lib/venue';
+import { syncGolfMatch, canSyncToSupabase } from '../lib/supabaseSync';
 import { createClient } from '../lib/supabase/client';
 import { useOnlineGameState, OnlineConfig } from '../hooks/useOnlineGameState';
 import { completeOnlineSession } from '../lib/sessions';
@@ -37,7 +35,6 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
   const router = useRouter();
   const { localPlayers, updateLocalPlayer } = usePlayerContext();
   const { selectedPlayers, tieBreakerEnabled, golfCourseName, playMode, courseBannerImage, courseBannerOpacity, cameraEnabled, setCameraEnabled, showCourseRecord, showCourseName, userProfile } = useAppContext();
-  const { venueId, venuePlayersForSelection: venuePlayers } = useVenueContext();
   const [players, setPlayers] = useState<StoredPlayer[]>([]);
   const [scores, setScores] = useState<PlayerScore[]>([]);
   const [currentHole, setCurrentHole] = useState(0); // 0-17 for holes 1-18, 18+ for tie breaker
@@ -673,20 +670,9 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
       .filter(p => !p.isGhost)
       .map(({ player, index }) => {
         // Check if this player belongs to the logged-in user
-        // First check if it's a venue participant (they have userId in their id field)
-        const venuePlayer = venuePlayers.find(p => p.id === player.id);
-
-        let playerUserId: string | undefined;
-
-        if (venuePlayer) {
-          // Venue participant - use their actual userId (already in the id field)
-          playerUserId = venuePlayer.id;
-        } else {
-          // Local player - check if they belong to the current user
-          const storedPlayer = localPlayers.find(p => p.id === player.id);
-          const isCurrentUser = currentUserId && storedPlayer && storedPlayer.createdBy === currentUserId;
-          playerUserId = isCurrentUser ? currentUserId : undefined;
-        }
+        const storedPlayer = localPlayers.find(p => p.id === player.id);
+        const isCurrentUser = currentUserId && storedPlayer && storedPlayer.createdBy === currentUserId;
+        const playerUserId = isCurrentUser ? currentUserId : undefined;
 
         return {
           playerId: player.id,
@@ -725,34 +711,16 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
       console.log('Match saved successfully!');
 
       // Sync to Supabase in the background — don't block navigation
-      const capturedVenueId = venueId;
-      const capturedCourseName = golfCourseName;
       const capturedMatchData = matchData;
-      const capturedRealPlayersData = realPlayersData;
       ;(async () => {
         try {
           const canSync = await canSyncToSupabase();
-          console.log('[GolfGame] venueId at save time:', capturedVenueId);
-          console.log('[GolfGame] venuePlayers count:', venuePlayers.length);
           if (!canSync) {
             console.log('⏭️ Not authenticated, skipping Supabase sync');
             return;
           }
 
           console.log('🔄 Starting Supabase sync for golf match...');
-
-          // Auto-assign board based on course name for venue games
-          let boardId: string | undefined = undefined;
-          if (capturedVenueId && capturedCourseName) {
-            console.log(`🎯 Finding or creating board for course: "${capturedCourseName}"`);
-            const boardResult = await findOrCreateBoardByName(capturedVenueId, capturedCourseName);
-            if (boardResult.success && boardResult.boardId) {
-              boardId = boardResult.boardId;
-              console.log(`✅ Board assigned: ${boardId}`);
-            } else {
-              console.error(`⚠️ Failed to assign board: ${boardResult.error}`);
-            }
-          }
 
           const syncPromises: Promise<boolean | void>[] = [
             syncGolfMatch({
@@ -762,18 +730,8 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
               courseId: capturedMatchData.courseName,
               gameMode: capturedMatchData.variant,
               completedAt: new Date(capturedMatchData.date),
-              venueId: capturedVenueId || undefined,
-              boardId: boardId,
             })
           ];
-
-          if (capturedVenueId) {
-            const playerUserIds = capturedRealPlayersData.map(p => p.userId).filter((id): id is string => !!id);
-            console.log('🏢 Syncing match to playing users:', playerUserIds);
-            syncPromises.push(syncVenueMatchResults(capturedVenueId, capturedMatchData.matchId, 'golf_matches', playerUserIds));
-          } else {
-            console.log('⏭️ No venueId - skipping venue participant sync');
-          }
 
           // allSettled means one failure won't kill the other sync
           const results = await Promise.allSettled(syncPromises);

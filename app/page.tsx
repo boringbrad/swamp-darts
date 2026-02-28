@@ -12,7 +12,6 @@ export default function Home() {
   const { requestCount } = useFriendRequests();
 
   // Derived from cached profile — available immediately on first render
-  const isVenueAccount = userProfile?.accountType === 'venue';
   const isAdmin = userProfile?.isAdmin === true;
 
   // Update user presence to track online status
@@ -35,13 +34,10 @@ export default function Home() {
             <GameModeCard title="GOLF" href="/golf" color="golf" />
             <GameModeCard title="EXTRA GAMES" href="/extra" color="extra" />
             <GameModeCard title="PLAY ONLINE" href="/online" color="tbd" />
-            {/* Portrait only - show profile buttons AND venue hub if applicable */}
+            {/* Portrait only - show profile buttons */}
             <div className="landscape:hidden lg:hidden contents">
               <GameModeCard title="PROFILE" href="/stats" color="gray" />
               <GameModeCard title="FRIENDS" href="/friends" color="gray" badgeCount={requestCount} />
-              {isVenueAccount && (
-                <GameModeCard title="VENUE HUB" href="/venue" color="purple" />
-              )}
               {isAdmin && (
                 <GameModeCard title="ADMIN" href="/admin" color="purple" />
               )}
@@ -52,9 +48,6 @@ export default function Home() {
           <div className="hidden landscape:flex landscape:w-1/3 lg:flex lg:w-1/3 flex-col gap-2 landscape:gap-3 sm:gap-4 h-full">
             <GameModeCard title="PROFILE" href="/stats" color="gray" />
             <GameModeCard title="FRIENDS" href="/friends" color="gray" badgeCount={requestCount} />
-            {isVenueAccount && (
-              <GameModeCard title="VENUE HUB" href="/venue" color="purple" />
-            )}
             {isAdmin && (
               <GameModeCard title="ADMIN" href="/admin" color="purple" />
             )}

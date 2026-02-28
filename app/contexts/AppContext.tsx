@@ -12,8 +12,6 @@ import { flushSyncQueue } from '../lib/supabaseSync';
 const AppContext = createContext<AppContextValue | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  // Initialize state from storage — read cached profile immediately so venue
-  // accounts see VENUE HUB on first render without waiting for Supabase
   const [userProfile, setUserProfile] = useState<UserProfile | null>(() => storage.getUserProfile() ?? null);
   const [headerVisible, setHeaderVisible] = useState(true);
   const [navigationHistory, setNavigationHistory] = useState<string[]>([]);
@@ -102,15 +100,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         console.log('AppContext: Setting user profile', userProfile);
         storage.setUserProfile(userProfile);
         setUserProfile(userProfile);
-
-        // Venue accounts: auto-enable venue mode so VenueContext loads players
-        // without requiring a manual toggle in the venue hub every session
-        if (profile.account_type === 'venue') {
-          try {
-            localStorage.setItem('swamp_darts_venue_mode', 'true');
-            window.dispatchEvent(new CustomEvent('venue_mode_change', { detail: true }));
-          } catch (_) {}
-        }
 
         // Check if a player with this display name already exists
         const allPlayers = playerStorage.getAllPlayers();

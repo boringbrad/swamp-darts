@@ -4,10 +4,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppContext } from '../contexts/AppContext';
 import { usePlayerContext } from '../contexts/PlayerContext';
-import { useVenueContext } from '../contexts/VenueContext';
 import { CricketNumber, CricketVariant, CricketRules, Player } from '../types/game';
 import { STOCK_AVATARS } from '../lib/avatars';
-import { syncCricketMatch, syncVenueMatchResults, canSyncToSupabase } from '../lib/supabaseSync';
+import { syncCricketMatch, canSyncToSupabase } from '../lib/supabaseSync';
 import { createClient } from '../lib/supabase/client';
 import { useOnlineGameState, OnlineConfig } from '../hooks/useOnlineGameState';
 import { completeOnlineSession } from '../lib/sessions';
@@ -77,7 +76,6 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
   const router = useRouter();
   const { cameraEnabled, selectedPlayers } = useAppContext();
   const { updateLocalPlayer, localPlayers } = usePlayerContext();
-  const { venueId, venuePlayersForSelection: venuePlayers } = useVenueContext();
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -383,26 +381,11 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
           );
 
           // Check if this player belongs to the logged-in user
-          // First check if it's a venue participant (they have userId in their id field)
-          const venuePlayer = venuePlayers.find(p => p.id === player.playerId);
-
-          let playerUserId: string | undefined;
-          let playerAvatar: string | undefined;
-          let playerPhotoUrl: string | undefined;
-
-          if (venuePlayer) {
-            // Venue participant - use their actual userId (already in the id field)
-            playerUserId = venuePlayer.id;
-            playerAvatar = venuePlayer.avatar;
-            playerPhotoUrl = venuePlayer.photoUrl;
-          } else {
-            // Local player - check if they belong to the current user
-            const storedPlayer = localPlayers.find(p => p.id === player.playerId);
-            const isCurrentUser = currentUserId && storedPlayer && storedPlayer.createdBy === currentUserId;
-            playerUserId = isCurrentUser ? currentUserId : undefined;
-            playerAvatar = storedPlayer?.avatar;
-            playerPhotoUrl = storedPlayer?.photoUrl;
-          }
+          const storedPlayer = localPlayers.find(p => p.id === player.playerId);
+          const isCurrentUser = currentUserId && storedPlayer && storedPlayer.createdBy === currentUserId;
+          const playerUserId = isCurrentUser ? currentUserId : undefined;
+          const playerAvatar = storedPlayer?.avatar;
+          const playerPhotoUrl = storedPlayer?.photoUrl;
 
           return {
             playerId: player.playerId,
@@ -449,8 +432,6 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
 
       // Sync to Supabase for analytics and cross-device stats
       const canSync = await canSyncToSupabase();
-      console.log('[CricketGame] venueId at save time:', venueId);
-      console.log('[CricketGame] venuePlayers count:', venuePlayers.length);
       if (canSync) {
         console.log('🔄 Starting Supabase sync for cricket match...');
 
@@ -462,20 +443,8 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
             players: matchData.players,
             gameMode: matchData.variant,
             completedAt: new Date(matchData.date),
-            venueId: venueId || undefined,
           })
         ];
-
-        // Add venue participant sync if this is a venue game
-        if (venueId) {
-          const playerUserIds = matchData.players.map((p: any) => p.userId).filter((id: any): id is string => !!id);
-          console.log('🏢 Syncing match to playing users:', playerUserIds);
-          syncPromises.push(
-            syncVenueMatchResults(venueId, matchData.matchId, 'cricket_matches', playerUserIds)
-          );
-        } else {
-          console.log('⏭️ No venueId - skipping venue participant sync');
-        }
 
         // Wait for all syncs — allSettled means one failure won't kill the others
         const results = await Promise.allSettled(syncPromises);

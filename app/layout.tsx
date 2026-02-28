@@ -5,7 +5,6 @@ import { AppProvider } from "./contexts/AppContext";
 import { PlayerProvider } from "./contexts/PlayerContext";
 import { AuthProvider } from "./contexts/AuthContext";
 import { SessionProvider } from "./contexts/SessionContext";
-import { VenueProvider } from "./contexts/VenueContext";
 import PWARegister from "./components/PWARegister";
 import GoogleAnalytics from "./components/GoogleAnalytics";
 import MobileOrientationLock from "./components/MobileOrientationLock";
@@ -62,9 +61,7 @@ export default function RootLayout({
           <AppProvider>
             <PlayerProvider>
               <SessionProvider>
-                <VenueProvider>
-                  {children}
-                </VenueProvider>
+                {children}
               </SessionProvider>
             </PlayerProvider>
           </AppProvider>

@@ -8,7 +8,6 @@ import StatsFilters from '../components/stats/StatsFilters';
 import GolfStatsDisplay from '../components/stats/GolfStatsDisplay';
 import CricketStatsDisplay from '../components/stats/CricketStatsDisplay';
 import { useAppContext } from '../contexts/AppContext';
-import { useVenueMode } from '../hooks/useVenue';
 import { STOCK_AVATARS } from '../lib/avatars';
 import { loadCricketMatches, calculateCricketStats } from '../lib/cricketStats';
 import { loadCricketMatchesFromSupabase } from '../lib/supabaseSync';
@@ -22,12 +21,10 @@ type GameType = 'golf' | 'cricket';
 
 export default function ProfilePage() {
   const { userProfile, updateUserProfile } = useAppContext();
-  const { venueMode } = useVenueMode();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
-  // In player mode (not venue mode), only show the current user's stats
-  // In venue mode, allow selecting different players (for future dropdown)
-  const hidePlayerFilter = !venueMode;
+  // Always show only the current user's stats (no venue mode)
+  const hidePlayerFilter = true;
 
   // Find the current user's player ID
   const [userPlayerId, setUserPlayerId] = useState<string>('all');

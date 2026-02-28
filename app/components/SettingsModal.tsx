@@ -7,8 +7,6 @@ import { useAppContext } from '../contexts/AppContext';
 import { getUniqueCourseNames, loadGolfMatches } from '../lib/golfStats';
 import { RoyalRumbleGameState } from '../types/royalRumble';
 import { createClient } from '../lib/supabase/client';
-import { useVenueMode, useVenueInfo } from '../hooks/useVenue';
-import { requestVenueStatus } from '../lib/venue';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -52,7 +50,7 @@ export default function SettingsModal({ isOpen, onClose, pathname = '' }: Settin
   const [bannerOpacityInput, setBannerOpacityInput] = useState(courseBannerOpacity);
   const [existingCourses, setExistingCourses] = useState<string[]>([]);
   const [showCustomInput, setShowCustomInput] = useState(false);
-  const [activeTab, setActiveTab] = useState<'system' | 'golf' | 'cricket' | 'x01' | 'venue' | 'royal-rumble'>('system');
+  const [activeTab, setActiveTab] = useState<'system' | 'golf' | 'cricket' | 'x01' | 'royal-rumble'>('system');
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Check if we're in Royal Rumble game
@@ -60,12 +58,6 @@ export default function SettingsModal({ isOpen, onClose, pathname = '' }: Settin
 
   // Royal Rumble state
   const [royalRumbleGameState, setRoyalRumbleGameState] = useState<RoyalRumbleGameState | null>(null);
-
-  // Venue mode state
-  const { venueMode, setVenueMode, isLoading: venueModeLoading } = useVenueMode();
-  const { venueInfo, isVenue, refresh: refreshVenueInfo } = useVenueInfo();
-  const [requestingVenue, setRequestingVenue] = useState(false);
-  const [venueName, setVenueName] = useState('');
 
   // Load Royal Rumble game state when modal opens
   useEffect(() => {
@@ -304,16 +296,6 @@ export default function SettingsModal({ isOpen, onClose, pathname = '' }: Settin
             }`}
           >
             X01
-          </button>
-          <button
-            onClick={() => setActiveTab('venue')}
-            className={`px-6 py-3 font-bold transition-colors ${
-              activeTab === 'venue'
-                ? 'text-white border-b-4 border-[#90EE90]'
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            VENUE
           </button>
           {isRoyalRumbleGame && (
             <button
@@ -782,181 +764,6 @@ export default function SettingsModal({ isOpen, onClose, pathname = '' }: Settin
                   <strong>Current:</strong> {x01StartingScore} — {x01DoubleIn ? 'Double In' : 'Straight In'} / {x01DoubleOut ? 'Double Out' : 'Straight Out'}
                 </p>
               </div>
-            </div>
-          )}
-
-          {/* Venue Tab */}
-          {activeTab === 'venue' && (
-            <div>
-              <h3 className="text-xl font-bold text-white mb-4">VENUE MODE</h3>
-
-              {venueModeLoading ? (
-                <div className="text-gray-400">Loading...</div>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between mb-6 bg-[#333333] rounded-lg p-4">
-                    <div className="flex-1">
-                      <p className="text-white font-semibold mb-1">Enable Venue Mode on this device</p>
-                      <p className="text-sm text-gray-400">
-                        {isVenue
-                          ? 'This account is a venue account and cannot be switched to player mode.'
-                          : 'Switch between player mode and venue mode. This setting is per-device.'}
-                      </p>
-                    </div>
-                    <label className={`relative inline-flex items-center ml-4 ${isVenue ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
-                      <input
-                        type="checkbox"
-                        checked={venueMode}
-                        onChange={(e) => setVenueMode(e.target.checked)}
-                        disabled={isVenue}
-                        className="sr-only peer"
-                      />
-                      <div className="w-14 h-7 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-green-600 peer-disabled:opacity-60 peer-disabled:cursor-not-allowed"></div>
-                    </label>
-                  </div>
-
-                  {/* Venue Setup */}
-                  {venueMode && (
-                    <div className="mt-4">
-                      {isVenue ? (
-                        <div className="space-y-4">
-                          <div className="flex items-center gap-2">
-                            <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                            </svg>
-                            <span className="text-green-500 font-semibold">Venue Account Active</span>
-                          </div>
-                          <div className="bg-[#1a1a1a] rounded p-4 space-y-3">
-                            {/* Editable Venue Name */}
-                            <div>
-                              <label className="block text-gray-400 text-sm mb-2">Venue Name:</label>
-                              <div className="flex gap-2">
-                                <input
-                                  type="text"
-                                  value={venueName || venueInfo?.venueName || ''}
-                                  onChange={(e) => setVenueName(e.target.value)}
-                                  placeholder="Enter venue name"
-                                  className="flex-1 bg-[#2a2a2a] border border-gray-700 rounded px-4 py-2 text-white text-lg font-semibold placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-600"
-                                  disabled={requestingVenue}
-                                />
-                                {venueName && venueName !== venueInfo?.venueName && (
-                                  <button
-                                    onClick={async () => {
-                                      if (!venueName.trim()) {
-                                        alert('Venue name cannot be empty');
-                                        return;
-                                      }
-                                      setRequestingVenue(true);
-                                      try {
-                                        const { updateVenueName } = await import('../lib/venue');
-                                        await updateVenueName(venueName.trim());
-                                        await refreshVenueInfo();
-                                      } catch (error) {
-                                        console.error('Error updating venue name:', error);
-                                        alert('Failed to update venue name');
-                                      } finally {
-                                        setRequestingVenue(false);
-                                      }
-                                    }}
-                                    disabled={requestingVenue}
-                                    className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white font-bold rounded"
-                                  >
-                                    Save
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                            <div>
-                              <span className="text-gray-400 text-sm">Room Code:</span>
-                              <p className="text-white font-mono text-2xl tracking-wider">{venueInfo?.roomCode || 'Not set'}</p>
-                            </div>
-                            <div>
-                              <span className="text-gray-400 text-sm">Active Boards:</span>
-                              <p className="text-white font-semibold">{venueInfo?.boards?.length || 0}</p>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => {
-                              router.push('/venue');
-                              onClose();
-                            }}
-                            className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded transition-colors"
-                          >
-                            Go to Venue Dashboard
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="space-y-4">
-                          <div className="flex items-center gap-2">
-                            <svg className="w-5 h-5 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                            </svg>
-                            <span className="text-blue-400 font-semibold">Set up your venue</span>
-                          </div>
-                          <p className="text-sm text-gray-400">
-                            Enter your venue name to activate venue features: multi-board hosting and unlimited players.
-                          </p>
-
-                          {/* Venue Setup Form */}
-                          <div className="bg-[#1a1a1a] rounded p-4 space-y-3">
-                            <div>
-                              <label className="block text-white text-sm font-semibold mb-2">
-                                Venue Name
-                              </label>
-                              <input
-                                type="text"
-                                value={venueName}
-                                onChange={(e) => setVenueName(e.target.value)}
-                                placeholder="e.g., Swampy's Dart Bar"
-                                className="w-full bg-[#2a2a2a] border border-gray-700 rounded px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-600"
-                                disabled={requestingVenue}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter' && venueName.trim()) {
-                                    document.getElementById('activate-venue-btn')?.click();
-                                  }
-                                }}
-                              />
-                            </div>
-                            <button
-                              id="activate-venue-btn"
-                              onClick={async () => {
-                                if (!venueName.trim()) {
-                                  alert('Please enter a venue name');
-                                  return;
-                                }
-                                setRequestingVenue(true);
-                                try {
-                                  await requestVenueStatus(venueName.trim());
-                                  await refreshVenueInfo();
-                                  setVenueName('');
-                                } catch (error) {
-                                  console.error('Error activating venue:', error);
-                                  alert('Failed to activate venue. Please try again.');
-                                } finally {
-                                  setRequestingVenue(false);
-                                }
-                              }}
-                              disabled={requestingVenue || !venueName.trim()}
-                              className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded transition-colors"
-                            >
-                              {requestingVenue ? 'Activating...' : 'Activate Venue'}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Info box when venue mode is off */}
-                  {!venueMode && (
-                    <div className="mt-4 p-4 bg-[#333333] rounded">
-                      <p className="text-sm text-gray-400">
-                        Enable venue mode to access multi-board hosting, unlimited players, and venue-specific features.
-                      </p>
-                    </div>
-                  )}
-                </>
-              )}
             </div>
           )}
 

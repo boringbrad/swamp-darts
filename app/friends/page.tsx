@@ -18,7 +18,6 @@ import {
 } from '../lib/friends';
 import { STOCK_AVATARS } from '../lib/avatars';
 import { useUserPresence } from '../hooks/useUserPresence';
-import { joinVenue, leaveVenue, getVenueByRoomCode, getCurrentVenueParticipation } from '../lib/venue';
 import { getFriendsLastActivity, formatRelativeTime, FriendActivity } from '../lib/friendActivity';
 
 // Lazy load QR code components to improve initial page load
@@ -27,7 +26,7 @@ const QRScanner = lazy(() => import('../components/friends/QRScanner'));
 const FriendLeaderboards = lazy(() => import('../components/FriendLeaderboards'));
 const FriendStats = lazy(() => import('../components/FriendStats'));
 
-type Tab = 'friends' | 'requests' | 'add' | 'qr' | 'venues' | 'leaderboards' | 'stats';
+type Tab = 'friends' | 'requests' | 'add' | 'qr' | 'leaderboards' | 'stats';
 
 export default function FriendsPage() {
   const { userProfile } = useAppContext();
@@ -41,10 +40,6 @@ export default function FriendsPage() {
   const [searching, setSearching] = useState(false);
   const [qrMode, setQrMode] = useState<'show' | 'scan'>('show');
   const [scanResult, setScanResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [venueRoomCode, setVenueRoomCode] = useState('');
-  const [currentVenue, setCurrentVenue] = useState<{ id: string; venueName: string; roomCode: string } | null>(null);
-  const [joiningVenue, setJoiningVenue] = useState(false);
-  const [leavingVenue, setLeavingVenue] = useState(false);
   const [friendActivity, setFriendActivity] = useState<Map<string, FriendActivity>>(new Map());
 
   // Update user presence for online status tracking
@@ -61,17 +56,6 @@ export default function FriendsPage() {
     }, 60000); // 60 seconds
 
     return () => clearInterval(interval);
-  }, [activeTab]);
-
-  // Load current venue participation when VENUES tab is active
-  useEffect(() => {
-    const loadCurrentVenue = async () => {
-      if (activeTab === 'venues') {
-        const participation = await getCurrentVenueParticipation();
-        setCurrentVenue(participation);
-      }
-    };
-    loadCurrentVenue();
   }, [activeTab]);
 
   const loadData = async () => {
@@ -289,16 +273,6 @@ export default function FriendsPage() {
               }`}
             >
               QR
-            </button>
-            <button
-              onClick={() => setActiveTab('venues')}
-              className={`flex-1 py-3 px-4 font-bold rounded transition-colors whitespace-nowrap ${
-                activeTab === 'venues'
-                  ? 'bg-[#90EE90] text-black'
-                  : 'bg-[#333333] text-white hover:bg-[#444444]'
-              }`}
-            >
-              VENUES
             </button>
             <button
               onClick={() => setActiveTab('leaderboards')}
@@ -674,144 +648,6 @@ export default function FriendsPage() {
             </div>
           )}
 
-          {/* Venues Tab */}
-          {activeTab === 'venues' && (
-            <div>
-              <div className="bg-[#333333] rounded-lg p-6 mb-6">
-                <h2 className="text-white text-2xl font-bold mb-4">Join a Venue</h2>
-                <p className="text-gray-400 text-sm mb-4">
-                  Enter a venue's room code to join their player pool. You can then be selected for games on any of their boards.
-                </p>
-
-                <div className="flex gap-3 mb-4">
-                  <input
-                    type="text"
-                    value={venueRoomCode}
-                    onChange={(e) => setVenueRoomCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
-                    placeholder="Enter 6-character room code"
-                    className="flex-1 px-4 py-3 bg-[#2a2a2a] border-2 border-gray-700 rounded text-white text-center text-2xl font-mono tracking-widest uppercase focus:outline-none focus:ring-2 focus:ring-purple-600 focus:border-transparent"
-                    maxLength={6}
-                    disabled={joiningVenue}
-                  />
-                  <button
-                    onClick={async () => {
-                      if (!venueRoomCode || venueRoomCode.length !== 6) {
-                        alert('Please enter a valid 6-character room code');
-                        return;
-                      }
-
-                      setJoiningVenue(true);
-                      try {
-                        // First lookup the venue
-                        const venueData = await getVenueByRoomCode(venueRoomCode);
-                        if (!venueData) {
-                          alert('Venue not found. Please check the room code.');
-                          setJoiningVenue(false);
-                          return;
-                        }
-
-                        // Join the venue
-                        const result = await joinVenue(venueRoomCode);
-                        if (result.success) {
-                          setCurrentVenue({
-                            id: result.venueId!,
-                            venueName: venueData.venueName,
-                            roomCode: venueRoomCode
-                          });
-                          setVenueRoomCode('');
-                          alert(`Successfully joined ${venueData.venueName}!`);
-                        } else {
-                          alert(result.error || 'Failed to join venue');
-                        }
-                      } catch (error) {
-                        console.error('Error joining venue:', error);
-                        alert('Failed to join venue. Please try again.');
-                      } finally {
-                        setJoiningVenue(false);
-                      }
-                    }}
-                    disabled={joiningVenue || !venueRoomCode || venueRoomCode.length !== 6}
-                    className="px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold rounded transition-colors"
-                  >
-                    {joiningVenue ? 'Joining...' : 'Join'}
-                  </button>
-                </div>
-
-                <p className="text-gray-400 text-xs">
-                  {venueRoomCode.length}/6 characters
-                </p>
-              </div>
-
-              {/* Current Venue Status */}
-              {currentVenue && (
-                <div className="bg-[#333333] rounded-lg p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-white text-2xl font-bold">Current Venue</h2>
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                      <span className="text-green-500 text-sm font-bold">Active</span>
-                    </div>
-                  </div>
-
-                  <div className="bg-[#1a1a1a] rounded p-4 mb-4">
-                    <div className="mb-3">
-                      <span className="text-gray-400 text-sm">Venue Name:</span>
-                      <p className="text-white font-bold text-lg">{currentVenue.venueName}</p>
-                    </div>
-                    <div>
-                      <span className="text-gray-400 text-sm">Room Code:</span>
-                      <p className="text-white font-mono text-2xl tracking-wider">{currentVenue.roomCode}</p>
-                    </div>
-                  </div>
-
-                  <p className="text-gray-400 text-sm mb-4">
-                    You're in the player pool for this venue. The venue owner can select you for games on any of their boards.
-                  </p>
-
-                  <button
-                    onClick={async () => {
-                      if (!confirm(`Are you sure you want to leave ${currentVenue.venueName}?`)) return;
-
-                      setLeavingVenue(true);
-                      try {
-                        const result = await leaveVenue(currentVenue.id);
-                        if (result.success) {
-                          setCurrentVenue(null);
-                          alert('Successfully left the venue');
-                        } else {
-                          alert(result.error || 'Failed to leave venue');
-                        }
-                      } catch (error) {
-                        console.error('Error leaving venue:', error);
-                        alert('Failed to leave venue. Please try again.');
-                      } finally {
-                        setLeavingVenue(false);
-                      }
-                    }}
-                    disabled={leavingVenue}
-                    className="w-full px-6 py-3 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold rounded transition-colors"
-                  >
-                    {leavingVenue ? 'Leaving...' : 'Leave Venue'}
-                  </button>
-                </div>
-              )}
-
-              {/* Info when not in a venue */}
-              {!currentVenue && (
-                <div className="bg-[#2a2a2a] rounded-lg p-6 text-center">
-                  <div className="text-gray-400 mb-2">
-                    <svg className="w-16 h-16 mx-auto mb-4 opacity-50" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-                  <p className="text-white font-bold text-lg mb-2">Not in a Venue</p>
-                  <p className="text-gray-400 text-sm">
-                    Enter a room code above to join a venue's player pool
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Leaderboards Tab */}
           {activeTab === 'leaderboards' && (
