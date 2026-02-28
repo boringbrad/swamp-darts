@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import PlayerAvatar, { PlayerColor } from './PlayerAvatar';
 import AddGuestPlayerModal from './AddGuestPlayerModal';
 import { usePlayerContext } from '../contexts/PlayerContext';
@@ -27,6 +28,7 @@ const VARIANT_TITLES: Record<GolfVariant, string> = {
 };
 
 export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProps) {
+  const router = useRouter();
   const { localPlayers, addGuestPlayer, updateLocalPlayer } = usePlayerContext();
   const { setSelectedPlayers: setGlobalSelectedPlayers, playMode } = useAppContext();
   const sessionPlayers = useSessionPlayers();
@@ -335,8 +337,7 @@ export default function GolfPlayerSelection({ variant }: GolfPlayerSelectionProp
 
     setGlobalSelectedPlayers('golf', variant, players);
 
-    // Hard navigation so the SW-cached HTML is served when offline
-    window.location.href = `/golf/${variant}/game`;
+    router.push(`/golf/${variant}/game`);
   };
 
   const handleRandomizeOrder = () => {

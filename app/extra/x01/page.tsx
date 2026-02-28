@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Header from '@/app/components/Header';
 import PageWrapper from '@/app/components/PageWrapper';
 import PlayerAvatar, { PlayerColor } from '@/app/components/PlayerAvatar';
@@ -18,6 +19,7 @@ const COLOR_BORDERS: Record<string, string> = {
 };
 
 export default function X01PlayerSelectPage() {
+  const router = useRouter();
   const { localPlayers, addGuestPlayer, updateLocalPlayer } = usePlayerContext();
   const { setSelectedPlayers, x01StartingScore, x01DoubleIn, x01DoubleOut } = useAppContext();
   const { venueId, venuePlayersForSelection: venuePlayers, refreshParticipants } = useVenueContext();
@@ -98,8 +100,7 @@ export default function X01PlayerSelectPage() {
   const handleStart = () => {
     const players = selectedIds.map(id => getPlayerById(id)).filter(Boolean) as StoredPlayer[];
     setSelectedPlayers('x01', 'default', { players, isTeams: isTeamMode });
-    // Hard navigation so the SW-cached HTML is served when offline
-    window.location.href = '/extra/x01/game';
+    router.push('/extra/x01/game');
   };
 
   const handleRandomizeOrder = () => {

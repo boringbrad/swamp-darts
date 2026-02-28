@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import PlayerAvatar, { PlayerColor } from './PlayerAvatar';
 import AddGuestPlayerModal from './AddGuestPlayerModal';
 import { usePlayerContext } from '../contexts/PlayerContext';
@@ -52,6 +53,7 @@ const VARIANT_CONFIGS: Record<CricketVariant, VariantConfig> = {
 };
 
 export default function CricketPlayerSelection({ variant }: CricketPlayerSelectionProps) {
+  const router = useRouter();
   const config = VARIANT_CONFIGS[variant];
   const { localPlayers, addGuestPlayer, updateLocalPlayer } = usePlayerContext();
   const { selectedPlayers, setSelectedPlayers, cricketRules } = useAppContext();
@@ -228,8 +230,7 @@ export default function CricketPlayerSelection({ variant }: CricketPlayerSelecti
       });
     }
 
-    // Hard navigation so the SW-cached HTML is served when offline
-    window.location.href = `/cricket/${variant}/game`;
+    router.push(`/cricket/${variant}/game`);
   };
 
   const handleRandomizeOrder = () => {
