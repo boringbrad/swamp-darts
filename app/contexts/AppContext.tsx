@@ -275,7 +275,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCricketRulesState(storage.getCricketRules());
     setPlayModeState(storage.getPlayMode());
 
-    // Load golf course name from localStorage (already set via lazy useState, skip re-read)
+    // Load golf course name from localStorage — the lazy useState initializer runs on the
+    // server where window is undefined and returns 'SWAMPY MEADOWS', so we must re-read
+    // here on the client to restore the user's saved course name.
+    const savedCourseName = localStorage.getItem('golfCourseName');
+    if (savedCourseName !== null) {
+      setGolfCourseNameState(savedCourseName);
+    }
 
     // Load course banner settings from localStorage
     const savedBannerImage = localStorage.getItem('courseBannerImage');

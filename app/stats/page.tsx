@@ -91,8 +91,9 @@ export default function ProfilePage() {
   useEffect(() => {
     const loadCricketStatsData = async () => {
       if (selectedGame === 'cricket') {
-        // Check if user is logged in
-        const { data: { user } } = await supabase.auth.getUser();
+        // Use getSession() (local cache, no network call) instead of getUser() for fast display
+        const { data: { session } } = await supabase.auth.getSession();
+        const user = session?.user ?? null;
 
         let matches: any[] = [];
 

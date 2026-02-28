@@ -345,8 +345,9 @@ export function getUniquePlayers(matches: GolfMatch[]): { id: string; name: stri
  * Returns string like "PLAYER NAME (51)" or "NO RECORD" if no matches
  */
 export async function getCourseRecord(courseName: string): Promise<string> {
-  // Check if user is logged in
-  const { data: { user } } = await supabase.auth.getUser();
+  // Use getSession() (local cache, no network call) instead of getUser() for fast display
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
 
   let matches: GolfMatch[] = [];
 
