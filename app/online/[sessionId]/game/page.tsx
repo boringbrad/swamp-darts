@@ -46,6 +46,13 @@ export default function OnlineGamePage() {
   const [rematchKey, setRematchKey] = useState(0);
   const [exiting, setExiting] = useState(false);
 
+  // Snapshot players at game-start so the game keeps rendering even after one player
+  // sets left_at (which drops them from activeParticipants and would otherwise cause
+  // the render to show "Missing player data").
+  const [gameHostPlayer, setGameHostPlayer] = useState<Player | null>(null);
+  const [gameGuestPlayer, setGameGuestPlayer] = useState<Player | null>(null);
+  const [gameOnlineConfig, setGameOnlineConfig] = useState<OnlineConfig | null>(null);
+
   const myId = userProfile?.id;
   const handleRematch = () => setRematchKey(k => k + 1);
 
@@ -67,32 +74,31 @@ export default function OnlineGamePage() {
     const guestP = activeParticipants.find(p => !p.isHost);
     if (!hostP?.userId || !guestP?.userId) return;
 
+    const hostPlayer: Player = {
+      id: hostP.userId,
+      name: hostP.displayName || 'Player 1',
+      avatar: hostP.avatar || 'avatar-1',
+      photoUrl: hostP.photoUrl,
+    };
+    const guestPlayer: Player = {
+      id: guestP.userId,
+      name: guestP.displayName || 'Player 2',
+      avatar: guestP.avatar || 'avatar-1',
+      photoUrl: guestP.photoUrl,
+    };
+    const onlineConfig: OnlineConfig = {
+      sessionId,
+      myUserId: myId,
+      hostUserId: hostP.userId,
+      guestUserId: guestP.userId,
+    };
+
     // For x01: stash onlineConfig in sessionStorage then navigate to the x01 game page
     if (settings.gameType === 'x01') {
       setX01StartingScore(settings.x01StartingScore || 501);
       setX01DoubleIn(settings.x01DoubleIn ?? false);
       setX01DoubleOut(settings.x01DoubleOut ?? true);
-
-      const hostPlayer: Player = {
-        id: hostP.userId,
-        name: hostP.displayName || 'Player 1',
-        avatar: hostP.avatar || 'avatar-1',
-        photoUrl: hostP.photoUrl,
-      };
-      const guestPlayer: Player = {
-        id: guestP.userId,
-        name: guestP.displayName || 'Player 2',
-        avatar: guestP.avatar || 'avatar-1',
-        photoUrl: guestP.photoUrl,
-      };
       setSelectedPlayers('x01', 'default', { players: [hostPlayer, guestPlayer], isTeams: false });
-
-      const onlineConfig: OnlineConfig = {
-        sessionId,
-        myUserId: myId,
-        hostUserId: hostP.userId,
-        guestUserId: guestP.userId,
-      };
       try {
         sessionStorage.setItem('onlineConfig', JSON.stringify(onlineConfig));
       } catch (_) {}
@@ -103,18 +109,6 @@ export default function OnlineGamePage() {
     // For cricket: seed KO numbers deterministically from session ID
     if (settings.gameType === 'cricket') {
       const koNumbers = getKONumbersForSession(sessionId, [hostP.userId, guestP.userId]);
-      const hostPlayer: Player = {
-        id: hostP.userId,
-        name: hostP.displayName || 'Player 1',
-        avatar: hostP.avatar || 'avatar-1',
-        photoUrl: hostP.photoUrl,
-      };
-      const guestPlayer: Player = {
-        id: guestP.userId,
-        name: guestP.displayName || 'Player 2',
-        avatar: guestP.avatar || 'avatar-1',
-        photoUrl: guestP.photoUrl,
-      };
       setSelectedPlayers('cricket', 'singles', {
         players: [hostPlayer, guestPlayer],
         isTeams: false,
@@ -122,6 +116,11 @@ export default function OnlineGamePage() {
       });
     }
 
+    // Snapshot player data so a later participant update (opponent leaving) can't
+    // wipe out hostP/guestP and break the render.
+    setGameHostPlayer(hostPlayer);
+    setGameGuestPlayer(guestPlayer);
+    setGameOnlineConfig(onlineConfig);
     setReady(true);
   }, [sessionLoading, participantsLoading, session, activeParticipants, myId]);
 
@@ -154,10 +153,11 @@ export default function OnlineGamePage() {
   }
 
   const settings = session.gameSettings;
-  const hostP = activeParticipants.find(p => p.isHost);
-  const guestP = activeParticipants.find(p => !p.isHost);
 
-  if (!hostP?.userId || !guestP?.userId || !myId) {
+  // Use the snapshotted player data — never re-derive from activeParticipants here.
+  // activeParticipants updates when a player leaves, which would wipe out their
+  // data mid-game and show "Missing player data" instead of the game component.
+  if (!gameHostPlayer || !gameGuestPlayer || !gameOnlineConfig || !myId) {
     return (
       <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center">
         <p className="text-gray-400">Missing player data</p>
@@ -165,25 +165,9 @@ export default function OnlineGamePage() {
     );
   }
 
-  const onlineConfig: OnlineConfig = {
-    sessionId,
-    myUserId: myId,
-    hostUserId: hostP.userId,
-    guestUserId: guestP.userId,
-  };
-
-  const hostPlayer: Player = {
-    id: hostP.userId,
-    name: hostP.displayName || 'Player 1',
-    avatar: hostP.avatar || 'avatar-1',
-    photoUrl: hostP.photoUrl,
-  };
-  const guestPlayer: Player = {
-    id: guestP.userId,
-    name: guestP.displayName || 'Player 2',
-    avatar: guestP.avatar || 'avatar-1',
-    photoUrl: guestP.photoUrl,
-  };
+  const onlineConfig = gameOnlineConfig;
+  const hostPlayer = gameHostPlayer;
+  const guestPlayer = gameGuestPlayer;
 
   // Thin fixed header shown above all game content
   const onlineHeader = (
