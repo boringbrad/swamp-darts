@@ -27,6 +27,8 @@ CREATE POLICY "anyone can read open sessions"
   ON player_sessions FOR SELECT
   USING (status = 'open' AND expires_at > NOW());
 
+GRANT ALL ON public.player_sessions TO authenticated;
+
 ALTER PUBLICATION supabase_realtime ADD TABLE player_sessions;
 
 -- ============================================================
@@ -60,6 +62,8 @@ CREATE POLICY "host can manage participants"
         AND ps.host_user_id = auth.uid()
     )
   );
+
+GRANT ALL ON public.player_session_participants TO authenticated;
 
 ALTER PUBLICATION supabase_realtime ADD TABLE player_session_participants;
 
