@@ -356,7 +356,7 @@ export async function getCourseRecord(courseName: string): Promise<string> {
     const { data: supabaseMatches, error } = await supabase
       .from('golf_matches')
       .select('*')
-      .eq('user_id', user.id);
+      .or(`user_id.eq.${user.id},participant_user_ids.cs.{${user.id}}`);
 
     if (!error && supabaseMatches) {
       matches = supabaseMatches.map(m => m.match_data as GolfMatch);

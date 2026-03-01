@@ -672,7 +672,7 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
         // Check if this player belongs to the logged-in user
         const storedPlayer = localPlayers.find(p => p.id === player.id);
         const isCurrentUser = currentUserId && storedPlayer && storedPlayer.createdBy === currentUserId;
-        const playerUserId = isCurrentUser ? currentUserId : undefined;
+        const playerUserId = isCurrentUser ? currentUserId : (storedPlayer?.userId ?? undefined);
 
         return {
           playerId: player.id,
@@ -730,6 +730,9 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
               courseId: capturedMatchData.courseName,
               gameMode: capturedMatchData.variant,
               completedAt: new Date(capturedMatchData.date),
+              participantUserIds: capturedMatchData.players
+                .map((p: any) => p.userId)
+                .filter((uid: any): uid is string => !!uid && uid !== currentUserId),
             })
           ];
 

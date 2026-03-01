@@ -74,7 +74,7 @@ export interface AppContextValue {
 }
 
 export interface PlayerContextValue {
-  // Local Players
+  // Local Players (persistent guests + verified session players merged)
   localPlayers: StoredPlayer[];
   refreshPlayers: () => void;
   addLocalPlayer: (name: string, avatar?: string, isGuest?: boolean) => StoredPlayer;
@@ -85,4 +85,9 @@ export interface PlayerContextValue {
   addGuestPlayer: (name: string, avatar?: string) => StoredPlayer;
   getGuestPlayers: () => StoredPlayer[];
   cleanupGuestPlayers: () => void;
+
+  // Verified session players (friends with accounts, expire after 8 hours)
+  sessionPlayers: StoredPlayer[];
+  addSessionPlayer: (player: import('./storage').SessionPlayer) => void;
+  removeSessionPlayer: (userId: string) => void;
 }

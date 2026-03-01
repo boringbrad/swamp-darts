@@ -380,10 +380,10 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
             playerScores[h.playerIndex]?.playerId === player.playerId
           );
 
-          // Check if this player belongs to the logged-in user
+          // Check if this player belongs to the logged-in user or is a verified session friend
           const storedPlayer = localPlayers.find(p => p.id === player.playerId);
           const isCurrentUser = currentUserId && storedPlayer && storedPlayer.createdBy === currentUserId;
-          const playerUserId = isCurrentUser ? currentUserId : undefined;
+          const playerUserId = isCurrentUser ? currentUserId : (storedPlayer?.userId ?? undefined);
           const playerAvatar = storedPlayer?.avatar;
           const playerPhotoUrl = storedPlayer?.photoUrl;
 
@@ -443,6 +443,9 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
             players: matchData.players,
             gameMode: matchData.variant,
             completedAt: new Date(matchData.date),
+            participantUserIds: matchData.players
+              .map((p: any) => p.userId)
+              .filter((uid: any): uid is string => !!uid && uid !== currentUserId),
           })
         ];
 

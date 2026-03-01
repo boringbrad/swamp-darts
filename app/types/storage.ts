@@ -13,6 +13,19 @@ export interface StoredPlayer extends Player {
   createdBy?: string; // User ID of the player who created this player/guest
   addedDate: Date;
   lastUsed?: Date;
+  // Verified session player fields (only set for friends added via local session invite)
+  isVerified?: boolean;       // true = linked to a real Supabase account
+  sessionExpiresAt?: string;  // ISO string — when this player's session expires
+  userId?: string;            // Their actual auth user_id (for stat attribution)
+}
+
+export interface SessionPlayer {
+  userId: string;       // Supabase auth user_id
+  displayName: string;
+  avatar?: string;
+  photoUrl?: string;
+  joinedAt: string;     // ISO string
+  expiresAt: string;    // ISO string (joinedAt + 8 hours)
 }
 
 export interface LocalPlayersStorage {

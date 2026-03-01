@@ -36,6 +36,7 @@ export default function Home() {
             <GameModeCard title="PLAY ONLINE" href="/online" color="tbd" />
             {/* Portrait only - show profile buttons */}
             <div className="landscape:hidden lg:hidden contents">
+              <GameModeCard title="MANAGE PLAYERS" href="/players" color="gray" />
               <GameModeCard title="PROFILE" href="/stats" color="gray" />
               <GameModeCard title="FRIENDS" href="/friends" color="gray" badgeCount={requestCount} />
               {isAdmin && (
@@ -46,6 +47,7 @@ export default function Home() {
 
           {/* Right side - Profile and options (landscape/desktop only) - Takes 1/3 of width */}
           <div className="hidden landscape:flex landscape:w-1/3 lg:flex lg:w-1/3 flex-col gap-2 landscape:gap-3 sm:gap-4 h-full">
+            <GameModeCard title="MANAGE PLAYERS" href="/players" color="gray" />
             <GameModeCard title="PROFILE" href="/stats" color="gray" />
             <GameModeCard title="FRIENDS" href="/friends" color="gray" badgeCount={requestCount} />
             {isAdmin && (

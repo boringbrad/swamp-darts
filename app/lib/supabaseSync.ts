@@ -120,6 +120,7 @@ export interface CricketMatchData {
   completedAt?: Date;
   venueId?: string; // Optional venue ID for venue games
   boardId?: string; // Optional board ID for venue games
+  participantUserIds?: string[]; // user_ids of verified friends in this match (for stat attribution)
 }
 
 /**
@@ -155,6 +156,7 @@ export async function syncCricketMatch(matchData: CricketMatchData): Promise<boo
         completed_at: matchData.completedAt || new Date().toISOString(),
         venue_id: matchData.venueId || null,
         board_id: matchData.boardId || null,
+        participant_user_ids: matchData.participantUserIds ?? [],
       }, {
         onConflict: 'match_id',
       });
@@ -218,6 +220,7 @@ export interface GolfMatchData {
   completedAt?: Date;
   venueId?: string; // Optional venue ID for venue games
   boardId?: string; // Optional board ID for venue games
+  participantUserIds?: string[]; // user_ids of verified friends in this match (for stat attribution)
 }
 
 /**
@@ -254,6 +257,7 @@ export async function syncGolfMatch(matchData: GolfMatchData): Promise<boolean> 
         completed_at: matchData.completedAt || new Date().toISOString(),
         venue_id: matchData.venueId || null,
         board_id: matchData.boardId || null,
+        participant_user_ids: matchData.participantUserIds ?? [],
       }, {
         onConflict: 'match_id',
       });
