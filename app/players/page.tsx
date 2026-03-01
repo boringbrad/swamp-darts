@@ -152,29 +152,34 @@ export default function ManagePlayersPage() {
 
   async function handleStartSession() {
     setStartingSession(true);
-    const sessionId = await createPlayerSession({
-      displayName: userProfile?.displayName,
-      avatar: userProfile?.avatar,
-      photoUrl: (userProfile as any)?.photoUrl,
-    });
+    try {
+      const sessionId = await createPlayerSession({
+        displayName: userProfile?.displayName,
+        avatar: userProfile?.avatar,
+        photoUrl: (userProfile as any)?.photoUrl,
+      });
 
-    if (sessionId) {
-      const session: PlayerSessionInfo = {
-        id: sessionId,
-        hostUserId: userProfile?.id || '',
-        hostProfile: {
-          displayName: userProfile?.displayName,
-          avatar: userProfile?.avatar,
-          photoUrl: (userProfile as any)?.photoUrl,
-        },
-        status: 'open',
-        createdAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
-      };
-      setMySession(session);
-      subscribeToParticipants(session);
+      if (sessionId) {
+        const session: PlayerSessionInfo = {
+          id: sessionId,
+          hostUserId: userProfile?.id || '',
+          hostProfile: {
+            displayName: userProfile?.displayName,
+            avatar: userProfile?.avatar,
+            photoUrl: (userProfile as any)?.photoUrl,
+          },
+          status: 'open',
+          createdAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+        };
+        setMySession(session);
+        subscribeToParticipants(session);
+      }
+    } catch (err) {
+      console.error('Failed to start game night:', err);
+    } finally {
+      setStartingSession(false);
     }
-    setStartingSession(false);
   }
 
   async function handleEndSession() {
