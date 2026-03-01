@@ -1,37 +1,17 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import Header from '../components/Header';
 import PageWrapper from '../components/PageWrapper';
 import AddGuestPlayerModal from '../components/AddGuestPlayerModal';
 import { useAppContext } from '../contexts/AppContext';
 import { usePlayerContext } from '../contexts/PlayerContext';
-import {
-  createPlayerSession,
-  closePlayerSession,
-  getMyActiveSession,
-  getSessionParticipants,
-  removeParticipant,
-  PlayerSessionInfo,
-  SessionParticipant,
-} from '../lib/playerSessions';
-import { createClient } from '../lib/supabase/client';
+import { getMyRoomCode, removeRoomMember } from '../lib/roomMembers';
 import { STOCK_AVATARS } from '../lib/avatars';
-import { StoredPlayer, SessionPlayer } from '../types/storage';
-
-const supabase = createClient();
+import { StoredPlayer } from '../types/storage';
 
 function getAvatarData(avatarId?: string) {
   return STOCK_AVATARS.find(a => a.id === avatarId) || STOCK_AVATARS[0];
-}
-
-function timeRemaining(expiresAt: string): string {
-  const diff = new Date(expiresAt).getTime() - Date.now();
-  if (diff <= 0) return 'Expired';
-  const hours = Math.floor(diff / (1000 * 60 * 60));
-  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  if (hours > 0) return `${hours}h ${minutes}m left`;
-  return `${minutes}m left`;
 }
 
 function PlayerAvatar({ player, size = 12, borderClass = 'border-white/20' }: {
@@ -63,163 +43,42 @@ export default function ManagePlayersPage() {
     addGuestPlayer,
     updateLocalPlayer,
     deleteLocalPlayer,
-    addSessionPlayer,
-    removeSessionPlayer,
+    refreshRoomMembers,
   } = usePlayerContext();
+
+  // Room code
+  const [roomCode, setRoomCode] = useState<string | null>(null);
+  const [codeCopied, setCodeCopied] = useState(false);
 
   // Guest management
   const [showAddGuest, setShowAddGuest] = useState(false);
   const [editingGuest, setEditingGuest] = useState<StoredPlayer | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
-  // Game night session state
-  const [mySession, setMySession] = useState<PlayerSessionInfo | null>(null);
-  const [initializingSession, setInitializingSession] = useState(true);
-  const [startingSession, setStartingSession] = useState(false);
-  const [endingSession, setEndingSession] = useState(false);
-  const [sessionError, setSessionError] = useState<string | null>(null);
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  // Room member removal
+  const [removingUserId, setRemovingUserId] = useState<string | null>(null);
 
   const persistentGuests = localPlayers.filter(p => !p.isVerified);
 
-  // On mount: check for existing active session and subscribe to participants
   useEffect(() => {
-    initSession();
-    return () => {
-      if (channelRef.current) supabase.removeChannel(channelRef.current);
-    };
+    getMyRoomCode().then(code => setRoomCode(code));
   }, []);
 
-  async function initSession() {
-    try {
-      const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
-      const session = await Promise.race([getMyActiveSession(), timeout]);
-      if (session) {
-        setMySession(session);
-        // Load existing participants and add them to the player pool
-        const participants = await getSessionParticipants(session.id);
-        for (const p of participants) {
-          addSessionPlayer({
-            userId: p.userId,
-            displayName: p.displayName,
-            avatar: p.avatar,
-            photoUrl: p.photoUrl,
-            joinedAt: p.joinedAt,
-            expiresAt: session.expiresAt,
-          });
-        }
-        subscribeToParticipants(session);
-      }
-    } catch (err) {
-      console.error('initSession error:', err);
-    } finally {
-      setInitializingSession(false);
-    }
-  }
+  const handleCopyCode = () => {
+    if (!roomCode) return;
+    navigator.clipboard.writeText(roomCode).then(() => {
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2000);
+    });
+  };
 
-  function subscribeToParticipants(session: PlayerSessionInfo) {
-    if (channelRef.current) supabase.removeChannel(channelRef.current);
-
-    const channel = supabase
-      .channel(`session-participants:${session.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'player_session_participants',
-          filter: `session_id=eq.${session.id}`,
-        },
-        (payload: any) => {
-          const p = payload.new;
-          addSessionPlayer({
-            userId: p.user_id,
-            displayName: p.display_name,
-            avatar: p.avatar,
-            photoUrl: p.photo_url,
-            joinedAt: p.joined_at,
-            expiresAt: session.expiresAt,
-          });
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'player_session_participants',
-          filter: `session_id=eq.${session.id}`,
-        },
-        (payload: any) => {
-          if (payload.old?.user_id) removeSessionPlayer(payload.old.user_id);
-        }
-      )
-      .subscribe();
-
-    channelRef.current = channel;
-  }
-
-  async function handleStartSession() {
-    setStartingSession(true);
-    setSessionError(null);
-    try {
-      const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Request timed out — check your connection')), 12000)
-      );
-      const sessionId = await Promise.race([
-        createPlayerSession({
-          displayName: userProfile?.displayName,
-          avatar: userProfile?.avatar,
-          photoUrl: (userProfile as any)?.photoUrl,
-        }),
-        timeout,
-      ]);
-
-      if (sessionId) {
-        const session: PlayerSessionInfo = {
-          id: sessionId,
-          hostUserId: userProfile?.id || '',
-          hostProfile: {
-            displayName: userProfile?.displayName,
-            avatar: userProfile?.avatar,
-            photoUrl: (userProfile as any)?.photoUrl,
-          },
-          status: 'open',
-          createdAt: new Date().toISOString(),
-          expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
-        };
-        setMySession(session);
-        subscribeToParticipants(session);
-      }
-    } catch (err: any) {
-      console.error('Failed to start game night:', err);
-      setSessionError(err?.message || 'Failed to start game night');
-    } finally {
-      setStartingSession(false);
-    }
-  }
-
-  async function handleEndSession() {
-    if (!mySession) return;
-    setEndingSession(true);
-    await closePlayerSession(mySession.id);
-    // Clear all session players from the pool
-    for (const sp of sessionPlayers) {
-      if (sp.userId) removeSessionPlayer(sp.userId);
-    }
-    if (channelRef.current) {
-      supabase.removeChannel(channelRef.current);
-      channelRef.current = null;
-    }
-    setMySession(null);
-    setEndingSession(false);
-  }
-
-  async function handleRemoveParticipant(sp: StoredPlayer) {
-    if (!mySession || !sp.userId) return;
-    await removeParticipant(mySession.id, sp.userId);
-    removeSessionPlayer(sp.userId);
-  }
+  const handleRemoveMember = async (sp: StoredPlayer) => {
+    if (!sp.userId) return;
+    setRemovingUserId(sp.userId);
+    await removeRoomMember(sp.userId);
+    await refreshRoomMembers();
+    setRemovingUserId(null);
+  };
 
   return (
     <div className="min-h-screen bg-[#1a1a1a]">
@@ -228,12 +87,16 @@ export default function ManagePlayersPage() {
         <div className="h-24"></div>
         <main className="px-6 pb-24 max-w-2xl mx-auto">
 
-          {/* ── YOUR ACCOUNT ─────────────────────────────── */}
+          {/* ── YOUR ACCOUNT + ROOM CODE ──────────────────── */}
           <section className="mb-8">
             <h2 className="text-white/50 text-xs font-bold tracking-widest uppercase mb-3">Your Account</h2>
-            <div className="bg-[#2a2a2a] rounded-lg p-4 flex items-center gap-4">
+            <div className="bg-[#2a2a2a] rounded-lg p-4 flex items-center gap-4 mb-3">
               <PlayerAvatar
-                player={{ photoUrl: (userProfile as any)?.photoUrl, avatar: userProfile?.avatar, name: userProfile?.displayName || '' }}
+                player={{
+                  photoUrl: (userProfile as any)?.photoUrl,
+                  avatar: userProfile?.avatar,
+                  name: userProfile?.displayName || '',
+                }}
                 size={14}
               />
               <div>
@@ -241,87 +104,70 @@ export default function ManagePlayersPage() {
                 <p className="text-white/40 text-sm">Your account — always in the pool</p>
               </div>
             </div>
+
+            {/* Room code display */}
+            <div className="bg-[#2a2a2a] rounded-lg p-4">
+              <p className="text-white/50 text-xs font-bold tracking-widest uppercase mb-2">Your Room Code</p>
+              <p className="text-white/60 text-xs mb-3">
+                Share this code with friends. They enter it on their Friends page to join your player pool.
+              </p>
+              <div className="flex items-center gap-3">
+                {roomCode ? (
+                  <>
+                    <span className="text-3xl font-black tracking-[0.3em] text-[#4CAF50] font-mono">
+                      {roomCode}
+                    </span>
+                    <button
+                      onClick={handleCopyCode}
+                      className="px-4 py-2 bg-[#444] text-white text-sm font-bold rounded hover:bg-[#555] transition-colors"
+                    >
+                      {codeCopied ? 'COPIED!' : 'COPY'}
+                    </button>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-[#4CAF50] border-t-transparent rounded-full animate-spin" />
+                    <span className="text-white/40 text-sm">Loading...</span>
+                  </div>
+                )}
+              </div>
+            </div>
           </section>
 
-          {/* ── TONIGHT'S PLAYERS ────────────────────────── */}
+          {/* ── TONIGHT'S PLAYERS (room members) ─────────── */}
           <section className="mb-8">
             <h2 className="text-white/50 text-xs font-bold tracking-widest uppercase mb-3">Tonight's Players</h2>
 
-            {/* Session players list */}
-            {sessionPlayers.map(sp => (
-              <div key={sp.id} className="bg-[#2a2a2a] rounded-lg p-4 flex items-center gap-4 mb-3">
-                <PlayerAvatar
-                  player={{ photoUrl: sp.photoUrl, avatar: sp.avatar, name: sp.name }}
-                  size={12}
-                  borderClass="border-[#4CAF50]/60"
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-white font-bold truncate">{sp.name}</p>
-                    <span className="text-[#4CAF50] text-xs font-bold">✓</span>
-                  </div>
-                  <p className="text-[#4CAF50] text-xs">
-                    {sp.sessionExpiresAt ? timeRemaining(sp.sessionExpiresAt) : ''}
-                  </p>
-                </div>
-                {mySession && (
-                  <button
-                    onClick={() => handleRemoveParticipant(sp)}
-                    className="px-3 py-1 bg-[#444] text-white/70 text-sm font-bold rounded hover:bg-[#555] transition-colors"
-                  >
-                    REMOVE
-                  </button>
-                )}
-              </div>
-            ))}
-
-            {/* Loading — checking for existing session */}
-            {initializingSession && (
-              <div className="bg-[#2a2a2a] rounded-lg p-6 flex justify-center">
-                <div className="w-6 h-6 border-2 border-[#4CAF50] border-t-transparent rounded-full animate-spin" />
-              </div>
-            )}
-
-            {/* No session — show start button */}
-            {!initializingSession && !mySession && (
+            {sessionPlayers.length === 0 ? (
               <div className="bg-[#2a2a2a] rounded-lg p-6 text-center">
-                {sessionPlayers.length === 0 && (
-                  <p className="text-white/40 text-sm mb-5">
-                    Start a game night so friends can join from their Friends page. Their stats will be tracked all night.
-                  </p>
-                )}
-                <button
-                  onClick={handleStartSession}
-                  disabled={startingSession}
-                  className="w-full py-4 bg-[#4CAF50] text-white text-lg font-bold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-                >
-                  {startingSession ? 'STARTING...' : 'START GAME NIGHT'}
-                </button>
-                {sessionError && (
-                  <p className="text-[#FF6B6B] text-xs mt-3 text-left break-all">{sessionError}</p>
-                )}
-              </div>
-            )}
-
-            {/* Session open — show status and end button */}
-            {mySession && (
-              <div className="bg-[#2a2a2a] rounded-lg p-4 mt-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="w-2 h-2 rounded-full bg-[#4CAF50] animate-pulse inline-block" />
-                  <p className="text-[#4CAF50] text-sm font-bold">Game night is open</p>
-                  <p className="text-white/30 text-xs ml-auto">{timeRemaining(mySession.expiresAt)}</p>
-                </div>
-                <p className="text-white/50 text-xs mb-4">
-                  Friends can join from their Friends page. They'll appear here automatically.
+                <p className="text-white/40 text-sm">
+                  No one has joined yet. Share your room code and friends will appear here automatically.
                 </p>
-                <button
-                  onClick={handleEndSession}
-                  disabled={endingSession}
-                  className="w-full py-2 bg-[#444] text-white/70 text-sm font-bold rounded hover:bg-[#555] transition-colors disabled:opacity-50"
-                >
-                  {endingSession ? 'ENDING...' : 'END GAME NIGHT'}
-                </button>
               </div>
+            ) : (
+              sessionPlayers.map(sp => (
+                <div key={sp.id} className="bg-[#2a2a2a] rounded-lg p-4 flex items-center gap-4 mb-3">
+                  <PlayerAvatar
+                    player={{ photoUrl: sp.photoUrl, avatar: sp.avatar, name: sp.name }}
+                    size={12}
+                    borderClass="border-[#4CAF50]/60"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-white font-bold truncate">{sp.name}</p>
+                      <span className="text-[#4CAF50] text-xs font-bold">✓</span>
+                    </div>
+                    <p className="text-white/40 text-xs">Verified account</p>
+                  </div>
+                  <button
+                    onClick={() => handleRemoveMember(sp)}
+                    disabled={removingUserId === sp.userId}
+                    className="px-3 py-1 bg-[#444] text-white/70 text-sm font-bold rounded hover:bg-[#555] transition-colors disabled:opacity-50"
+                  >
+                    {removingUserId === sp.userId ? '...' : 'REMOVE'}
+                  </button>
+                </div>
+              ))
             )}
           </section>
 

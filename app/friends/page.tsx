@@ -16,25 +16,10 @@ import {
   Friend,
   FriendRequest
 } from '../lib/friends';
-import {
-  getFriendSessions,
-  joinPlayerSession,
-  leavePlayerSession,
-  getMyJoinedSessionId,
-  PlayerSessionInfo,
-} from '../lib/playerSessions';
+import { joinRoomByCode, getMyJoinedRooms, leaveRoom, JoinedRoom } from '../lib/roomMembers';
 import { STOCK_AVATARS } from '../lib/avatars';
 import { useUserPresence } from '../hooks/useUserPresence';
 import { getFriendsLastActivity, formatRelativeTime, FriendActivity } from '../lib/friendActivity';
-
-function timeRemaining(expiresAt: string): string {
-  const diff = new Date(expiresAt).getTime() - Date.now();
-  if (diff <= 0) return 'Expired';
-  const hours = Math.floor(diff / (1000 * 60 * 60));
-  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  if (hours > 0) return `${hours}h ${minutes}m left`;
-  return `${minutes}m left`;
-}
 
 // Lazy load QR code components to improve initial page load
 const UserQRCode = lazy(() => import('../components/friends/UserQRCode'));
@@ -57,9 +42,15 @@ export default function FriendsPage() {
   const [qrMode, setQrMode] = useState<'show' | 'scan'>('show');
   const [scanResult, setScanResult] = useState<{ success: boolean; message: string } | null>(null);
   const [friendActivity, setFriendActivity] = useState<Map<string, FriendActivity>>(new Map());
-  const [friendSessions, setFriendSessions] = useState<PlayerSessionInfo[]>([]);
-  const [myJoinedSessionId, setMyJoinedSessionId] = useState<string | null>(null);
-  const [joiningSessionId, setJoiningSessionId] = useState<string | null>(null);
+
+  // Room code entry
+  const [roomCodeInput, setRoomCodeInput] = useState('');
+  const [joiningRoom, setJoiningRoom] = useState(false);
+  const [joinResult, setJoinResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Rooms I've joined (where I am a member)
+  const [joinedRooms, setJoinedRooms] = useState<JoinedRoom[]>([]);
+  const [leavingRoomId, setLeavingRoomId] = useState<string | null>(null);
 
   // Update user presence for online status tracking
   useUserPresence();
@@ -89,35 +80,29 @@ export default function FriendsPage() {
       setFriendRequests(requestsData);
       setSentRequests(sentData);
 
-      // Load game night sessions separately — errors here must not wipe the friends list
+      // Load friend activity — errors here must not wipe the friends list
       if (activeTab === 'friends' && friendsData.length > 0) {
         try {
           const friendUserIds = friendsData.map(f => f.userId);
-          const [activity, sessions] = await Promise.all([
-            getFriendsLastActivity(friendUserIds),
-            getFriendSessions(friendUserIds),
-          ]);
+          const activity = await getFriendsLastActivity(friendUserIds);
           setFriendActivity(activity);
-          setFriendSessions(sessions);
-          if (sessions.length > 0) {
-            const joinedId = await getMyJoinedSessionId(sessions.map(s => s.id));
-            setMyJoinedSessionId(joinedId);
-          } else {
-            setMyJoinedSessionId(null);
-          }
-        } catch (sessionErr) {
-          console.error('Error loading game night sessions:', sessionErr);
-          setFriendSessions([]);
-          setMyJoinedSessionId(null);
+        } catch (activityErr) {
+          console.error('Error loading friend activity:', activityErr);
         }
-      } else if (activeTab === 'friends') {
-        setFriendSessions([]);
-        setMyJoinedSessionId(null);
+      }
+
+      // Load rooms I've joined — errors here must not wipe the friends list
+      if (activeTab === 'friends') {
+        try {
+          const rooms = await getMyJoinedRooms();
+          setJoinedRooms(rooms);
+        } catch (roomErr) {
+          console.error('Error loading joined rooms:', roomErr);
+        }
       }
 
     } catch (error) {
       console.error('Error loading friends data:', error);
-      // Set empty arrays on error so the UI can still render
       setFriends([]);
       setFriendRequests([]);
       setSentRequests([]);
@@ -126,22 +111,34 @@ export default function FriendsPage() {
     }
   };
 
-  const handleJoinSession = async (session: PlayerSessionInfo) => {
-    setJoiningSessionId(session.id);
-    const success = await joinPlayerSession(session.id, {
+  const handleJoinRoom = async () => {
+    if (!roomCodeInput.trim()) return;
+    setJoiningRoom(true);
+    setJoinResult(null);
+    const result = await joinRoomByCode(roomCodeInput, {
       displayName: userProfile?.displayName || '',
       avatar: userProfile?.avatar,
       photoUrl: (userProfile as any)?.photoUrl,
     });
-    if (success) setMyJoinedSessionId(session.id);
-    setJoiningSessionId(null);
+    setJoiningRoom(false);
+    if (result.success) {
+      setJoinResult({ success: true, message: `You joined ${result.ownerDisplayName}'s player pool!` });
+      setRoomCodeInput('');
+      // Refresh joined rooms list
+      try {
+        const rooms = await getMyJoinedRooms();
+        setJoinedRooms(rooms);
+      } catch { /* silent */ }
+    } else {
+      setJoinResult({ success: false, message: result.error || 'Failed to join.' });
+    }
   };
 
-  const handleLeaveSession = async (sessionId: string) => {
-    setJoiningSessionId(sessionId);
-    await leavePlayerSession(sessionId);
-    setMyJoinedSessionId(null);
-    setJoiningSessionId(null);
+  const handleLeaveRoom = async (ownerId: string) => {
+    setLeavingRoomId(ownerId);
+    await leaveRoom(ownerId);
+    setJoinedRooms(prev => prev.filter(r => r.ownerId !== ownerId));
+    setLeavingRoomId(null);
   };
 
   const handleSearch = async (query: string) => {
@@ -356,58 +353,74 @@ export default function FriendsPage() {
           {/* Friends Tab */}
           {activeTab === 'friends' && (
             <div>
-              {/* ── GAME NIGHTS ─────────────────────────────── */}
-              {friendSessions.length > 0 && (
+              {/* ── JOIN A ROOM ──────────────────────────────── */}
+              <div className="mb-6">
+                <h2 className="text-white/50 text-xs font-bold tracking-widest uppercase mb-3">Join a Player Pool</h2>
+                <div className="bg-[#2a2a2a] rounded-lg p-4">
+                  <p className="text-white/60 text-sm mb-3">
+                    Enter a friend's 6-letter room code to join their player pool and be counted in their games.
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="ENTER CODE"
+                      value={roomCodeInput}
+                      onChange={e => {
+                        setRoomCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6));
+                        setJoinResult(null);
+                      }}
+                      onKeyDown={e => e.key === 'Enter' && handleJoinRoom()}
+                      maxLength={6}
+                      className="flex-1 px-4 py-3 bg-[#1a1a1a] text-white font-mono text-xl tracking-widest rounded border-2 border-[#444] focus:border-[#4CAF50] outline-none uppercase placeholder:text-white/20"
+                    />
+                    <button
+                      onClick={handleJoinRoom}
+                      disabled={joiningRoom || roomCodeInput.length < 6}
+                      className="px-5 py-3 bg-[#4CAF50] text-white font-bold rounded hover:opacity-90 transition-opacity disabled:opacity-40"
+                    >
+                      {joiningRoom ? '...' : 'JOIN'}
+                    </button>
+                  </div>
+                  {joinResult && (
+                    <p className={`mt-3 text-sm font-bold ${joinResult.success ? 'text-[#4CAF50]' : 'text-[#FF6B6B]'}`}>
+                      {joinResult.message}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* ── ROOMS I'VE JOINED ────────────────────────── */}
+              {joinedRooms.length > 0 && (
                 <div className="mb-6">
-                  <h2 className="text-white/50 text-xs font-bold tracking-widest uppercase mb-3">Game Nights</h2>
+                  <h2 className="text-white/50 text-xs font-bold tracking-widest uppercase mb-3">Pools I've Joined</h2>
                   <div className="space-y-3">
-                    {friendSessions.map(session => {
-                      const hostName = session.hostProfile.displayName || 'A friend';
-                      const hostAvatarData = STOCK_AVATARS.find(a => a.id === session.hostProfile.avatar) || STOCK_AVATARS[0];
-                      const isJoined = myJoinedSessionId === session.id;
-                      const isLoading = joiningSessionId === session.id;
+                    {joinedRooms.map(room => {
+                      const avatarData = STOCK_AVATARS.find(a => a.id === room.ownerAvatar) || STOCK_AVATARS[0];
                       return (
-                        <div key={session.id} className="bg-[#2a2a2a] rounded-lg p-4 flex items-center gap-4">
-                          {/* Host avatar */}
-                          {session.hostProfile.photoUrl ? (
+                        <div key={room.ownerId} className="bg-[#2a2a2a] rounded-lg p-4 flex items-center gap-4">
+                          {room.ownerPhotoUrl ? (
                             <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#4CAF50]/60 flex-shrink-0">
-                              <img src={session.hostProfile.photoUrl} alt="" className="w-full h-full object-cover" />
+                              <img src={room.ownerPhotoUrl} alt="" className="w-full h-full object-cover" />
                             </div>
                           ) : (
                             <div
                               className="w-12 h-12 rounded-full flex items-center justify-center text-2xl border-2 border-[#4CAF50]/60 flex-shrink-0"
-                              style={{ backgroundColor: hostAvatarData.color }}
+                              style={{ backgroundColor: avatarData.color }}
                             >
-                              {hostAvatarData.emoji}
+                              {avatarData.emoji}
                             </div>
                           )}
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full bg-[#4CAF50] animate-pulse inline-block flex-shrink-0" />
-                              <p className="text-white font-bold truncate">{hostName} is hosting</p>
-                            </div>
-                            <p className="text-white/40 text-xs">{timeRemaining(session.expiresAt)}</p>
-                            {isJoined && (
-                              <p className="text-[#4CAF50] text-xs font-bold">You're in!</p>
-                            )}
+                            <p className="text-white font-bold truncate">{room.ownerDisplayName}'s pool</p>
+                            <p className="text-[#4CAF50] text-xs font-bold">You're in</p>
                           </div>
-                          {isJoined ? (
-                            <button
-                              onClick={() => handleLeaveSession(session.id)}
-                              disabled={isLoading}
-                              className="px-4 py-2 bg-[#444] text-white/70 text-sm font-bold rounded hover:bg-[#555] transition-colors disabled:opacity-50 flex-shrink-0"
-                            >
-                              {isLoading ? '...' : 'LEAVE'}
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => handleJoinSession(session)}
-                              disabled={isLoading}
-                              className="px-4 py-2 bg-[#4CAF50] text-white text-sm font-bold rounded hover:opacity-90 transition-opacity disabled:opacity-50 flex-shrink-0"
-                            >
-                              {isLoading ? '...' : 'JOIN'}
-                            </button>
-                          )}
+                          <button
+                            onClick={() => handleLeaveRoom(room.ownerId)}
+                            disabled={leavingRoomId === room.ownerId}
+                            className="px-4 py-2 bg-[#444] text-white/70 text-sm font-bold rounded hover:bg-[#555] transition-colors disabled:opacity-50 flex-shrink-0"
+                          >
+                            {leavingRoomId === room.ownerId ? '...' : 'LEAVE'}
+                          </button>
                         </div>
                       );
                     })}

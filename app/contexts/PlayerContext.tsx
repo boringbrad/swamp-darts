@@ -1,78 +1,84 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { PlayerContextValue } from '../types/context';
-import { StoredPlayer, SessionPlayer } from '../types/storage';
+import { StoredPlayer } from '../types/storage';
 import { playerStorage } from '../lib/playerStorage';
-import { localSession } from '../lib/localSession';
 import { syncGuestPlayer, deleteGuestPlayerFromSupabase, canSyncToSupabase } from '../lib/supabaseSync';
+import { getMyRoomMembers, RoomMember } from '../lib/roomMembers';
 import { useAuth } from './AuthContext';
 
 const PlayerContext = createContext<PlayerContextValue | undefined>(undefined);
 
-/** Convert a SessionPlayer to the StoredPlayer shape expected by game components. */
-function sessionPlayerToStored(sp: SessionPlayer): StoredPlayer {
+function roomMemberToStored(m: RoomMember): StoredPlayer {
   return {
-    id: `session-${sp.userId}`,
-    name: sp.displayName,
-    avatar: sp.avatar,
-    photoUrl: sp.photoUrl,
+    id: `room-${m.memberUserId}`,
+    name: m.displayName,
+    avatar: m.avatar,
+    photoUrl: m.photoUrl,
     isGuest: false,
     isVerified: true,
-    userId: sp.userId,
-    sessionExpiresAt: sp.expiresAt,
-    createdBy: undefined, // intentionally undefined — bypasses the createdBy filter
-    addedDate: new Date(sp.joinedAt),
-    lastUsed: new Date(sp.joinedAt),
+    userId: m.memberUserId,
+    createdBy: undefined, // bypasses createdBy filter in refreshLocalPlayers
+    addedDate: new Date(m.joinedAt),
+    lastUsed: new Date(m.joinedAt),
   };
 }
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const [localPlayers, setLocalPlayers] = useState<StoredPlayer[]>([]);
-  const [sessionPlayers, setSessionPlayers] = useState<StoredPlayer[]>([]);
+  const [persistentPlayers, setPersistentPlayers] = useState<StoredPlayer[]>([]);
+  const [roomMemberPlayers, setRoomMemberPlayers] = useState<StoredPlayer[]>([]);
 
-  // Load players from storage on mount and when user changes
-  useEffect(() => {
-    // Clear expired session players before loading
-    localSession.clearExpiredSessionPlayers();
-    refreshPlayers();
-
-    // Listen for player changes from other parts of the app
-    const handlePlayersChanged = () => {
-      console.log('PlayerContext: Players changed event received, refreshing...');
-      refreshPlayers();
-    };
-
-    window.addEventListener('playersChanged', handlePlayersChanged);
-
-    return () => {
-      window.removeEventListener('playersChanged', handlePlayersChanged);
-    };
+  // Load persistent (local) players from localStorage
+  const refreshLocalPlayers = useCallback(() => {
+    const allPlayers = playerStorage.getAllPlayers();
+    const filtered = user
+      ? allPlayers.filter(p => p.createdBy === user.id)
+      : allPlayers;
+    setPersistentPlayers(filtered);
   }, [user]);
 
-  const refreshPlayers = () => {
-    const allPlayers = playerStorage.getAllPlayers();
+  // Load room members from Supabase (friends who joined via room code)
+  const refreshRoomMembers = useCallback(async () => {
+    if (!user) {
+      setRoomMemberPlayers([]);
+      return;
+    }
+    try {
+      const members = await getMyRoomMembers();
+      setRoomMemberPlayers(members.map(roomMemberToStored));
+    } catch (err) {
+      console.error('PlayerContext: failed to load room members', err);
+    }
+  }, [user]);
 
-    // Filter persistent players to those created by the current user
-    const filteredPlayers = user
-      ? allPlayers.filter(p => p.createdBy === user.id)
-      : allPlayers; // If no user, show all players (backward compatibility)
+  // Refresh both local players and room members
+  const refreshPlayers = useCallback(() => {
+    refreshLocalPlayers();
+    refreshRoomMembers();
+  }, [refreshLocalPlayers, refreshRoomMembers]);
 
-    // Load verified session players (already filtered for expiry by localSession)
-    const currentSessionPlayers = localSession.getSessionPlayers().map(sessionPlayerToStored);
-    setSessionPlayers(currentSessionPlayers);
+  // Load on mount and when user changes
+  useEffect(() => {
+    refreshLocalPlayers();
+    refreshRoomMembers();
 
-    // Merge: persistent players first, then session players appended
-    // Deduplicate by id to be safe (session player ids are 'session-{userId}' so no real clash)
-    setLocalPlayers([...filteredPlayers, ...currentSessionPlayers]);
-  };
+    const handlePlayersChanged = () => {
+      refreshLocalPlayers();
+    };
+    window.addEventListener('playersChanged', handlePlayersChanged);
+    return () => window.removeEventListener('playersChanged', handlePlayersChanged);
+  }, [user, refreshLocalPlayers, refreshRoomMembers]);
+
+  // Merged view used by game pages
+  const localPlayers = [...persistentPlayers, ...roomMemberPlayers];
+  const sessionPlayers = roomMemberPlayers;
 
   const addLocalPlayer = (name: string, avatar?: string, isGuest = false): StoredPlayer => {
     const newPlayer = playerStorage.addPlayer(name, avatar, isGuest, user?.id);
-    refreshPlayers();
+    refreshLocalPlayers();
 
-    // Sync guest players to Supabase for analytics
     if (isGuest) {
       canSyncToSupabase().then(canSync => {
         if (canSync) {
@@ -91,9 +97,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const updateLocalPlayer = (id: string, updates: Partial<StoredPlayer>) => {
     playerStorage.updatePlayer(id, updates);
-    refreshPlayers();
+    refreshLocalPlayers();
 
-    // Sync guest player updates to Supabase
     const player = playerStorage.getPlayer(id);
     if (player && player.isGuest) {
       canSyncToSupabase().then(canSync => {
@@ -112,14 +117,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const deleteLocalPlayer = (id: string) => {
     const player = playerStorage.getPlayer(id);
     playerStorage.deletePlayer(id);
-    refreshPlayers();
+    refreshLocalPlayers();
 
-    // Delete from Supabase if it's a guest player
     if (player && player.isGuest) {
       canSyncToSupabase().then(canSync => {
-        if (canSync) {
-          deleteGuestPlayerFromSupabase(id);
-        }
+        if (canSync) deleteGuestPlayerFromSupabase(id);
       });
     }
   };
@@ -129,22 +131,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   };
 
   const getGuestPlayers = (): StoredPlayer[] => {
-    return localPlayers.filter(p => p.isGuest);
+    return persistentPlayers.filter(p => p.isGuest);
   };
 
   const cleanupGuestPlayers = () => {
     playerStorage.cleanupGuestPlayers();
-    refreshPlayers();
-  };
-
-  const addSessionPlayerFn = (sp: SessionPlayer) => {
-    localSession.addSessionPlayer(sp);
-    refreshPlayers();
-  };
-
-  const removeSessionPlayerFn = (userId: string) => {
-    localSession.removeSessionPlayer(userId);
-    refreshPlayers();
+    refreshLocalPlayers();
   };
 
   const contextValue: PlayerContextValue = {
@@ -157,8 +149,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     getGuestPlayers,
     cleanupGuestPlayers,
     sessionPlayers,
-    addSessionPlayer: addSessionPlayerFn,
-    removeSessionPlayer: removeSessionPlayerFn,
+    refreshRoomMembers,
   };
 
   return <PlayerContext.Provider value={contextValue}>{children}</PlayerContext.Provider>;

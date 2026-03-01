@@ -86,8 +86,7 @@ export interface PlayerContextValue {
   getGuestPlayers: () => StoredPlayer[];
   cleanupGuestPlayers: () => void;
 
-  // Verified session players (friends with accounts, expire after 8 hours)
+  // Verified room members (friends who joined via room code, from Supabase)
   sessionPlayers: StoredPlayer[];
-  addSessionPlayer: (player: import('./storage').SessionPlayer) => void;
-  removeSessionPlayer: (userId: string) => void;
+  refreshRoomMembers: () => Promise<void>;
 }
