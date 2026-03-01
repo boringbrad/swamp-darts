@@ -141,30 +141,48 @@ export async function joinRoomByCode(
 /**
  * Get all rooms I have joined (where I am the member, not the owner).
  * Used on the Friends page so I can see and leave rooms I joined.
+ *
+ * Two-step query: room_members.room_owner_id → auth.users (no FK to profiles),
+ * so we fetch owner IDs first, then look up profiles separately.
  */
 export async function getMyJoinedRooms(): Promise<JoinedRoom[]> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
 
-  const { data, error } = await supabase
+  // Step 1: get the room owner IDs and join timestamps
+  const { data: memberships, error: membErr } = await supabase
     .from('room_members')
-    .select('room_owner_id, joined_at, profiles!room_members_room_owner_id_fkey(display_name, avatar, photo_url)')
+    .select('room_owner_id, joined_at')
     .eq('member_user_id', user.id)
     .order('joined_at', { ascending: true });
 
-  if (error) {
-    console.error('getMyJoinedRooms error:', error.message);
+  if (membErr || !memberships?.length) {
+    if (membErr) console.error('getMyJoinedRooms memberships error:', membErr.message);
     return [];
   }
 
-  return (data ?? []).map((row: any) => {
-    const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+  const ownerIds = memberships.map(m => m.room_owner_id);
+
+  // Step 2: fetch profiles for those owner IDs
+  const { data: profiles, error: profErr } = await supabase
+    .from('profiles')
+    .select('id, display_name, avatar, photo_url')
+    .in('id', ownerIds);
+
+  if (profErr) {
+    console.error('getMyJoinedRooms profiles error:', profErr.message);
+  }
+
+  const profileMap = new Map((profiles ?? []).map(p => [p.id, p]));
+
+  return memberships.map(m => {
+    const p = profileMap.get(m.room_owner_id);
     return {
-      ownerId: row.room_owner_id,
-      ownerDisplayName: profile?.display_name ?? 'Unknown',
-      ownerAvatar: profile?.avatar ?? undefined,
-      ownerPhotoUrl: profile?.photo_url ?? undefined,
-      joinedAt: row.joined_at,
+      ownerId: m.room_owner_id,
+      ownerDisplayName: p?.display_name ?? 'Unknown',
+      ownerAvatar: p?.avatar ?? undefined,
+      ownerPhotoUrl: p?.photo_url ?? undefined,
+      joinedAt: m.joined_at,
     };
   });
 }
