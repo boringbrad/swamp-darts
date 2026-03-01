@@ -18,7 +18,7 @@ export function useRoomCodeQuery() {
     queryKey: ['room-code', user?.id],
     queryFn: () => getMyRoomCode(),
     enabled: !!user,
-    staleTime: Infinity, // room code never changes
+    staleTime: 10 * 60_000, // 10 min — long-lived but not Infinity so auto-gen is picked up
   });
 }
 

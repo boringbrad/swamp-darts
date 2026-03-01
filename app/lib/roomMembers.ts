@@ -40,8 +40,16 @@ function rowToMember(row: any): RoomMember {
   };
 }
 
+function generateRoomCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
 /**
  * Get my permanent room code (displayed on Manage Players).
+ * Auto-generates one if the profile was created before the room-code migration.
  */
 export async function getMyRoomCode(): Promise<string | null> {
   const { data: { session } } = await supabase.auth.getSession();
@@ -54,7 +62,20 @@ export async function getMyRoomCode(): Promise<string | null> {
     .eq('id', user.id)
     .single();
 
-  return data?.room_code ?? null;
+  if (data?.room_code) return data.room_code;
+
+  // Profile predates the room_code column — generate and save one now
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const code = generateRoomCode();
+    const { error } = await supabase
+      .from('profiles')
+      .update({ room_code: code })
+      .eq('id', user.id);
+    if (!error) return code;
+    // If it was a unique-constraint collision, try again; otherwise bail
+    if (!(error.message ?? '').toLowerCase().includes('unique')) break;
+  }
+  return null;
 }
 
 /**

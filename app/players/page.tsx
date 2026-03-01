@@ -6,6 +6,7 @@ import PageWrapper from '../components/PageWrapper';
 import AddGuestPlayerModal from '../components/AddGuestPlayerModal';
 import { useAppContext } from '../contexts/AppContext';
 import { usePlayerContext } from '../contexts/PlayerContext';
+import { useAuth } from '../contexts/AuthContext';
 import { removeRoomMember } from '../lib/roomMembers';
 import { useRoomCodeQuery } from '../lib/queries/useRoomMembersQuery';
 import { STOCK_AVATARS } from '../lib/avatars';
@@ -38,6 +39,7 @@ function PlayerAvatar({ player, size = 12, borderClass = 'border-white/20' }: {
 
 export default function ManagePlayersPage() {
   const { userProfile } = useAppContext();
+  const { loading: authLoading } = useAuth();
   const {
     localPlayers,
     sessionPlayers,
@@ -48,8 +50,9 @@ export default function ManagePlayersPage() {
   } = usePlayerContext();
 
   // Room code — from TanStack Query cache (no useEffect needed)
-  const { data: roomCode } = useRoomCodeQuery();
+  const { data: roomCode, isLoading: roomCodeLoading } = useRoomCodeQuery();
   const [codeCopied, setCodeCopied] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Guest management
   const [showAddGuest, setShowAddGuest] = useState(false);
@@ -59,7 +62,7 @@ export default function ManagePlayersPage() {
   // Room member removal
   const [removingUserId, setRemovingUserId] = useState<string | null>(null);
 
-  const persistentGuests = localPlayers.filter(p => !p.isVerified);
+  const persistentGuests = localPlayers.filter(p => p.isGuest === true);
 
   const handleCopyCode = () => {
     if (!roomCode) return;
@@ -109,7 +112,12 @@ export default function ManagePlayersPage() {
                 Share this code with friends. They enter it on their Friends page to join your player pool.
               </p>
               <div className="flex items-center gap-3">
-                {roomCode ? (
+                {(authLoading || roomCodeLoading) ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-[#4CAF50] border-t-transparent rounded-full animate-spin" />
+                    <span className="text-white/40 text-sm">Loading...</span>
+                  </div>
+                ) : roomCode ? (
                   <>
                     <span className="text-3xl font-black tracking-[0.3em] text-[#4CAF50] font-mono">
                       {roomCode}
@@ -122,10 +130,7 @@ export default function ManagePlayersPage() {
                     </button>
                   </>
                 ) : (
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-[#4CAF50] border-t-transparent rounded-full animate-spin" />
-                    <span className="text-white/40 text-sm">Loading...</span>
-                  </div>
+                  <span className="text-white/40 text-sm">No room code — try refreshing</span>
                 )}
               </div>
             </div>
@@ -133,7 +138,20 @@ export default function ManagePlayersPage() {
 
           {/* ── TONIGHT'S PLAYERS (room members) ─────────── */}
           <section className="mb-8">
-            <h2 className="text-white/50 text-xs font-bold tracking-widest uppercase mb-3">Tonight's Players</h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-white/50 text-xs font-bold tracking-widest uppercase">Tonight's Players</h2>
+              <button
+                onClick={async () => {
+                  setRefreshing(true);
+                  await refreshRoomMembers();
+                  setRefreshing(false);
+                }}
+                disabled={refreshing}
+                className="text-white/40 text-xs font-bold hover:text-white/70 transition-colors disabled:opacity-40"
+              >
+                {refreshing ? 'REFRESHING...' : '↻ REFRESH'}
+              </button>
+            </div>
 
             {sessionPlayers.length === 0 ? (
               <div className="bg-[#2a2a2a] rounded-lg p-6 text-center">

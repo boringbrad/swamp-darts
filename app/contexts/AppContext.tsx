@@ -91,10 +91,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const playersToMigrate = allPlayers.filter(p => !p.createdBy);
       if (playersToMigrate.length > 0) {
         playersToMigrate.forEach(player => {
-          if (
-            player.name.toLowerCase() === mappedProfile.displayName.toLowerCase() ||
-            player.isGuest
-          ) {
+          if (player.name.toLowerCase() === mappedProfile.displayName.toLowerCase()) {
+            // This is the user's own pre-account player — claim it and clear guest flag
+            playerStorage.updatePlayer(player.id, { createdBy: profile.id, isGuest: false });
+          } else if (player.isGuest) {
             playerStorage.updatePlayer(player.id, { createdBy: profile.id });
           }
         });
@@ -114,14 +114,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
           window.dispatchEvent(new Event('playersChanged'));
         }
       } else {
-        // Update photoUrl/avatar on existing player if changed
+        // Update photoUrl/avatar on existing player if changed; always clear isGuest
         if (
           (mappedProfile.photoUrl && existingPlayer.photoUrl !== mappedProfile.photoUrl) ||
-          (mappedProfile.avatar && existingPlayer.avatar !== mappedProfile.avatar)
+          (mappedProfile.avatar && existingPlayer.avatar !== mappedProfile.avatar) ||
+          existingPlayer.isGuest
         ) {
           playerStorage.updatePlayer(existingPlayer.id, {
             photoUrl: mappedProfile.photoUrl ?? undefined,
             avatar: mappedProfile.avatar,
+            isGuest: false,
           });
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new Event('playersChanged'));
