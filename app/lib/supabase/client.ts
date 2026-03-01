@@ -40,7 +40,14 @@ export function createClient(): SupabaseBrowserClient {
           : url instanceof URL ? url.toString()
           : (url as Request).url;
         if (urlStr.includes('/auth/v1/')) {
-          return fetch(url, options);
+          // Auth calls (token refresh, sign-in, etc.) get a longer timeout.
+          // 10 seconds is too short — an aborted refresh corrupts the auth lock,
+          // hanging all subsequent Supabase calls. 30 seconds covers cold starts
+          // while still guarding against a truly unreachable server.
+          return fetch(url, {
+            ...options,
+            signal: options.signal || AbortSignal.timeout(30000),
+          });
         }
         return fetch(url, {
           ...options,

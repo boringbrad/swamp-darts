@@ -430,36 +430,33 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
 
       console.log('Cricket match saved:', matchData.matchId);
 
-      // Sync to Supabase for analytics and cross-device stats
-      const canSync = await canSyncToSupabase();
-      if (canSync) {
-        console.log('🔄 Starting Supabase sync for cricket match...');
-
-        // Run syncs in parallel for better performance
-        const syncPromises: Promise<boolean | void>[] = [
-          syncCricketMatch({
-            matchId: matchData.matchId,
-            matchData: matchData,
-            players: matchData.players,
-            gameMode: matchData.variant,
-            completedAt: new Date(matchData.date),
-            participantUserIds: matchData.players
+      // Sync to Supabase in the background — don't block the save UI.
+      // Mirrors GolfGame's pattern: localStorage save is the source of truth;
+      // Supabase sync is best-effort and queued on failure.
+      const capturedMatchData = matchData;
+      ;(async () => {
+        try {
+          const canSync = await canSyncToSupabase();
+          if (!canSync) {
+            console.log('⏭️ Not authenticated, skipping Supabase sync');
+            return;
+          }
+          console.log('🔄 Starting Supabase sync for cricket match...');
+          await syncCricketMatch({
+            matchId: capturedMatchData.matchId,
+            matchData: capturedMatchData,
+            players: capturedMatchData.players,
+            gameMode: capturedMatchData.variant,
+            completedAt: new Date(capturedMatchData.date),
+            participantUserIds: capturedMatchData.players
               .map((p: any) => p.userId)
               .filter((uid: any): uid is string => !!uid && uid !== currentUserId),
-          })
-        ];
-
-        // Wait for all syncs — allSettled means one failure won't kill the others
-        const results = await Promise.allSettled(syncPromises);
-        const failed = results.filter(r => r.status === 'rejected');
-        if (failed.length > 0) {
-          console.error('❌ Some Supabase syncs failed:', failed.map(r => (r as PromiseRejectedResult).reason));
-        } else {
-          console.log('✅ All Supabase syncs complete!');
+          });
+          console.log('✅ Cricket Supabase sync complete!');
+        } catch (bgErr) {
+          console.error('❌ Cricket Supabase sync error:', bgErr);
         }
-      } else {
-        console.log('⏭️ Not authenticated, skipping Supabase sync');
-      }
+      })();
 
       // Update lastUsed timestamp for all players
       players.forEach(player => {
