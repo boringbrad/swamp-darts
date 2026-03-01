@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Header from '../../components/Header';
 import PageWrapper from '../../components/PageWrapper';
@@ -54,19 +54,34 @@ export default function WaitingRoomPage() {
 
   const [starting, setStarting] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  // When true the cleanup effect skips calling leaveSession (intentional navigation)
+  const suppressLeaveRef = useRef(false);
 
   const myId = userProfile?.id;
   const isHost = session?.hostUserId === myId;
   const guest = activeParticipants.find(p => p.userId !== session?.hostUserId && !p.isHost);
   const hostParticipant = activeParticipants.find(p => p.isHost);
 
+  // If the host navigates away without clicking "Cancel Lobby", clean up the session
+  // so it doesn't stay as a ghost in the lobby list.
+  useEffect(() => {
+    return () => {
+      if (!suppressLeaveRef.current && sessionId) {
+        leaveSession(sessionId); // fire-and-forget; Next.js client nav keeps JS context alive
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+
   // Navigate to game when host starts it
   useEffect(() => {
     if (session?.status === 'in_game') {
+      suppressLeaveRef.current = true;
       router.push(`/online/${sessionId}/game`);
     }
     // If session expired or completed, go back to lobby list
     if (session?.status === 'expired' || session?.status === 'completed') {
+      suppressLeaveRef.current = true;
       router.push('/online');
     }
   }, [session?.status]);
@@ -92,6 +107,7 @@ export default function WaitingRoomPage() {
       setStarting(false);
       return;
     }
+    suppressLeaveRef.current = true; // navigating to game, not leaving
     // Navigate directly — don't rely on Realtime for the host
     router.push(`/online/${sessionId}/game`);
   };
@@ -104,6 +120,7 @@ export default function WaitingRoomPage() {
   const handleLeave = async () => {
     if (!session) return;
     setLeaving(true);
+    suppressLeaveRef.current = true; // leaveSession called explicitly below
     await leaveSession(session.id);
     router.push('/online');
   };

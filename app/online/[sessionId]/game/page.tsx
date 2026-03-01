@@ -67,15 +67,22 @@ export default function OnlineGamePage() {
   const handleRematch = () => setRematchKey(k => k + 1);
   const handleGameEnd = () => { gameFinishedRef.current = true; };
 
-  const handleExitGame = () => {
+  const handleExitGame = async () => {
     if (!confirm('Exit game? This will end the session for both players.')) return;
     exitingRef.current = true;
     setExiting(true);
-    // Both fire-and-forget — call them before hard-navigating since a full page
-    // reload won't trigger the game component's React cleanup (leaveSession ref).
-    completeOnlineSession(sessionId).catch(console.error);
-    leaveSession(sessionId).catch(console.error);
-    // Hard navigate so the exit is instant regardless of router/middleware state.
+    // Await the DB updates before navigating — if we fire-and-forget the browser
+    // cancels the pending fetch requests when the page unloads, so the opponent
+    // never receives the disconnect signal.
+    // Promise.race caps the wait at 2 s so a slow connection doesn't stall the exit.
+    await Promise.race([
+      Promise.allSettled([
+        completeOnlineSession(sessionId),
+        leaveSession(sessionId),
+      ]),
+      new Promise<void>(resolve => setTimeout(resolve, 2000)),
+    ]);
+    // Hard navigate — bypasses RSC payload / auth middleware so it's instant.
     window.location.href = '/';
   };
 
