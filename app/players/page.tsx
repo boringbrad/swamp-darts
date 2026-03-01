@@ -92,7 +92,8 @@ export default function ManagePlayersPage() {
 
   async function initSession() {
     try {
-      const session = await getMyActiveSession();
+      const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
+      const session = await Promise.race([getMyActiveSession(), timeout]);
       if (session) {
         setMySession(session);
         // Load existing participants and add them to the player pool

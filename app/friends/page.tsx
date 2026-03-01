@@ -89,25 +89,32 @@ export default function FriendsPage() {
       setFriendRequests(requestsData);
       setSentRequests(sentData);
 
-      // Load friend activity and game night sessions for the friends tab
+      // Load game night sessions separately — errors here must not wipe the friends list
       if (activeTab === 'friends' && friendsData.length > 0) {
-        const friendUserIds = friendsData.map(f => f.userId);
-        const [activity, sessions] = await Promise.all([
-          getFriendsLastActivity(friendUserIds),
-          getFriendSessions(friendUserIds),
-        ]);
-        setFriendActivity(activity);
-        setFriendSessions(sessions);
-        if (sessions.length > 0) {
-          const joinedId = await getMyJoinedSessionId(sessions.map(s => s.id));
-          setMyJoinedSessionId(joinedId);
-        } else {
+        try {
+          const friendUserIds = friendsData.map(f => f.userId);
+          const [activity, sessions] = await Promise.all([
+            getFriendsLastActivity(friendUserIds),
+            getFriendSessions(friendUserIds),
+          ]);
+          setFriendActivity(activity);
+          setFriendSessions(sessions);
+          if (sessions.length > 0) {
+            const joinedId = await getMyJoinedSessionId(sessions.map(s => s.id));
+            setMyJoinedSessionId(joinedId);
+          } else {
+            setMyJoinedSessionId(null);
+          }
+        } catch (sessionErr) {
+          console.error('Error loading game night sessions:', sessionErr);
+          setFriendSessions([]);
           setMyJoinedSessionId(null);
         }
       } else if (activeTab === 'friends') {
         setFriendSessions([]);
         setMyJoinedSessionId(null);
       }
+
     } catch (error) {
       console.error('Error loading friends data:', error);
       // Set empty arrays on error so the UI can still render
