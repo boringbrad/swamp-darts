@@ -51,16 +51,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
-    // Get initial session
+    // Get initial session and set user state.
+    // fetchProfile is intentionally NOT called here — it runs in the separate
+    // user?.id effect below, which executes outside the auth-js lock.
     const initializeAuth = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession()
-
-        if (session?.user) {
-          setUser(session.user)
-          const profileData = await fetchProfile(session.user.id)
-          setProfile(profileData)
-        }
+        setUser(session?.user ?? null)
+        if (!session?.user) setProfile(null)
       } catch (error) {
         console.error('Error initializing auth:', error)
       } finally {
@@ -70,28 +68,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     initializeAuth()
 
-    // Listen for auth changes
+    // Listen for auth changes.
+    //
+    // IMPORTANT: Do NOT make any Supabase calls inside this callback.
+    // @supabase/auth-js calls _notifyAllSubscribers() while holding its
+    // internal JS mutex (lockAcquired = true). Any Supabase data query
+    // inside this handler calls fetchWithAuth → getSession() → _acquireLock(),
+    // which queues in pendingInLock. But pendingInLock only drains after the
+    // current locked work finishes — creating a deadlock that hangs all
+    // subsequent Supabase calls until a hard page refresh.
+    //
+    // Profile fetching is handled by the separate user?.id effect below,
+    // which runs after React re-renders (outside the lock).
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      try {
-        setUser(session?.user ?? null)
-
-        if (session?.user) {
-          const profileData = await fetchProfile(session.user.id)
-          setProfile(profileData)
-        } else {
-          setProfile(null)
-        }
-      } finally {
-        setLoading(false)
-      }
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user ?? null)
+      if (!session?.user) setProfile(null)
+      setLoading(false)
     })
 
     return () => {
       subscription.unsubscribe()
     }
   }, [])
+
+  // Fetch the profile whenever the logged-in user changes.
+  // This effect runs outside the auth-js lock (after React re-render),
+  // so it never deadlocks — even if a token refresh is in progress.
+  useEffect(() => {
+    if (!user) return
+    fetchProfile(user.id).then(setProfile)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id])
 
   const signOut = async () => {
     await supabase.auth.signOut()

@@ -30,6 +30,67 @@ export function createClient(): SupabaseBrowserClient {
   }
 
   _client = createBrowserClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      // Custom lock implementation that prevents the auth-js internal mutex
+      // from hanging data queries indefinitely during a token refresh.
+      //
+      // Background: auth-js calls _notifyAllSubscribers() while holding its
+      // JS mutex (lockAcquired = true). If any code inside onAuthStateChange
+      // makes a Supabase data query, that query calls getSession() which tries
+      // to re-enter the lock via pendingInLock — creating a deadlock.
+      //
+      // We already fixed AuthContext to never make Supabase calls inside
+      // onAuthStateChange. This custom lock is a safety net: if a token
+      // refresh (acquireTimeout > 0) ever holds navigator.locks for longer
+      // than expected, read-only getSession() calls (acquireTimeout === -1)
+      // will give up after 5 seconds and proceed without the lock rather than
+      // waiting forever.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      lock: async <R>(name: string, acquireTimeout: number, fn: () => Promise<R>): Promise<R> => {
+        if (typeof navigator === 'undefined' || !('locks' in navigator)) {
+          // SSR or unsupported browser — run without locking
+          return fn()
+        }
+        if (acquireTimeout === -1) {
+          // Read mode: cap the wait at 5 seconds.
+          // If we can't acquire within 5s, run fn() optimistically without
+          // the lock rather than hanging forever. Reading a slightly-stale
+          // token is far better than blocking the entire app.
+          const controller = new AbortController()
+          const timer = setTimeout(() => controller.abort(), 5000)
+          try {
+            return await navigator.locks.request(name, { signal: controller.signal }, fn)
+          } catch (e: unknown) {
+            if ((e as { name?: string })?.name === 'AbortError') {
+              return fn()
+            }
+            throw e
+          } finally {
+            clearTimeout(timer)
+          }
+        }
+        if (acquireTimeout === 0) {
+          // Try once, fail immediately if lock not available
+          return navigator.locks.request(name, { ifAvailable: true }, async (lock) => {
+            if (!lock) throw new Error('Auth lock not available')
+            return fn()
+          })
+        }
+        // Exclusive write mode (token refresh, sign-in, etc.) — use a bounded timeout
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), acquireTimeout)
+        try {
+          return await navigator.locks.request(name, { signal: controller.signal }, fn)
+        } catch (e: unknown) {
+          if ((e as { name?: string })?.name === 'AbortError') {
+            throw new Error(`Auth lock acquire timed out after ${acquireTimeout}ms`)
+          }
+          throw e
+        } finally {
+          clearTimeout(timer)
+        }
+      },
+    },
     global: {
       fetch: (url, options = {}) => {
         // Never apply our timeout to auth endpoints.

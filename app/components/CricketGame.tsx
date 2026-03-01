@@ -4,14 +4,12 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppContext } from '../contexts/AppContext';
 import { usePlayerContext } from '../contexts/PlayerContext';
+import { useAuth } from '../contexts/AuthContext';
 import { CricketNumber, CricketVariant, CricketRules, Player } from '../types/game';
 import { STOCK_AVATARS } from '../lib/avatars';
 import { syncCricketMatch, canSyncToSupabase } from '../lib/supabaseSync';
-import { createClient } from '../lib/supabase/client';
 import { useOnlineGameState, OnlineConfig } from '../hooks/useOnlineGameState';
 import { completeOnlineSession } from '../lib/sessions';
-
-const supabase = createClient();
 
 interface CricketGameProps {
   variant: CricketVariant;
@@ -74,6 +72,7 @@ interface HistoryEntry {
 
 export default function CricketGame({ variant, players: initialPlayers, rules, onlineConfig, onRematch }: CricketGameProps) {
   const router = useRouter();
+  const { user } = useAuth();
   const { cameraEnabled, selectedPlayers } = useAppContext();
   const { updateLocalPlayer, localPlayers } = usePlayerContext();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -364,9 +363,9 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
   // Save game to database (localStorage)
   const saveGameToDatabase = async () => {
     try {
-      // Get current user ID to link their player data
-      const { data: { session } } = await supabase.auth.getSession();
-      const currentUserId = session?.user?.id;
+      // Use user ID from auth context — avoids calling getSession() which can
+      // block if a token refresh is in progress (auth-js lock contention).
+      const currentUserId = user?.id;
 
       // Calculate detailed stats from history and playerScores
       const matchData = {
