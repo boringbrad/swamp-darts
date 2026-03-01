@@ -62,13 +62,6 @@ export default function ManagePlayersPage() {
 
   useEffect(() => {
     getMyRoomCode().then(code => setRoomCode(code));
-
-    // Poll for new room members every 15 seconds while on this page
-    const interval = setInterval(() => {
-      refreshRoomMembers();
-    }, 15000);
-
-    return () => clearInterval(interval);
   }, []);
 
   const handleCopyCode = () => {

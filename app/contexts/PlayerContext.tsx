@@ -59,16 +59,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     refreshRoomMembers();
   }, [refreshLocalPlayers, refreshRoomMembers]);
 
-  // Load on mount and when user changes
+  // Load on mount and when user changes; poll room members every 20 seconds
+  // so newly-joined players appear everywhere (player select, manage players) without a refresh.
   useEffect(() => {
     refreshLocalPlayers();
     refreshRoomMembers();
+
+    const pollInterval = user
+      ? setInterval(() => refreshRoomMembers(), 20000)
+      : null;
 
     const handlePlayersChanged = () => {
       refreshLocalPlayers();
     };
     window.addEventListener('playersChanged', handlePlayersChanged);
-    return () => window.removeEventListener('playersChanged', handlePlayersChanged);
+
+    return () => {
+      if (pollInterval) clearInterval(pollInterval);
+      window.removeEventListener('playersChanged', handlePlayersChanged);
+    };
   }, [user, refreshLocalPlayers, refreshRoomMembers]);
 
   // Merged view used by game pages
