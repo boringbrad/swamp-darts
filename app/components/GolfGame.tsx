@@ -1017,11 +1017,11 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
                 <span className="text-red-400 font-semibold">{opponentName}</span> has left the match
               </p>
               <button
-                onClick={async () => {
+                onClick={() => {
                   suppressLeaveRef.current = true;
-                  await leaveSession(onlineConfig!.sessionId);
-                  await completeOnlineSession(onlineConfig!.sessionId);
-                  router.push('/');
+                  leaveSession(onlineConfig!.sessionId).catch(console.error);
+                  completeOnlineSession(onlineConfig!.sessionId).catch(console.error);
+                  window.location.href = '/';
                 }}
                 className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-colors text-lg"
               >
@@ -1568,10 +1568,10 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
                     {iWantRematch ? 'WAITING...' : 'PLAY AGAIN'}
                   </button>
                   <button
-                    onClick={async () => {
+                    onClick={() => {
                       suppressLeaveRef.current = true;
-                      await completeOnlineSession(onlineConfig.sessionId);
-                      router.push('/');
+                      completeOnlineSession(onlineConfig.sessionId).catch(console.error);
+                      window.location.href = '/';
                     }}
                     className="bg-[#666666] text-white text-xl sm:text-2xl font-bold rounded hover:bg-[#777777] transition-colors h-[80px] flex items-center justify-center px-2"
                   >

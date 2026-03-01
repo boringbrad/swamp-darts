@@ -67,11 +67,14 @@ export function useOnlineGameState(config: OnlineConfig | null): UseOnlineGameSt
         .eq('session_id', sessionId)
         .maybeSingle();
 
-      if (data) {
+      // Skip 'rematch' rows on initial load — the host's DELETE will propagate via Realtime
+      // and reset currentPlayerId to null so both clients start fresh with host going first.
+      // Setting currentPlayerId = 'rematch' here would make isMyTurn = false for both players.
+      if (data && data.current_player_id !== 'rematch') {
         setCurrentPlayerId(data.current_player_id);
         // Do NOT restore rematchVotes on mount — they're only tracked via live Realtime events.
         // Restoring old votes would re-trigger bothWantRematch → infinite rematch loop after remount.
-        if (data.current_player_id !== myId && data.current_player_id !== 'rematch') {
+        if (data.current_player_id !== myId) {
           setOpponentState(data.game_state);
         }
         initializedRef.current = true;

@@ -1498,11 +1498,11 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
               <span className="text-red-400 font-semibold">{opponentName}</span> has left the match
             </p>
             <button
-              onClick={async () => {
+              onClick={() => {
                 suppressLeaveRef.current = true;
-                await leaveSession(onlineConfig!.sessionId);
-                await completeOnlineSession(onlineConfig!.sessionId);
-                router.push('/');
+                leaveSession(onlineConfig!.sessionId).catch(console.error);
+                completeOnlineSession(onlineConfig!.sessionId).catch(console.error);
+                window.location.href = '/';
               }}
               className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-colors text-lg"
             >
@@ -2152,10 +2152,10 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
                   {iWantRematch ? 'Waiting...' : 'Play Again'}
                 </button>
                 <button
-                  onClick={async () => {
+                  onClick={() => {
                     suppressLeaveRef.current = true;
-                    await completeOnlineSession(onlineConfig.sessionId);
-                    router.push('/');
+                    completeOnlineSession(onlineConfig.sessionId).catch(console.error);
+                    window.location.href = '/';
                   }}
                   disabled={isSavingGame}
                   className="bg-[#666666] text-white px-10 py-5 rounded text-3xl font-bold hover:bg-[#777777] transition-colors"

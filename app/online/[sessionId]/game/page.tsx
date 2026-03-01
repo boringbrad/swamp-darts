@@ -9,7 +9,7 @@ import CricketGame from '../../../components/CricketGame';
 import GolfGame from '../../../components/GolfGame';
 import { OnlineConfig } from '../../../hooks/useOnlineGameState';
 import { Player, CricketRules } from '../../../types/game';
-import { completeOnlineSession } from '../../../lib/sessions';
+import { completeOnlineSession, leaveSession } from '../../../lib/sessions';
 
 /**
  * Generate deterministic KO numbers (1-20) for players using session ID as seed.
@@ -61,10 +61,14 @@ export default function OnlineGamePage() {
 
   const handleExitGame = () => {
     if (!confirm('Exit game? This will end the session for both players.')) return;
-    exitingRef.current = true; // set synchronously BEFORE router.push so the effect sees it immediately
-    setExiting(true);          // for button UI only
-    completeOnlineSession(sessionId).catch(console.error); // fire-and-forget
-    router.push('/');
+    exitingRef.current = true;
+    setExiting(true);
+    // Both fire-and-forget — call them before hard-navigating since a full page
+    // reload won't trigger the game component's React cleanup (leaveSession ref).
+    completeOnlineSession(sessionId).catch(console.error);
+    leaveSession(sessionId).catch(console.error);
+    // Hard navigate so the exit is instant regardless of router/middleware state.
+    window.location.href = '/';
   };
 
   useEffect(() => {
@@ -128,14 +132,12 @@ export default function OnlineGamePage() {
     setReady(true);
   }, [sessionLoading, participantsLoading, session, activeParticipants, myId]);
 
-  // If the opponent completes/expires the session, redirect to the lobby list.
-  // Uses exitingRef (not exiting state) because the ref is set synchronously in
-  // handleExitGame before router.push fires — state updates are async and the
-  // effect could see exiting=false even after setExiting(true) was called.
+  // If the opponent completes/expires the session, boot to the lobby list.
+  // Uses exitingRef so we don't redirect ourselves when we're the one exiting.
   useEffect(() => {
     if (exitingRef.current) return;
     if (session?.status === 'completed' || session?.status === 'expired') {
-      router.push('/online');
+      window.location.href = '/online';
     }
   }, [session?.status]);
 
