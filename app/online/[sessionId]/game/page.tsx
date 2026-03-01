@@ -132,14 +132,17 @@ export default function OnlineGamePage() {
     setReady(true);
   }, [sessionLoading, participantsLoading, session, activeParticipants, myId]);
 
-  // If the opponent completes/expires the session, boot to the lobby list.
+  // If the session ends before the game starts (e.g. host leaves lobby), boot to lobbies.
+  // Once the game is active (ready=true) the game component handles disconnect via
+  // opponentLeft modal — don't redirect here or we race past the "X has left" screen.
   // Uses exitingRef so we don't redirect ourselves when we're the one exiting.
   useEffect(() => {
     if (exitingRef.current) return;
+    if (ready) return;
     if (session?.status === 'completed' || session?.status === 'expired') {
       window.location.href = '/online';
     }
-  }, [session?.status]);
+  }, [session?.status, ready]);
 
   if (sessionLoading || participantsLoading || !ready) {
     return (

@@ -146,9 +146,31 @@ export function useOnlineGameState(config: OnlineConfig | null): UseOnlineGameSt
       )
       .subscribe();
 
+    // Subscribe to session status — catches completeOnlineSession (Exit / Return Home)
+    // and handles browser crashes where leaveSession may not have fired.
+    const sessionStatusChannel = supabase
+      .channel(`online-session-status:${sessionId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'game_sessions',
+          filter: `id=eq.${sessionId}`,
+        },
+        (payload) => {
+          const row = payload.new as { status?: string };
+          if (row?.status === 'completed' || row?.status === 'expired') {
+            setOpponentLeft(true);
+          }
+        }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(channel);
       supabase.removeChannel(participantChannel);
+      supabase.removeChannel(sessionStatusChannel);
     };
   }, [sessionId, myId]);
 
