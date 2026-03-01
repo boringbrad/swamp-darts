@@ -56,10 +56,11 @@ export default function OnlineGamePage() {
   const myId = userProfile?.id;
   const handleRematch = () => setRematchKey(k => k + 1);
 
-  const handleExitGame = async () => {
+  const handleExitGame = () => {
     if (!confirm('Exit game? This will end the session for both players.')) return;
     setExiting(true);
-    await completeOnlineSession(sessionId);
+    // Fire-and-forget — navigate immediately so the button never gets stuck.
+    completeOnlineSession(sessionId).catch(console.error);
     router.push('/');
   };
 
@@ -124,12 +125,15 @@ export default function OnlineGamePage() {
     setReady(true);
   }, [sessionLoading, participantsLoading, session, activeParticipants, myId]);
 
-  // If session ends, go back to lobby list
+  // If the opponent completes/expires the session, redirect to the lobby list.
+  // Skip when we're already handling the exit ourselves (exiting=true) to avoid
+  // a race where this fires before router.push('/') and sends us to /online instead.
   useEffect(() => {
+    if (exiting) return;
     if (session?.status === 'completed' || session?.status === 'expired') {
       router.push('/online');
     }
-  }, [session?.status]);
+  }, [session?.status, exiting]);
 
   if (sessionLoading || participantsLoading || !ready) {
     return (
