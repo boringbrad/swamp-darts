@@ -12,7 +12,7 @@ import { trackGolfGame } from '../lib/analytics';
 import { syncGolfMatch, canSyncToSupabase } from '../lib/supabaseSync';
 import { createClient } from '../lib/supabase/client';
 import { useOnlineGameState, OnlineConfig } from '../hooks/useOnlineGameState';
-import { completeOnlineSession } from '../lib/sessions';
+import { completeOnlineSession, leaveSession } from '../lib/sessions';
 
 const supabase = createClient();
 
@@ -76,12 +76,32 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
 
   // Online play
   const { isMyTurn, opponentState, submitTurn, opponentLeft, iWantRematch, opponentWantsRematch, bothWantRematch, requestRematch, resetForRematch } = useOnlineGameState(onlineConfig ?? null);
-  const inputDisabled = !!onlineConfig && !isMyTurn;
+  const inputDisabled = (!!onlineConfig && !isMyTurn) || opponentLeft;
+
+  // Suppress leaveSession on unmount for intentional exits (rematch, Return Home)
+  const suppressLeaveRef = useRef(false);
+
+  // Mark ourselves as left when we navigate away mid-game so the opponent is notified
+  useEffect(() => {
+    if (!onlineConfig) return;
+    return () => {
+      if (!suppressLeaveRef.current) {
+        leaveSession(onlineConfig.sessionId); // fire-and-forget
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onlineConfig?.sessionId]);
+
+  // Opponent's display name (used in disconnect modal)
+  const opponentName = onlineConfig
+    ? (players.find(p => p.id !== onlineConfig.myUserId)?.name ?? 'Opponent')
+    : 'Opponent';
 
   // When both players vote for a rematch, trigger remount
   useEffect(() => {
     if (!bothWantRematch || !onlineConfig) return;
     const doRematch = async () => {
+      suppressLeaveRef.current = true; // rematch is not a leave
       // Host clears DB first so remounting component won't see stale votes
       if (onlineConfig.myUserId === onlineConfig.hostUserId) {
         await resetForRematch();
@@ -987,10 +1007,27 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
       {/* Right Side - Scorecard */}
       <div className="flex-1 bg-[#1a1a1a] flex flex-col overflow-hidden relative" style={{ width: cameraEnabled ? `${100 - dividerPosition}%` : '100%' }}>
 
-        {/* Online: opponent disconnected banner */}
-        {opponentLeft && (
-          <div className="fixed top-0 left-0 right-0 z-50 bg-red-800 text-white text-center py-2 text-sm font-bold">
-            Opponent disconnected
+        {/* Online: opponent left — full-screen modal */}
+        {opponentLeft && !gameComplete && (
+          <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center">
+            <div className="bg-gray-900 border border-red-500/60 rounded-xl p-8 mx-6 max-w-sm w-full text-center shadow-2xl">
+              <div className="text-5xl mb-4">🚪</div>
+              <h2 className="text-white text-2xl font-bold mb-2">Match Ended</h2>
+              <p className="text-gray-300 text-lg mb-6">
+                <span className="text-red-400 font-semibold">{opponentName}</span> has left the match
+              </p>
+              <button
+                onClick={async () => {
+                  suppressLeaveRef.current = true;
+                  await leaveSession(onlineConfig!.sessionId);
+                  await completeOnlineSession(onlineConfig!.sessionId);
+                  router.push('/');
+                }}
+                className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-colors text-lg"
+              >
+                Return Home
+              </button>
+            </div>
           </div>
         )}
 
@@ -1532,6 +1569,7 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
                   </button>
                   <button
                     onClick={async () => {
+                      suppressLeaveRef.current = true;
                       await completeOnlineSession(onlineConfig.sessionId);
                       router.push('/');
                     }}
