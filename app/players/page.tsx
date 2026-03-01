@@ -6,7 +6,6 @@ import PageWrapper from '../components/PageWrapper';
 import AddGuestPlayerModal from '../components/AddGuestPlayerModal';
 import { useAppContext } from '../contexts/AppContext';
 import { usePlayerContext } from '../contexts/PlayerContext';
-import { useAuth } from '../contexts/AuthContext';
 import { removeRoomMember } from '../lib/roomMembers';
 import { useRoomCodeQuery } from '../lib/queries/useRoomMembersQuery';
 import { STOCK_AVATARS } from '../lib/avatars';
@@ -39,7 +38,6 @@ function PlayerAvatar({ player, size = 12, borderClass = 'border-white/20' }: {
 
 export default function ManagePlayersPage() {
   const { userProfile } = useAppContext();
-  const { loading: authLoading } = useAuth();
   const {
     localPlayers,
     sessionPlayers,
@@ -76,7 +74,7 @@ export default function ManagePlayersPage() {
     if (!sp.userId) return;
     setRemovingUserId(sp.userId);
     await removeRoomMember(sp.userId);
-    await refreshRoomMembers();
+    refreshRoomMembers(); // fire-and-forget — don't await the refetch
     setRemovingUserId(null);
   };
 
@@ -112,7 +110,7 @@ export default function ManagePlayersPage() {
                 Share this code with friends. They enter it on their Friends page to join your player pool.
               </p>
               <div className="flex items-center gap-3">
-                {(authLoading || roomCodeLoading) ? (
+                {roomCodeLoading ? (
                   <div className="flex items-center gap-2">
                     <div className="w-4 h-4 border-2 border-[#4CAF50] border-t-transparent rounded-full animate-spin" />
                     <span className="text-white/40 text-sm">Loading...</span>
@@ -141,10 +139,10 @@ export default function ManagePlayersPage() {
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-white/50 text-xs font-bold tracking-widest uppercase">Tonight's Players</h2>
               <button
-                onClick={async () => {
+                onClick={() => {
                   setRefreshing(true);
-                  await refreshRoomMembers();
-                  setRefreshing(false);
+                  refreshRoomMembers();
+                  setTimeout(() => setRefreshing(false), 1500);
                 }}
                 disabled={refreshing}
                 className="text-white/40 text-xs font-bold hover:text-white/70 transition-colors disabled:opacity-40"

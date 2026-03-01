@@ -75,6 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       setUser(session?.user ?? null)
+      setLoading(false) // auth state is known immediately; profile loads async below
 
       if (session?.user) {
         const profileData = await fetchProfile(session.user.id)
@@ -82,8 +83,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         setProfile(null)
       }
-
-      setLoading(false)
     })
 
     return () => {
