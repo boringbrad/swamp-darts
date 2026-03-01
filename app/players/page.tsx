@@ -155,11 +155,17 @@ export default function ManagePlayersPage() {
     setStartingSession(true);
     setSessionError(null);
     try {
-      const sessionId = await createPlayerSession({
-        displayName: userProfile?.displayName,
-        avatar: userProfile?.avatar,
-        photoUrl: (userProfile as any)?.photoUrl,
-      });
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Request timed out — check your connection')), 12000)
+      );
+      const sessionId = await Promise.race([
+        createPlayerSession({
+          displayName: userProfile?.displayName,
+          avatar: userProfile?.avatar,
+          photoUrl: (userProfile as any)?.photoUrl,
+        }),
+        timeout,
+      ]);
 
       if (sessionId) {
         const session: PlayerSessionInfo = {
