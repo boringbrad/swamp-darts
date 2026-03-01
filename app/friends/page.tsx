@@ -16,9 +16,25 @@ import {
   Friend,
   FriendRequest
 } from '../lib/friends';
+import {
+  getFriendSessions,
+  joinPlayerSession,
+  leavePlayerSession,
+  getMyJoinedSessionId,
+  PlayerSessionInfo,
+} from '../lib/playerSessions';
 import { STOCK_AVATARS } from '../lib/avatars';
 import { useUserPresence } from '../hooks/useUserPresence';
 import { getFriendsLastActivity, formatRelativeTime, FriendActivity } from '../lib/friendActivity';
+
+function timeRemaining(expiresAt: string): string {
+  const diff = new Date(expiresAt).getTime() - Date.now();
+  if (diff <= 0) return 'Expired';
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  if (hours > 0) return `${hours}h ${minutes}m left`;
+  return `${minutes}m left`;
+}
 
 // Lazy load QR code components to improve initial page load
 const UserQRCode = lazy(() => import('../components/friends/UserQRCode'));
@@ -41,6 +57,9 @@ export default function FriendsPage() {
   const [qrMode, setQrMode] = useState<'show' | 'scan'>('show');
   const [scanResult, setScanResult] = useState<{ success: boolean; message: string } | null>(null);
   const [friendActivity, setFriendActivity] = useState<Map<string, FriendActivity>>(new Map());
+  const [friendSessions, setFriendSessions] = useState<PlayerSessionInfo[]>([]);
+  const [myJoinedSessionId, setMyJoinedSessionId] = useState<string | null>(null);
+  const [joiningSessionId, setJoiningSessionId] = useState<string | null>(null);
 
   // Update user presence for online status tracking
   useUserPresence();
@@ -70,11 +89,24 @@ export default function FriendsPage() {
       setFriendRequests(requestsData);
       setSentRequests(sentData);
 
-      // Load friend activity for the friends tab
+      // Load friend activity and game night sessions for the friends tab
       if (activeTab === 'friends' && friendsData.length > 0) {
         const friendUserIds = friendsData.map(f => f.userId);
-        const activity = await getFriendsLastActivity(friendUserIds);
+        const [activity, sessions] = await Promise.all([
+          getFriendsLastActivity(friendUserIds),
+          getFriendSessions(friendUserIds),
+        ]);
         setFriendActivity(activity);
+        setFriendSessions(sessions);
+        if (sessions.length > 0) {
+          const joinedId = await getMyJoinedSessionId(sessions.map(s => s.id));
+          setMyJoinedSessionId(joinedId);
+        } else {
+          setMyJoinedSessionId(null);
+        }
+      } else if (activeTab === 'friends') {
+        setFriendSessions([]);
+        setMyJoinedSessionId(null);
       }
     } catch (error) {
       console.error('Error loading friends data:', error);
@@ -85,6 +117,24 @@ export default function FriendsPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleJoinSession = async (session: PlayerSessionInfo) => {
+    setJoiningSessionId(session.id);
+    const success = await joinPlayerSession(session.id, {
+      displayName: userProfile?.displayName || '',
+      avatar: userProfile?.avatar,
+      photoUrl: (userProfile as any)?.photoUrl,
+    });
+    if (success) setMyJoinedSessionId(session.id);
+    setJoiningSessionId(null);
+  };
+
+  const handleLeaveSession = async (sessionId: string) => {
+    setJoiningSessionId(sessionId);
+    await leavePlayerSession(sessionId);
+    setMyJoinedSessionId(null);
+    setJoiningSessionId(null);
   };
 
   const handleSearch = async (query: string) => {
@@ -299,6 +349,66 @@ export default function FriendsPage() {
           {/* Friends Tab */}
           {activeTab === 'friends' && (
             <div>
+              {/* ── GAME NIGHTS ─────────────────────────────── */}
+              {friendSessions.length > 0 && (
+                <div className="mb-6">
+                  <h2 className="text-white/50 text-xs font-bold tracking-widest uppercase mb-3">Game Nights</h2>
+                  <div className="space-y-3">
+                    {friendSessions.map(session => {
+                      const hostName = session.hostProfile.displayName || 'A friend';
+                      const hostAvatarData = STOCK_AVATARS.find(a => a.id === session.hostProfile.avatar) || STOCK_AVATARS[0];
+                      const isJoined = myJoinedSessionId === session.id;
+                      const isLoading = joiningSessionId === session.id;
+                      return (
+                        <div key={session.id} className="bg-[#2a2a2a] rounded-lg p-4 flex items-center gap-4">
+                          {/* Host avatar */}
+                          {session.hostProfile.photoUrl ? (
+                            <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#4CAF50]/60 flex-shrink-0">
+                              <img src={session.hostProfile.photoUrl} alt="" className="w-full h-full object-cover" />
+                            </div>
+                          ) : (
+                            <div
+                              className="w-12 h-12 rounded-full flex items-center justify-center text-2xl border-2 border-[#4CAF50]/60 flex-shrink-0"
+                              style={{ backgroundColor: hostAvatarData.color }}
+                            >
+                              {hostAvatarData.emoji}
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-[#4CAF50] animate-pulse inline-block flex-shrink-0" />
+                              <p className="text-white font-bold truncate">{hostName} is hosting</p>
+                            </div>
+                            <p className="text-white/40 text-xs">{timeRemaining(session.expiresAt)}</p>
+                            {isJoined && (
+                              <p className="text-[#4CAF50] text-xs font-bold">You're in!</p>
+                            )}
+                          </div>
+                          {isJoined ? (
+                            <button
+                              onClick={() => handleLeaveSession(session.id)}
+                              disabled={isLoading}
+                              className="px-4 py-2 bg-[#444] text-white/70 text-sm font-bold rounded hover:bg-[#555] transition-colors disabled:opacity-50 flex-shrink-0"
+                            >
+                              {isLoading ? '...' : 'LEAVE'}
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleJoinSession(session)}
+                              disabled={isLoading}
+                              className="px-4 py-2 bg-[#4CAF50] text-white text-sm font-bold rounded hover:opacity-90 transition-opacity disabled:opacity-50 flex-shrink-0"
+                            >
+                              {isLoading ? '...' : 'JOIN'}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* ── FRIENDS LIST ────────────────────────────── */}
               {friends.length === 0 ? (
                 <div className="bg-[#333333] rounded-lg p-12 text-center">
                   <div className="text-white text-xl font-bold mb-2">No Friends Yet</div>

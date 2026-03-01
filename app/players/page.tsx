@@ -1,20 +1,25 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
 import Header from '../components/Header';
 import PageWrapper from '../components/PageWrapper';
 import AddGuestPlayerModal from '../components/AddGuestPlayerModal';
 import { useAppContext } from '../contexts/AppContext';
 import { usePlayerContext } from '../contexts/PlayerContext';
-import { getFriends, Friend } from '../lib/friends';
+import {
+  createPlayerSession,
+  closePlayerSession,
+  getMyActiveSession,
+  getSessionParticipants,
+  removeParticipant,
+  PlayerSessionInfo,
+  SessionParticipant,
+} from '../lib/playerSessions';
 import { createClient } from '../lib/supabase/client';
 import { STOCK_AVATARS } from '../lib/avatars';
 import { StoredPlayer, SessionPlayer } from '../types/storage';
 
 const supabase = createClient();
-
-type InviteFlowState = 'idle' | 'picking' | 'waiting' | 'done';
 
 function getAvatarData(avatarId?: string) {
   return STOCK_AVATARS.find(a => a.id === avatarId) || STOCK_AVATARS[0];
@@ -44,10 +49,7 @@ function PlayerAvatar({ player, size = 12, borderClass = 'border-white/20' }: {
     );
   }
   return (
-    <div
-      className={`${cls} flex items-center justify-center text-xl`}
-      style={{ backgroundColor: av.color }}
-    >
+    <div className={`${cls} flex items-center justify-center text-xl`} style={{ backgroundColor: av.color }}>
       {av.emoji}
     </div>
   );
@@ -65,110 +67,82 @@ export default function ManagePlayersPage() {
     removeSessionPlayer,
   } = usePlayerContext();
 
-  // Guest management state
+  // Guest management
   const [showAddGuest, setShowAddGuest] = useState(false);
   const [editingGuest, setEditingGuest] = useState<StoredPlayer | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
-  // Friend invite flow state
-  const [inviteState, setInviteState] = useState<InviteFlowState>('idle');
-  const [friends, setFriends] = useState<Friend[]>([]);
-  const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
-  const [inviteId, setInviteId] = useState<string | null>(null);
-  const [inviteUrl, setInviteUrl] = useState('');
-  const [loadingFriends, setLoadingFriends] = useState(false);
-  const [creatingInvite, setCreatingInvite] = useState(false);
-  const [copyDone, setCopyDone] = useState(false);
+  // Game night session state
+  const [mySession, setMySession] = useState<PlayerSessionInfo | null>(null);
+  const [startingSession, setStartingSession] = useState(false);
+  const [endingSession, setEndingSession] = useState(false);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
-  // Separate persistent guests from session players in the display
   const persistentGuests = localPlayers.filter(p => !p.isVerified);
 
-  // Cleanup Realtime channel on unmount
+  // On mount: check for existing active session and subscribe to participants
   useEffect(() => {
+    initSession();
     return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-      }
+      if (channelRef.current) supabase.removeChannel(channelRef.current);
     };
   }, []);
 
-  async function openFriendPicker() {
-    setInviteState('picking');
-    setLoadingFriends(true);
-    const result = await getFriends();
-    const sessionUserIds = new Set(sessionPlayers.map(sp => sp.userId));
-    setFriends(result.filter(f => !sessionUserIds.has(f.userId)));
-    setLoadingFriends(false);
+  async function initSession() {
+    const session = await getMyActiveSession();
+    if (session) {
+      setMySession(session);
+      // Load existing participants and add them to the player pool
+      const participants = await getSessionParticipants(session.id);
+      for (const p of participants) {
+        addSessionPlayer({
+          userId: p.userId,
+          displayName: p.displayName,
+          avatar: p.avatar,
+          photoUrl: p.photoUrl,
+          joinedAt: p.joinedAt,
+          expiresAt: session.expiresAt,
+        });
+      }
+      subscribeToParticipants(session);
+    }
   }
 
-  async function selectFriend(friend: Friend) {
-    setSelectedFriend(friend);
-    setCreatingInvite(true);
-    setInviteState('waiting');
+  function subscribeToParticipants(session: PlayerSessionInfo) {
+    if (channelRef.current) supabase.removeChannel(channelRef.current);
 
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) {
-      setInviteState('idle');
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from('local_game_invites')
-      .insert({
-        host_user_id: session.user.id,
-        invited_user_id: friend.userId,
-        host_profile: {
-          displayName: userProfile?.displayName || session.user.email,
-          avatar: userProfile?.avatar,
-          photoUrl: (userProfile as any)?.photoUrl,
-        },
-      })
-      .select('id')
-      .single();
-
-    setCreatingInvite(false);
-
-    if (error || !data) {
-      console.error('Error creating invite:', error);
-      setInviteState('idle');
-      return;
-    }
-
-    setInviteId(data.id);
-    const url = `${window.location.origin}/join-session/${data.id}`;
-    setInviteUrl(url);
-
-    // Subscribe to invite updates via Realtime
     const channel = supabase
-      .channel(`invite:${data.id}`)
+      .channel(`session-participants:${session.id}`)
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: 'INSERT',
           schema: 'public',
-          table: 'local_game_invites',
-          filter: `id=eq.${data.id}`,
+          table: 'player_session_participants',
+          filter: `session_id=eq.${session.id}`,
         },
         (payload: any) => {
-          if (payload.new?.status === 'accepted') {
-            const profile = payload.new.invited_profile || {};
-            const now = new Date();
-            const expiresAt = new Date(now.getTime() + 8 * 60 * 60 * 1000);
-
-            addSessionPlayer({
-              userId: friend.userId,
-              displayName: profile.displayName || friend.displayName,
-              avatar: profile.avatar || friend.avatar,
-              photoUrl: profile.photoUrl || friend.photoUrl,
-              joinedAt: now.toISOString(),
-              expiresAt: expiresAt.toISOString(),
-            });
-
-            supabase.removeChannel(channel);
-            channelRef.current = null;
-            setInviteState('done');
-          }
+          const p = payload.new;
+          addSessionPlayer({
+            userId: p.user_id,
+            displayName: p.display_name,
+            avatar: p.avatar,
+            photoUrl: p.photo_url,
+            joinedAt: p.joined_at,
+            expiresAt: session.expiresAt,
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'player_session_participants',
+          filter: `session_id=eq.${session.id}`,
+        },
+        (payload: any) => {
+          if (payload.old?.user_id) removeSessionPlayer(payload.old.user_id);
         }
       )
       .subscribe();
@@ -176,28 +150,53 @@ export default function ManagePlayersPage() {
     channelRef.current = channel;
   }
 
-  function cancelInvite() {
+  async function handleStartSession() {
+    setStartingSession(true);
+    const sessionId = await createPlayerSession({
+      displayName: userProfile?.displayName,
+      avatar: userProfile?.avatar,
+      photoUrl: (userProfile as any)?.photoUrl,
+    });
+
+    if (sessionId) {
+      const session: PlayerSessionInfo = {
+        id: sessionId,
+        hostUserId: userProfile?.id || '',
+        hostProfile: {
+          displayName: userProfile?.displayName,
+          avatar: userProfile?.avatar,
+          photoUrl: (userProfile as any)?.photoUrl,
+        },
+        status: 'open',
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+      };
+      setMySession(session);
+      subscribeToParticipants(session);
+    }
+    setStartingSession(false);
+  }
+
+  async function handleEndSession() {
+    if (!mySession) return;
+    setEndingSession(true);
+    await closePlayerSession(mySession.id);
+    // Clear all session players from the pool
+    for (const sp of sessionPlayers) {
+      if (sp.userId) removeSessionPlayer(sp.userId);
+    }
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
-    setInviteState('idle');
-    setSelectedFriend(null);
-    setInviteId(null);
-    setInviteUrl('');
+    setMySession(null);
+    setEndingSession(false);
   }
 
-  function resetInviteFlow() {
-    setInviteState('idle');
-    setSelectedFriend(null);
-    setInviteId(null);
-    setInviteUrl('');
-  }
-
-  async function copyInviteLink() {
-    await navigator.clipboard.writeText(inviteUrl);
-    setCopyDone(true);
-    setTimeout(() => setCopyDone(false), 2000);
+  async function handleRemoveParticipant(sp: StoredPlayer) {
+    if (!mySession || !sp.userId) return;
+    await removeParticipant(mySession.id, sp.userId);
+    removeSessionPlayer(sp.userId);
   }
 
   return (
@@ -209,16 +208,10 @@ export default function ManagePlayersPage() {
 
           {/* ── YOUR ACCOUNT ─────────────────────────────── */}
           <section className="mb-8">
-            <h2 className="text-white/50 text-xs font-bold tracking-widest uppercase mb-3">
-              Your Account
-            </h2>
+            <h2 className="text-white/50 text-xs font-bold tracking-widest uppercase mb-3">Your Account</h2>
             <div className="bg-[#2a2a2a] rounded-lg p-4 flex items-center gap-4">
               <PlayerAvatar
-                player={{
-                  photoUrl: (userProfile as any)?.photoUrl,
-                  avatar: userProfile?.avatar,
-                  name: userProfile?.displayName || '',
-                }}
+                player={{ photoUrl: (userProfile as any)?.photoUrl, avatar: userProfile?.avatar, name: userProfile?.displayName || '' }}
                 size={14}
               />
               <div>
@@ -230,17 +223,9 @@ export default function ManagePlayersPage() {
 
           {/* ── TONIGHT'S PLAYERS ────────────────────────── */}
           <section className="mb-8">
-            <h2 className="text-white/50 text-xs font-bold tracking-widest uppercase mb-3">
-              Tonight's Players
-            </h2>
+            <h2 className="text-white/50 text-xs font-bold tracking-widest uppercase mb-3">Tonight's Players</h2>
 
-            {sessionPlayers.length === 0 && inviteState === 'idle' && (
-              <p className="text-white/40 text-sm mb-4">
-                Invite friends with accounts to join tonight's games. Their stats will be tracked on their profile.
-              </p>
-            )}
-
-            {/* Verified session players list */}
+            {/* Session players list */}
             {sessionPlayers.map(sp => (
               <div key={sp.id} className="bg-[#2a2a2a] rounded-lg p-4 flex items-center gap-4 mb-3">
                 <PlayerAvatar
@@ -257,127 +242,60 @@ export default function ManagePlayersPage() {
                     {sp.sessionExpiresAt ? timeRemaining(sp.sessionExpiresAt) : ''}
                   </p>
                 </div>
-                <button
-                  onClick={() => sp.userId && removeSessionPlayer(sp.userId)}
-                  className="px-3 py-1 bg-[#444] text-white/70 text-sm font-bold rounded hover:bg-[#555] transition-colors"
-                >
-                  REMOVE
-                </button>
+                {mySession && (
+                  <button
+                    onClick={() => handleRemoveParticipant(sp)}
+                    className="px-3 py-1 bg-[#444] text-white/70 text-sm font-bold rounded hover:bg-[#555] transition-colors"
+                  >
+                    REMOVE
+                  </button>
+                )}
               </div>
             ))}
 
-            {/* Invite flow */}
-            {inviteState === 'idle' && (
-              <button
-                onClick={openFriendPicker}
-                className="w-full py-3 border-2 border-dashed border-[#444] text-white/50 text-sm font-bold rounded-lg hover:border-[#6b1a8b] hover:text-white transition-colors"
-              >
-                + ADD FRIEND
-              </button>
-            )}
-
-            {inviteState === 'picking' && (
-              <div className="bg-[#2a2a2a] rounded-lg p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-white font-bold">Select a Friend</h3>
-                  <button onClick={cancelInvite} className="text-white/50 hover:text-white text-sm transition-colors">
-                    CANCEL
-                  </button>
-                </div>
-                {loadingFriends && (
-                  <p className="text-white/50 text-sm py-4 text-center">Loading friends...</p>
-                )}
-                {!loadingFriends && friends.length === 0 && (
-                  <p className="text-white/50 text-sm py-4 text-center">
-                    No friends available to invite. Add friends on the Friends page first, or all your friends are already in tonight's session.
+            {/* No session — show start button */}
+            {!mySession && (
+              <div className="bg-[#2a2a2a] rounded-lg p-6 text-center">
+                {sessionPlayers.length === 0 && (
+                  <p className="text-white/40 text-sm mb-5">
+                    Start a game night so friends can join from their Friends page. Their stats will be tracked all night.
                   </p>
                 )}
-                {friends.map(f => (
-                  <button
-                    key={f.userId}
-                    onClick={() => selectFriend(f)}
-                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-[#3a3a3a] transition-colors text-left mb-1"
-                  >
-                    <PlayerAvatar
-                      player={{ photoUrl: f.photoUrl, avatar: f.avatar, name: f.displayName }}
-                      size={10}
-                    />
-                    <div>
-                      <p className="text-white font-bold">{f.displayName}</p>
-                      <p className="text-white/40 text-xs">@{f.username}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {inviteState === 'waiting' && selectedFriend && (
-              <div className="bg-[#2a2a2a] rounded-lg p-6 text-center">
-                {creatingInvite ? (
-                  <p className="text-white font-bold">Creating invite...</p>
-                ) : (
-                  <>
-                    <p className="text-white font-bold text-lg mb-1">
-                      Waiting for {selectedFriend.displayName}...
-                    </p>
-                    <p className="text-white/50 text-sm mb-6">
-                      Have them scan this QR code or open the link on their phone
-                    </p>
-                    <div className="flex justify-center mb-6">
-                      <div className="bg-white p-4 rounded-xl inline-block">
-                        <QRCodeSVG value={inviteUrl} size={180} />
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 bg-[#1a1a1a] rounded-lg p-3 mb-5 text-left">
-                      <span className="text-white/50 text-xs flex-1 break-all">{inviteUrl}</span>
-                      <button
-                        onClick={copyInviteLink}
-                        className="text-white/60 hover:text-white text-xs font-bold flex-shrink-0 ml-2 transition-colors"
-                      >
-                        {copyDone ? 'COPIED!' : 'COPY'}
-                      </button>
-                    </div>
-                  </>
-                )}
                 <button
-                  onClick={cancelInvite}
-                  className="px-6 py-2 bg-[#444] text-white/70 text-sm font-bold rounded hover:bg-[#555] transition-colors"
+                  onClick={handleStartSession}
+                  disabled={startingSession}
+                  className="w-full py-4 bg-[#4CAF50] text-white text-lg font-bold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
                 >
-                  CANCEL
+                  {startingSession ? 'STARTING...' : 'START GAME NIGHT'}
                 </button>
               </div>
             )}
 
-            {inviteState === 'done' && selectedFriend && (
-              <div className="bg-[#2a2a2a] rounded-lg p-6 text-center">
-                <p className="text-4xl mb-3">🎯</p>
-                <p className="text-white font-bold text-xl mb-1">{selectedFriend.displayName} joined!</p>
-                <p className="text-white/50 text-sm mb-6">
-                  They're in the player pool for 8 hours. Their stats will be tracked tonight.
-                </p>
-                <div className="flex gap-3 justify-center">
-                  <button
-                    onClick={resetInviteFlow}
-                    className="px-5 py-2 bg-[#444] text-white/70 text-sm font-bold rounded hover:bg-[#555] transition-colors"
-                  >
-                    CLOSE
-                  </button>
-                  <button
-                    onClick={() => { resetInviteFlow(); openFriendPicker(); }}
-                    className="px-5 py-2 bg-[#6b1a8b] text-white text-sm font-bold rounded hover:opacity-90 transition-opacity"
-                  >
-                    ADD ANOTHER
-                  </button>
+            {/* Session open — show status and end button */}
+            {mySession && (
+              <div className="bg-[#2a2a2a] rounded-lg p-4 mt-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="w-2 h-2 rounded-full bg-[#4CAF50] animate-pulse inline-block" />
+                  <p className="text-[#4CAF50] text-sm font-bold">Game night is open</p>
+                  <p className="text-white/30 text-xs ml-auto">{timeRemaining(mySession.expiresAt)}</p>
                 </div>
+                <p className="text-white/50 text-xs mb-4">
+                  Friends can join from their Friends page. They'll appear here automatically.
+                </p>
+                <button
+                  onClick={handleEndSession}
+                  disabled={endingSession}
+                  className="w-full py-2 bg-[#444] text-white/70 text-sm font-bold rounded hover:bg-[#555] transition-colors disabled:opacity-50"
+                >
+                  {endingSession ? 'ENDING...' : 'END GAME NIGHT'}
+                </button>
               </div>
             )}
           </section>
 
           {/* ── GUEST PLAYERS ────────────────────────────── */}
           <section className="mb-8">
-            <h2 className="text-white/50 text-xs font-bold tracking-widest uppercase mb-3">
-              Guest Players
-            </h2>
+            <h2 className="text-white/50 text-xs font-bold tracking-widest uppercase mb-3">Guest Players</h2>
 
             {persistentGuests.length === 0 && (
               <p className="text-white/40 text-sm mb-4">No guest players yet.</p>
@@ -385,10 +303,7 @@ export default function ManagePlayersPage() {
 
             {persistentGuests.map(p => (
               <div key={p.id} className="bg-[#2a2a2a] rounded-lg p-4 flex items-center gap-4 mb-3">
-                <PlayerAvatar
-                  player={{ photoUrl: p.photoUrl, avatar: p.avatar, name: p.name }}
-                  size={12}
-                />
+                <PlayerAvatar player={{ photoUrl: p.photoUrl, avatar: p.avatar, name: p.name }} size={12} />
                 <div className="flex-1 min-w-0">
                   <p className="text-white font-bold truncate">{p.name}</p>
                   <p className="text-white/40 text-xs">Guest</p>
@@ -445,18 +360,13 @@ export default function ManagePlayersPage() {
         title="EDIT PLAYER"
       />
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Confirmation */}
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/70"
-            onClick={() => setDeleteConfirm(null)}
-          />
+          <div className="absolute inset-0 bg-black/70" onClick={() => setDeleteConfirm(null)} />
           <div className="relative bg-[#2a2a2a] rounded-lg p-8 w-full max-w-sm mx-4 text-center shadow-2xl">
             <p className="text-white text-xl font-bold mb-2">Delete Player?</p>
-            <p className="text-white/50 text-sm mb-6">
-              This will also remove their local match history.
-            </p>
+            <p className="text-white/50 text-sm mb-6">This will also remove their local match history.</p>
             <div className="flex gap-3">
               <button
                 onClick={() => setDeleteConfirm(null)}
@@ -465,10 +375,7 @@ export default function ManagePlayersPage() {
                 CANCEL
               </button>
               <button
-                onClick={() => {
-                  deleteLocalPlayer(deleteConfirm);
-                  setDeleteConfirm(null);
-                }}
+                onClick={() => { deleteLocalPlayer(deleteConfirm); setDeleteConfirm(null); }}
                 className="flex-1 py-3 bg-[#FF6B6B] text-white font-bold rounded hover:opacity-90 transition-opacity"
               >
                 DELETE

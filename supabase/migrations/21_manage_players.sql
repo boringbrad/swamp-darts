@@ -1,53 +1,77 @@
 -- Migration: Manage Players + Local Session System
--- Adds local_game_invites table for verified friend invite flow
--- Adds participant_user_ids to match tables for multi-user stat attribution
+-- Replaces local_game_invites approach with a broadcast model:
+-- Host opens a session, friends see it on their Friends page and join themselves.
 
 -- ============================================================
--- local_game_invites table
+-- player_sessions — host broadcasts their game night is open
 -- ============================================================
-CREATE TABLE IF NOT EXISTS local_game_invites (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  host_user_id    UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  invited_user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  host_profile    JSONB NOT NULL DEFAULT '{}',     -- { displayName, avatar, photoUrl }
-  invited_profile JSONB NOT NULL DEFAULT '{}',     -- filled by friend on accept
-  status          TEXT NOT NULL DEFAULT 'pending', -- 'pending' | 'accepted'
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  expires_at      TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '8 hours')
+CREATE TABLE IF NOT EXISTS player_sessions (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  host_user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  host_profile JSONB NOT NULL DEFAULT '{}',    -- { displayName, avatar, photoUrl }
+  status       TEXT NOT NULL DEFAULT 'open',   -- 'open' | 'closed'
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at   TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '8 hours')
 );
 
-ALTER TABLE local_game_invites ENABLE ROW LEVEL SECURITY;
+ALTER TABLE player_sessions ENABLE ROW LEVEL SECURITY;
 
--- Host can insert, read, and delete their own invites
-CREATE POLICY "host can manage invites"
-  ON local_game_invites FOR ALL
+-- Host can fully manage their own sessions
+CREATE POLICY "host can manage sessions"
+  ON player_sessions FOR ALL
   USING (host_user_id = auth.uid());
 
--- Invited user can read their invite (to show the confirmation page)
-CREATE POLICY "invited user can read invite"
-  ON local_game_invites FOR SELECT
-  USING (invited_user_id = auth.uid());
+-- Any authenticated user can read open, non-expired sessions
+-- (app layer filters to friends only)
+CREATE POLICY "anyone can read open sessions"
+  ON player_sessions FOR SELECT
+  USING (status = 'open' AND expires_at > NOW());
 
--- Invited user can update their invite (to accept it)
-CREATE POLICY "invited user can accept invite"
-  ON local_game_invites FOR UPDATE
-  USING (invited_user_id = auth.uid());
+ALTER PUBLICATION supabase_realtime ADD TABLE player_sessions;
 
--- Enable Realtime so host device gets instant notification when friend accepts
-ALTER PUBLICATION supabase_realtime ADD TABLE local_game_invites;
+-- ============================================================
+-- player_session_participants — friends who joined a session
+-- ============================================================
+CREATE TABLE IF NOT EXISTS player_session_participants (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id   UUID REFERENCES player_sessions(id) ON DELETE CASCADE NOT NULL,
+  user_id      UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  display_name TEXT NOT NULL,
+  avatar       TEXT,
+  photo_url    TEXT,
+  joined_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (session_id, user_id)
+);
+
+ALTER TABLE player_session_participants ENABLE ROW LEVEL SECURITY;
+
+-- Participants can manage their own rows (join and leave)
+CREATE POLICY "participant can manage self"
+  ON player_session_participants FOR ALL
+  USING (user_id = auth.uid());
+
+-- Host can read and remove participants from their session
+CREATE POLICY "host can manage participants"
+  ON player_session_participants FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM player_sessions ps
+      WHERE ps.id = session_id
+        AND ps.host_user_id = auth.uid()
+    )
+  );
+
+ALTER PUBLICATION supabase_realtime ADD TABLE player_session_participants;
 
 -- ============================================================
 -- Stat attribution columns on match tables
 -- ============================================================
-
--- Array of user_ids of verified players who participated but are not the match owner
 ALTER TABLE cricket_matches
   ADD COLUMN IF NOT EXISTS participant_user_ids TEXT[] NOT NULL DEFAULT '{}';
 
 ALTER TABLE golf_matches
   ADD COLUMN IF NOT EXISTS participant_user_ids TEXT[] NOT NULL DEFAULT '{}';
 
--- Index for efficient "find matches I was a participant in" queries
 CREATE INDEX IF NOT EXISTS idx_cricket_matches_participants
   ON cricket_matches USING GIN (participant_user_ids);
 
