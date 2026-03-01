@@ -74,6 +74,7 @@ export default function ManagePlayersPage() {
 
   // Game night session state
   const [mySession, setMySession] = useState<PlayerSessionInfo | null>(null);
+  const [initializingSession, setInitializingSession] = useState(true);
   const [startingSession, setStartingSession] = useState(false);
   const [endingSession, setEndingSession] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
@@ -90,22 +91,28 @@ export default function ManagePlayersPage() {
   }, []);
 
   async function initSession() {
-    const session = await getMyActiveSession();
-    if (session) {
-      setMySession(session);
-      // Load existing participants and add them to the player pool
-      const participants = await getSessionParticipants(session.id);
-      for (const p of participants) {
-        addSessionPlayer({
-          userId: p.userId,
-          displayName: p.displayName,
-          avatar: p.avatar,
-          photoUrl: p.photoUrl,
-          joinedAt: p.joinedAt,
-          expiresAt: session.expiresAt,
-        });
+    try {
+      const session = await getMyActiveSession();
+      if (session) {
+        setMySession(session);
+        // Load existing participants and add them to the player pool
+        const participants = await getSessionParticipants(session.id);
+        for (const p of participants) {
+          addSessionPlayer({
+            userId: p.userId,
+            displayName: p.displayName,
+            avatar: p.avatar,
+            photoUrl: p.photoUrl,
+            joinedAt: p.joinedAt,
+            expiresAt: session.expiresAt,
+          });
+        }
+        subscribeToParticipants(session);
       }
-      subscribeToParticipants(session);
+    } catch (err) {
+      console.error('initSession error:', err);
+    } finally {
+      setInitializingSession(false);
     }
   }
 
@@ -267,8 +274,15 @@ export default function ManagePlayersPage() {
               </div>
             ))}
 
+            {/* Loading — checking for existing session */}
+            {initializingSession && (
+              <div className="bg-[#2a2a2a] rounded-lg p-6 flex justify-center">
+                <div className="w-6 h-6 border-2 border-[#4CAF50] border-t-transparent rounded-full animate-spin" />
+              </div>
+            )}
+
             {/* No session — show start button */}
-            {!mySession && (
+            {!initializingSession && !mySession && (
               <div className="bg-[#2a2a2a] rounded-lg p-6 text-center">
                 {sessionPlayers.length === 0 && (
                   <p className="text-white/40 text-sm mb-5">

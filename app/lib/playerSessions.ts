@@ -38,13 +38,7 @@ export async function createPlayerSession(
     throw new Error('Not authenticated — please sign in again');
   }
 
-  // Close any existing open sessions so there's only ever one active
-  await supabase
-    .from('player_sessions')
-    .update({ status: 'closed' })
-    .eq('host_user_id', session.user.id)
-    .eq('status', 'open');
-
+  // INSERT first — only close old sessions if the new one succeeds
   const { data, error } = await supabase
     .from('player_sessions')
     .insert({ host_user_id: session.user.id, host_profile: hostProfile })
@@ -54,6 +48,15 @@ export async function createPlayerSession(
   if (error) {
     throw new Error(`${error.message} (code: ${error.code})`);
   }
+
+  // Close any other open sessions now that the new one is safely created
+  await supabase
+    .from('player_sessions')
+    .update({ status: 'closed' })
+    .eq('host_user_id', session.user.id)
+    .eq('status', 'open')
+    .neq('id', data.id);
+
   return data.id;
 }
 
