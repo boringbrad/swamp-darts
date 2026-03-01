@@ -76,6 +76,7 @@ export default function ManagePlayersPage() {
   const [mySession, setMySession] = useState<PlayerSessionInfo | null>(null);
   const [startingSession, setStartingSession] = useState(false);
   const [endingSession, setEndingSession] = useState(false);
+  const [sessionError, setSessionError] = useState<string | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   const persistentGuests = localPlayers.filter(p => !p.isVerified);
@@ -152,6 +153,7 @@ export default function ManagePlayersPage() {
 
   async function handleStartSession() {
     setStartingSession(true);
+    setSessionError(null);
     try {
       const sessionId = await createPlayerSession({
         displayName: userProfile?.displayName,
@@ -175,8 +177,9 @@ export default function ManagePlayersPage() {
         setMySession(session);
         subscribeToParticipants(session);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to start game night:', err);
+      setSessionError(err?.message || 'Failed to start game night');
     } finally {
       setStartingSession(false);
     }
@@ -273,6 +276,9 @@ export default function ManagePlayersPage() {
                 >
                   {startingSession ? 'STARTING...' : 'START GAME NIGHT'}
                 </button>
+                {sessionError && (
+                  <p className="text-[#FF6B6B] text-xs mt-3 text-left break-all">{sessionError}</p>
+                )}
               </div>
             )}
 

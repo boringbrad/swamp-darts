@@ -34,7 +34,9 @@ export async function createPlayerSession(
   hostProfile: { displayName?: string; avatar?: string; photoUrl?: string }
 ): Promise<string | null> {
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.user) return null;
+  if (!session?.user) {
+    throw new Error('Not authenticated — please sign in again');
+  }
 
   // Close any existing open sessions so there's only ever one active
   await supabase
@@ -50,8 +52,7 @@ export async function createPlayerSession(
     .single();
 
   if (error) {
-    console.error('Error creating player session:', error);
-    return null;
+    throw new Error(`${error.message} (code: ${error.code})`);
   }
   return data.id;
 }
