@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAppContext } from '../../../contexts/AppContext';
 import { useSession } from '../../../hooks/useSession';
@@ -45,6 +45,9 @@ export default function OnlineGamePage() {
   const [ready, setReady] = useState(false);
   const [rematchKey, setRematchKey] = useState(0);
   const [exiting, setExiting] = useState(false);
+  // Ref mirrors exiting for synchronous reads inside effects — useState updates are
+  // batched and may not be visible to an effect that fires in the same tick.
+  const exitingRef = useRef(false);
 
   // Snapshot players at game-start so the game keeps rendering even after one player
   // sets left_at (which drops them from activeParticipants and would otherwise cause
@@ -58,9 +61,9 @@ export default function OnlineGamePage() {
 
   const handleExitGame = () => {
     if (!confirm('Exit game? This will end the session for both players.')) return;
-    setExiting(true);
-    // Fire-and-forget — navigate immediately so the button never gets stuck.
-    completeOnlineSession(sessionId).catch(console.error);
+    exitingRef.current = true; // set synchronously BEFORE router.push so the effect sees it immediately
+    setExiting(true);          // for button UI only
+    completeOnlineSession(sessionId).catch(console.error); // fire-and-forget
     router.push('/');
   };
 
@@ -126,14 +129,15 @@ export default function OnlineGamePage() {
   }, [sessionLoading, participantsLoading, session, activeParticipants, myId]);
 
   // If the opponent completes/expires the session, redirect to the lobby list.
-  // Skip when we're already handling the exit ourselves (exiting=true) to avoid
-  // a race where this fires before router.push('/') and sends us to /online instead.
+  // Uses exitingRef (not exiting state) because the ref is set synchronously in
+  // handleExitGame before router.push fires — state updates are async and the
+  // effect could see exiting=false even after setExiting(true) was called.
   useEffect(() => {
-    if (exiting) return;
+    if (exitingRef.current) return;
     if (session?.status === 'completed' || session?.status === 'expired') {
       router.push('/online');
     }
-  }, [session?.status, exiting]);
+  }, [session?.status]);
 
   if (sessionLoading || participantsLoading || !ready) {
     return (
