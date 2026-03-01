@@ -5,6 +5,7 @@ import { AppProvider } from "./contexts/AppContext";
 import { PlayerProvider } from "./contexts/PlayerContext";
 import { AuthProvider } from "./contexts/AuthContext";
 import { SessionProvider } from "./contexts/SessionContext";
+import QueryProvider from "./providers/QueryProvider";
 import PWARegister from "./components/PWARegister";
 import GoogleAnalytics from "./components/GoogleAnalytics";
 import MobileOrientationLock from "./components/MobileOrientationLock";
@@ -57,15 +58,17 @@ export default function RootLayout({
         <PWARegister />
         <MobileOrientationLock />
         <OfflineBanner />
-        <AuthProvider>
-          <AppProvider>
-            <PlayerProvider>
-              <SessionProvider>
-                {children}
-              </SessionProvider>
-            </PlayerProvider>
-          </AppProvider>
-        </AuthProvider>
+        <QueryProvider>
+          <AuthProvider>
+            <AppProvider>
+              <PlayerProvider>
+                <SessionProvider>
+                  {children}
+                </SessionProvider>
+              </PlayerProvider>
+            </AppProvider>
+          </AuthProvider>
+        </QueryProvider>
       </body>
     </html>
   );

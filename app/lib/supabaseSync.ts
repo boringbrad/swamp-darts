@@ -6,6 +6,7 @@
 
 import { createClient } from './supabase/client';
 import { addToSyncQueue, getSyncQueue, removeFromSyncQueue } from './offlineQueue';
+import { getQueryClient } from './queries/queryClient';
 
 const supabase = createClient();
 
@@ -170,6 +171,8 @@ export async function syncCricketMatch(matchData: CricketMatchData): Promise<boo
     // Remove from queue if it was queued from a previous offline session
     removeFromSyncQueue(matchData.matchId);
     console.log('Cricket match synced to Supabase:', matchData.matchId);
+    // Invalidate query cache so stats pages reflect the new match immediately
+    getQueryClient().invalidateQueries({ queryKey: ['cricket-matches'] });
     return true;
   } catch (error) {
     console.error('Unexpected error syncing cricket match:', error);
@@ -271,6 +274,8 @@ export async function syncGolfMatch(matchData: GolfMatchData): Promise<boolean> 
     // Remove from queue if it was queued from a previous offline session
     removeFromSyncQueue(matchData.matchId);
     console.log('Golf match synced to Supabase:', matchData.matchId);
+    // Invalidate query cache so stats pages reflect the new match immediately
+    getQueryClient().invalidateQueries({ queryKey: ['golf-matches'] });
     return true;
   } catch (error) {
     console.error('Unexpected error syncing golf match:', error);

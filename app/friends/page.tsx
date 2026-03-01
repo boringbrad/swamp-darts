@@ -5,9 +5,6 @@ import Header from '../components/Header';
 import PageWrapper from '../components/PageWrapper';
 import { useAppContext } from '../contexts/AppContext';
 import {
-  getFriends,
-  getFriendRequests,
-  getSentFriendRequests,
   searchUsers,
   sendFriendRequest,
   acceptFriendRequest,
@@ -16,10 +13,17 @@ import {
   Friend,
   FriendRequest
 } from '../lib/friends';
-import { joinRoomByCode, getMyJoinedRooms, leaveRoom, JoinedRoom } from '../lib/roomMembers';
+import { joinRoomByCode, leaveRoom } from '../lib/roomMembers';
 import { STOCK_AVATARS } from '../lib/avatars';
 import { useUserPresence } from '../hooks/useUserPresence';
 import { getFriendsLastActivity, formatRelativeTime, FriendActivity } from '../lib/friendActivity';
+import {
+  useFriendsQuery,
+  useFriendRequestsQuery,
+  useSentFriendRequestsQuery,
+  useInvalidateFriends,
+} from '../lib/queries/useFriendsQuery';
+import { useJoinedRoomsQuery, useInvalidateJoinedRooms } from '../lib/queries/useFriendsQuery';
 
 // Lazy load QR code components to improve initial page load
 const UserQRCode = lazy(() => import('../components/friends/UserQRCode'));
@@ -32,12 +36,8 @@ type Tab = 'friends' | 'requests' | 'add' | 'qr' | 'leaderboards' | 'stats';
 export default function FriendsPage() {
   const { userProfile } = useAppContext();
   const [activeTab, setActiveTab] = useState<Tab>('friends');
-  const [friends, setFriends] = useState<Friend[]>([]);
-  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
-  const [sentRequests, setSentRequests] = useState<Friend[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [qrMode, setQrMode] = useState<'show' | 'scan'>('show');
   const [scanResult, setScanResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -47,69 +47,27 @@ export default function FriendsPage() {
   const [roomCodeInput, setRoomCodeInput] = useState('');
   const [joiningRoom, setJoiningRoom] = useState(false);
   const [joinResult, setJoinResult] = useState<{ success: boolean; message: string } | null>(null);
-
-  // Rooms I've joined (where I am a member)
-  const [joinedRooms, setJoinedRooms] = useState<JoinedRoom[]>([]);
   const [leavingRoomId, setLeavingRoomId] = useState<string | null>(null);
+
+  // Query hooks — data is cached, no manual polling needed
+  const { data: friends = [], isLoading: friendsLoading } = useFriendsQuery();
+  const { data: friendRequests = [] } = useFriendRequestsQuery();
+  const { data: sentRequests = [] } = useSentFriendRequestsQuery();
+  const { data: joinedRooms = [] } = useJoinedRoomsQuery();
+  const invalidateFriends = useInvalidateFriends();
+  const invalidateJoinedRooms = useInvalidateJoinedRooms();
 
   // Update user presence for online status tracking
   useUserPresence();
 
+  // Load friend activity whenever friends list or active tab changes
   useEffect(() => {
-    loadData();
-
-    // Refresh friends list every 60 seconds to update online status
-    const interval = setInterval(() => {
-      if (activeTab === 'friends') {
-        loadData();
-      }
-    }, 60000); // 60 seconds
-
-    return () => clearInterval(interval);
-  }, [activeTab]);
-
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const [friendsData, requestsData, sentData] = await Promise.all([
-        getFriends(),
-        getFriendRequests(),
-        getSentFriendRequests()
-      ]);
-      setFriends(friendsData);
-      setFriendRequests(requestsData);
-      setSentRequests(sentData);
-
-      // Load friend activity — errors here must not wipe the friends list
-      if (activeTab === 'friends' && friendsData.length > 0) {
-        try {
-          const friendUserIds = friendsData.map(f => f.userId);
-          const activity = await getFriendsLastActivity(friendUserIds);
-          setFriendActivity(activity);
-        } catch (activityErr) {
-          console.error('Error loading friend activity:', activityErr);
-        }
-      }
-
-      // Load rooms I've joined — errors here must not wipe the friends list
-      if (activeTab === 'friends') {
-        try {
-          const rooms = await getMyJoinedRooms();
-          setJoinedRooms(rooms);
-        } catch (roomErr) {
-          console.error('Error loading joined rooms:', roomErr);
-        }
-      }
-
-    } catch (error) {
-      console.error('Error loading friends data:', error);
-      setFriends([]);
-      setFriendRequests([]);
-      setSentRequests([]);
-    } finally {
-      setLoading(false);
+    if (activeTab === 'friends' && friends.length > 0) {
+      getFriendsLastActivity(friends.map(f => f.userId))
+        .then(activity => setFriendActivity(activity))
+        .catch(err => console.error('Error loading friend activity:', err));
     }
-  };
+  }, [friends, activeTab]);
 
   const handleJoinRoom = async () => {
     if (!roomCodeInput.trim()) return;
@@ -124,11 +82,7 @@ export default function FriendsPage() {
     if (result.success) {
       setJoinResult({ success: true, message: `You joined ${result.ownerDisplayName}'s player pool!` });
       setRoomCodeInput('');
-      // Refresh joined rooms list
-      try {
-        const rooms = await getMyJoinedRooms();
-        setJoinedRooms(rooms);
-      } catch { /* silent */ }
+      invalidateJoinedRooms();
     } else {
       setJoinResult({ success: false, message: result.error || 'Failed to join.' });
     }
@@ -137,7 +91,7 @@ export default function FriendsPage() {
   const handleLeaveRoom = async (ownerId: string) => {
     setLeavingRoomId(ownerId);
     await leaveRoom(ownerId);
-    setJoinedRooms(prev => prev.filter(r => r.ownerId !== ownerId));
+    invalidateJoinedRooms();
     setLeavingRoomId(null);
   };
 
@@ -157,9 +111,7 @@ export default function FriendsPage() {
   const handleSendRequest = async (userId: string) => {
     const result = await sendFriendRequest(userId);
     if (result.success) {
-      // Refresh data
-      await loadData();
-      // Remove from search results
+      invalidateFriends();
       setSearchResults(prev => prev.filter(u => u.id !== userId));
     } else {
       alert(result.error || 'Failed to send friend request');
@@ -169,8 +121,8 @@ export default function FriendsPage() {
   const handleAcceptRequest = async (friendshipId: string) => {
     const result = await acceptFriendRequest(friendshipId);
     if (result.success) {
-      await loadData();
-      setActiveTab('friends'); // Switch to friends tab to see the new friend
+      invalidateFriends();
+      setActiveTab('friends');
     } else {
       alert(result.error || 'Failed to accept friend request');
     }
@@ -179,7 +131,7 @@ export default function FriendsPage() {
   const handleDeclineRequest = async (friendshipId: string) => {
     const result = await declineFriendRequest(friendshipId);
     if (result.success) {
-      await loadData();
+      invalidateFriends();
     } else {
       alert(result.error || 'Failed to decline friend request');
     }
@@ -189,7 +141,7 @@ export default function FriendsPage() {
     if (confirm(`Are you sure you want to remove ${friendName} from your friends?`)) {
       const result = await removeFriend(friendshipId);
       if (result.success) {
-        await loadData();
+        invalidateFriends();
       } else {
         alert(result.error || 'Failed to remove friend');
       }
@@ -200,58 +152,33 @@ export default function FriendsPage() {
     try {
       const data = JSON.parse(qrData);
 
-      // Validate QR code format
       if (data.type !== 'swamp_darts_friend' || !data.userId) {
-        setScanResult({
-          success: false,
-          message: 'Invalid QR code. Please scan a Swamp Darts friend QR code.'
-        });
+        setScanResult({ success: false, message: 'Invalid QR code. Please scan a Swamp Darts friend QR code.' });
         return;
       }
 
-      // Check if trying to add yourself
       if (data.userId === userProfile?.id) {
-        setScanResult({
-          success: false,
-          message: "You can't add yourself as a friend!"
-        });
+        setScanResult({ success: false, message: "You can't add yourself as a friend!" });
         return;
       }
 
-      // Check if already friends
       const alreadyFriend = friends.some(f => f.userId === data.userId);
       if (alreadyFriend) {
-        setScanResult({
-          success: false,
-          message: `You're already friends with ${data.displayName || data.username}!`
-        });
+        setScanResult({ success: false, message: `You're already friends with ${data.displayName || data.username}!` });
         return;
       }
 
-      // Send friend request
       const result = await sendFriendRequest(data.userId);
-
       if (result.success) {
-        setScanResult({
-          success: true,
-          message: `Friend request sent to ${data.displayName || data.username}!`
-        });
-        await loadData();
-
-        // Clear message after 3 seconds
+        setScanResult({ success: true, message: `Friend request sent to ${data.displayName || data.username}!` });
+        invalidateFriends();
         setTimeout(() => setScanResult(null), 3000);
       } else {
-        setScanResult({
-          success: false,
-          message: result.error || 'Failed to send friend request'
-        });
+        setScanResult({ success: false, message: result.error || 'Failed to send friend request' });
       }
     } catch (error) {
       console.error('Error parsing QR code:', error);
-      setScanResult({
-        success: false,
-        message: 'Invalid QR code format'
-      });
+      setScanResult({ success: false, message: 'Invalid QR code format' });
     }
   };
 
@@ -260,7 +187,7 @@ export default function FriendsPage() {
     return avatar?.color || '#6b1a8b';
   };
 
-  if (loading) {
+  if (friendsLoading) {
     return (
       <div className="min-h-screen bg-[#1a1a1a]">
         <Header />

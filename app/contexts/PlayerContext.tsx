@@ -5,7 +5,9 @@ import { PlayerContextValue } from '../types/context';
 import { StoredPlayer } from '../types/storage';
 import { playerStorage } from '../lib/playerStorage';
 import { syncGuestPlayer, deleteGuestPlayerFromSupabase, canSyncToSupabase } from '../lib/supabaseSync';
-import { getMyRoomMembers, RoomMember } from '../lib/roomMembers';
+import { RoomMember } from '../lib/roomMembers';
+import { useRoomMembersQuery } from '../lib/queries/useRoomMembersQuery';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from './AuthContext';
 
 const PlayerContext = createContext<PlayerContextValue | undefined>(undefined);
@@ -27,8 +29,12 @@ function roomMemberToStored(m: RoomMember): StoredPlayer {
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [persistentPlayers, setPersistentPlayers] = useState<StoredPlayer[]>([]);
-  const [roomMemberPlayers, setRoomMemberPlayers] = useState<StoredPlayer[]>([]);
+
+  // Room members come from TanStack Query — cached, no manual polling needed
+  const { data: roomMembersData = [] } = useRoomMembersQuery();
+  const roomMemberPlayers = roomMembersData.map(roomMemberToStored);
 
   // Load persistent (local) players from localStorage
   const refreshLocalPlayers = useCallback(() => {
@@ -39,19 +45,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setPersistentPlayers(filtered);
   }, [user]);
 
-  // Load room members from Supabase (friends who joined via room code)
+  // Invalidate the room-members query (replaces the old manual refresh)
   const refreshRoomMembers = useCallback(async () => {
-    if (!user) {
-      setRoomMemberPlayers([]);
-      return;
-    }
-    try {
-      const members = await getMyRoomMembers();
-      setRoomMemberPlayers(members.map(roomMemberToStored));
-    } catch (err) {
-      console.error('PlayerContext: failed to load room members', err);
-    }
-  }, [user]);
+    await queryClient.invalidateQueries({ queryKey: ['room-members'] });
+  }, [queryClient]);
 
   // Refresh both local players and room members
   const refreshPlayers = useCallback(() => {
@@ -59,15 +56,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     refreshRoomMembers();
   }, [refreshLocalPlayers, refreshRoomMembers]);
 
-  // Load on mount and when user changes; poll room members every 20 seconds
-  // so newly-joined players appear everywhere (player select, manage players) without a refresh.
+  // Load local players on mount and when user changes
   useEffect(() => {
     refreshLocalPlayers();
-    refreshRoomMembers();
-
-    const pollInterval = user
-      ? setInterval(() => refreshRoomMembers(), 20000)
-      : null;
 
     const handlePlayersChanged = () => {
       refreshLocalPlayers();
@@ -75,10 +66,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     window.addEventListener('playersChanged', handlePlayersChanged);
 
     return () => {
-      if (pollInterval) clearInterval(pollInterval);
       window.removeEventListener('playersChanged', handlePlayersChanged);
     };
-  }, [user, refreshLocalPlayers, refreshRoomMembers]);
+  }, [user, refreshLocalPlayers]);
 
   // Merged view used by game pages
   const localPlayers = [...persistentPlayers, ...roomMemberPlayers];

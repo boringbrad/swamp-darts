@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { AppContextValue } from '../types/context';
 import { UserProfile, CricketRules, PlayMode } from '../types/game';
 import { SelectedPlayersStorage } from '../types/storage';
@@ -8,10 +8,14 @@ import { storage, initializeApp } from '../lib/storage';
 import { playerStorage } from '../lib/playerStorage';
 import { createClient } from '../lib/supabase/client';
 import { flushSyncQueue } from '../lib/supabaseSync';
+import { useAuth } from './AuthContext';
 
 const AppContext = createContext<AppContextValue | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  // Auth state comes entirely from AuthContext — no duplicate subscription here
+  const { user, profile, loading: authLoading, refreshProfile } = useAuth();
+
   const [userProfile, setUserProfile] = useState<UserProfile | null>(() => storage.getUserProfile() ?? null);
   const [headerVisible, setHeaderVisible] = useState(true);
   const [navigationHistory, setNavigationHistory] = useState<string[]>([]);
@@ -46,273 +50,146 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [x01DoubleOut, setX01DoubleOutState] = useState(true);
   const [x01AverageMode, setX01AverageModeState] = useState<'per-turn' | 'per-dart'>('per-turn');
 
-  // Load initial state from storage on mount and listen for auth changes
+  // Track previous profile id to detect login/logout transitions
+  const prevProfileIdRef = useRef<string | null>(null);
+
+  // React to auth profile changes — single source of truth for user profile
   useEffect(() => {
-    const supabase = createClient();
+    if (authLoading) return; // wait for AuthContext to resolve
 
-    const loadUserProfile = async (userId: string) => {
-      console.log('AppContext: Loading profile for user', userId);
+    if (profile) {
+      // Logged in: map raw Supabase profile → app UserProfile type
+      const mappedProfile: UserProfile = {
+        id: profile.id,
+        username: (profile as any).username || profile.display_name.toLowerCase().replace(/\s+/g, '-'),
+        displayName: profile.display_name,
+        avatar: profile.avatar || 'avatar-1',
+        photoUrl: (profile as any).photo_url || null,
+        accountType: (profile as any).account_type || 'player',
+        isAdmin: (profile as any).is_admin === true,
+        friends: [],
+        clubs: [],
+        stats: {
+          gamesPlayed: 0,
+          gamesWon: 0,
+          cricketStats: { gamesPlayed: 0, gamesWon: 0, averageMPR: 0 },
+          golfStats: { gamesPlayed: 0, gamesWon: 0, averageScore: 0 },
+        },
+      } as any;
 
-      try {
-        // Fetch user profile from Supabase
-        const { data: profile, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', userId)
-          .single();
+      storage.setUserProfile(mappedProfile);
+      setUserProfile(mappedProfile);
 
-        console.log('AppContext: Profile fetch result', {
-          hasProfile: !!profile,
-          profileData: profile,
-          error: error,
-          errorMessage: error?.message,
-          errorDetails: error?.details
+      // Player migration: assign any existing unclaimed players to this user,
+      // and create a local player record if one doesn't exist yet.
+      const allPlayers = playerStorage.getAllPlayers();
+      const existingPlayer = allPlayers.find(
+        p => p.name.toLowerCase() === mappedProfile.displayName.toLowerCase()
+      );
+
+      // Migrate players without a createdBy that match this user's name or are guests
+      const playersToMigrate = allPlayers.filter(p => !p.createdBy);
+      if (playersToMigrate.length > 0) {
+        playersToMigrate.forEach(player => {
+          if (
+            player.name.toLowerCase() === mappedProfile.displayName.toLowerCase() ||
+            player.isGuest
+          ) {
+            playerStorage.updatePlayer(player.id, { createdBy: profile.id });
+          }
         });
+      }
 
-        if (profile && !error) {
-        // Convert Supabase profile to UserProfile format
-        const userProfile: UserProfile = {
-          id: profile.id,
-          username: profile.username || profile.display_name.toLowerCase().replace(/\s+/g, '-'),
-          displayName: profile.display_name,
-          avatar: profile.avatar || 'avatar-1',
-          photoUrl: profile.photo_url || null,
-          accountType: profile.account_type || 'player',
-          isAdmin: profile.is_admin === true,
+      if (!existingPlayer) {
+        const newPlayer = playerStorage.addPlayer(
+          mappedProfile.displayName,
+          mappedProfile.avatar,
+          false,
+          profile.id
+        );
+        if (mappedProfile.photoUrl) {
+          playerStorage.updatePlayer(newPlayer.id, { photoUrl: mappedProfile.photoUrl });
+        }
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('playersChanged'));
+        }
+      } else {
+        // Update photoUrl/avatar on existing player if changed
+        if (
+          (mappedProfile.photoUrl && existingPlayer.photoUrl !== mappedProfile.photoUrl) ||
+          (mappedProfile.avatar && existingPlayer.avatar !== mappedProfile.avatar)
+        ) {
+          playerStorage.updatePlayer(existingPlayer.id, {
+            photoUrl: mappedProfile.photoUrl ?? undefined,
+            avatar: mappedProfile.avatar,
+          });
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new Event('playersChanged'));
+          }
+        }
+      }
+    } else {
+      // Logged out
+      const wasLoggedIn = prevProfileIdRef.current !== null;
+      if (wasLoggedIn) {
+        playerStorage.cleanupGuestPlayers();
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('playersChanged'));
+        }
+      }
+
+      const isFirstTime = initializeApp();
+      if (isFirstTime) {
+        const defaultProfile: UserProfile = {
+          id: 'default-user',
+          username: 'unknown-user',
+          displayName: 'Unknown User',
+          avatar: 'avatar-1',
           friends: [],
           clubs: [],
           stats: {
             gamesPlayed: 0,
             gamesWon: 0,
-            cricketStats: {
-              gamesPlayed: 0,
-              gamesWon: 0,
-              averageMPR: 0,
-            },
-            golfStats: {
-              gamesPlayed: 0,
-              gamesWon: 0,
-              averageScore: 0,
-            },
+            cricketStats: { gamesPlayed: 0, gamesWon: 0, averageMPR: 0 },
+            golfStats: { gamesPlayed: 0, gamesWon: 0, averageScore: 0 },
           },
-        } as any;
-
-        console.log('AppContext: Setting user profile', userProfile);
-        storage.setUserProfile(userProfile);
-        setUserProfile(userProfile);
-
-        // Check if a player with this display name already exists
-        const allPlayers = playerStorage.getAllPlayers();
-        const existingPlayer = allPlayers.find(
-          p => p.name.toLowerCase() === userProfile.displayName.toLowerCase()
-        );
-
-        // Migration: Assign any existing players without createdBy to this user
-        const playersToMigrate = allPlayers.filter(p => !p.createdBy);
-        if (playersToMigrate.length > 0) {
-          console.log('AppContext: Migrating existing players to user', userId);
-          playersToMigrate.forEach(player => {
-            // Only migrate if it matches the user's display name or is a guest player
-            if (player.name.toLowerCase() === userProfile.displayName.toLowerCase() || player.isGuest) {
-              playerStorage.updatePlayer(player.id, { createdBy: userId });
-            }
-          });
-        }
-
-        if (!existingPlayer) {
-          // Create a new player with the user's display name and avatar
-          console.log('AppContext: Creating player for user', userProfile.displayName);
-          const newPlayer = playerStorage.addPlayer(
-            userProfile.displayName,
-            userProfile.avatar,
-            false, // Not a guest player
-            userId // User ID of the owner
-          );
-
-          // Update with photoUrl if present
-          if (userProfile.photoUrl) {
-            playerStorage.updatePlayer(newPlayer.id, { photoUrl: userProfile.photoUrl });
-          }
-
-          // Dispatch event to notify PlayerContext to refresh
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new Event('playersChanged'));
-          }
-          } else {
-            console.log('AppContext: Player already exists', existingPlayer.name);
-            // Update existing player's photoUrl if it has changed
-            if (userProfile.photoUrl && existingPlayer.photoUrl !== userProfile.photoUrl) {
-              console.log('AppContext: Updating existing player photoUrl');
-              playerStorage.updatePlayer(existingPlayer.id, {
-                photoUrl: userProfile.photoUrl,
-                avatar: userProfile.avatar
-              });
-              // Dispatch event to notify PlayerContext to refresh
-              if (typeof window !== 'undefined') {
-                window.dispatchEvent(new Event('playersChanged'));
-              }
-            }
-          }
-        } else if (error) {
-          console.error('AppContext: Error fetching profile', error);
-        } else {
-          console.warn('AppContext: No profile found and no error', { userId });
-        }
-      } catch (err) {
-        console.error('AppContext: Exception loading profile', err);
-      }
-    };
-
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('AppContext: Auth state changed', { event, hasSession: !!session, userId: session?.user?.id });
-
-      if (session?.user) {
-        // User is logged in, fetch their profile
-        await loadUserProfile(session.user.id);
+        };
+        storage.setUserProfile(defaultProfile);
+        setUserProfile(defaultProfile);
       } else {
-        // User is not logged in, use default profile
-        console.log('AppContext: No session, using default profile');
-
-        // Clean up guest players from localStorage on logout
-        // Note: Guest data persists in Supabase for admin analytics
-        // This just clears the local cache to keep UI clean for logged-out users
-        console.log('AppContext: Clearing guest players from localStorage');
-        playerStorage.cleanupGuestPlayers();
-
-        // Dispatch event to notify PlayerContext to refresh
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new Event('playersChanged'));
-        }
-
-        const isFirstTime = initializeApp();
-
-        if (isFirstTime) {
-          // Create default user profile
-          const defaultProfile: UserProfile = {
-            id: 'default-user',
-            username: 'unknown-user',
-            displayName: 'Unknown User',
-            avatar: 'avatar-1',
-            friends: [],
-            clubs: [],
-            stats: {
-              gamesPlayed: 0,
-              gamesWon: 0,
-              cricketStats: {
-                gamesPlayed: 0,
-                gamesWon: 0,
-                averageMPR: 0,
-              },
-              golfStats: {
-                gamesPlayed: 0,
-                gamesWon: 0,
-                averageScore: 0,
-              },
-            },
-          };
-
-          storage.setUserProfile(defaultProfile);
-          setUserProfile(defaultProfile);
-        } else {
-          // Load existing data from localStorage
-          const profile = storage.getUserProfile();
-          setUserProfile(profile);
-        }
+        const stored = storage.getUserProfile();
+        setUserProfile(stored);
       }
-    });
+    }
 
-    // Also check current session on mount
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      console.log('AppContext: Initial session check', { hasSession: !!session, userId: session?.user?.id });
+    prevProfileIdRef.current = profile?.id ?? null;
+  }, [profile, authLoading]);
 
-      if (session?.user) {
-        loadUserProfile(session.user.id);
-      } else {
-        console.log('AppContext: No session found on mount, loading from localStorage');
-        // Fallback to localStorage
-        const isFirstTime = initializeApp();
-
-        if (isFirstTime) {
-          // Create default user profile
-          const defaultProfile: UserProfile = {
-            id: 'default-user',
-            username: 'unknown-user',
-            displayName: 'Unknown User',
-            avatar: 'avatar-1',
-            friends: [],
-            clubs: [],
-            stats: {
-              gamesPlayed: 0,
-              gamesWon: 0,
-              cricketStats: {
-                gamesPlayed: 0,
-                gamesWon: 0,
-                averageMPR: 0,
-              },
-              golfStats: {
-                gamesPlayed: 0,
-                gamesWon: 0,
-                averageScore: 0,
-              },
-            },
-          };
-
-          storage.setUserProfile(defaultProfile);
-          setUserProfile(defaultProfile);
-        } else {
-          // Load existing data from localStorage
-          const profile = storage.getUserProfile();
-          console.log('AppContext: Loaded profile from localStorage', profile);
-          setUserProfile(profile);
-        }
-      }
-    });
-
-    // Load other state
+  // Load settings from localStorage on mount and set up offline sync flush
+  useEffect(() => {
     setHeaderVisible(storage.getHeaderVisible());
-    // selectedPlayers already loaded from sessionStorage via useState initializer
     setCricketRulesState(storage.getCricketRules());
     setPlayModeState(storage.getPlayMode());
 
-    // Load golf course name from localStorage — the lazy useState initializer runs on the
-    // server where window is undefined and returns 'SWAMPY MEADOWS', so we must re-read
-    // here on the client to restore the user's saved course name.
+    // Re-read on client (lazy initializers run on server without window)
     const savedCourseName = localStorage.getItem('golfCourseName');
-    if (savedCourseName !== null) {
-      setGolfCourseNameState(savedCourseName);
-    }
+    if (savedCourseName !== null) setGolfCourseNameState(savedCourseName);
 
-    // Load course banner settings from localStorage
     const savedBannerImage = localStorage.getItem('courseBannerImage');
-    if (savedBannerImage) {
-      setCourseBannerImageState(savedBannerImage);
-    }
+    if (savedBannerImage) setCourseBannerImageState(savedBannerImage);
 
     const savedBannerOpacity = localStorage.getItem('courseBannerOpacity');
-    if (savedBannerOpacity) {
-      setCourseBannerOpacityState(parseInt(savedBannerOpacity));
-    }
+    if (savedBannerOpacity) setCourseBannerOpacityState(parseInt(savedBannerOpacity));
 
-    // Load camera enabled setting from localStorage
     const savedCameraEnabled = localStorage.getItem('cameraEnabled');
-    if (savedCameraEnabled !== null) {
-      setCameraEnabledState(savedCameraEnabled === 'true');
-    }
+    if (savedCameraEnabled !== null) setCameraEnabledState(savedCameraEnabled === 'true');
 
-    // Load show course record setting from localStorage
     const savedShowCourseRecord = localStorage.getItem('showCourseRecord');
-    if (savedShowCourseRecord !== null) {
-      setShowCourseRecordState(savedShowCourseRecord === 'true');
-    }
+    if (savedShowCourseRecord !== null) setShowCourseRecordState(savedShowCourseRecord === 'true');
 
-    // Load show course name setting from localStorage
     const savedShowCourseName = localStorage.getItem('showCourseName');
-    if (savedShowCourseName !== null) {
-      setShowCourseNameState(savedShowCourseName === 'true');
-    }
+    if (savedShowCourseName !== null) setShowCourseNameState(savedShowCourseName === 'true');
 
-    // Load X01 settings from localStorage
     const savedX01StartingScore = localStorage.getItem('x01StartingScore');
     if (savedX01StartingScore) setX01StartingScoreState(parseInt(savedX01StartingScore));
     const savedX01DoubleIn = localStorage.getItem('x01DoubleIn');
@@ -320,16 +197,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const savedX01DoubleOut = localStorage.getItem('x01DoubleOut');
     if (savedX01DoubleOut !== null) setX01DoubleOutState(savedX01DoubleOut === 'true');
     const savedX01AverageMode = localStorage.getItem('x01AverageMode');
-    if (savedX01AverageMode === 'per-dart' || savedX01AverageMode === 'per-turn') setX01AverageModeState(savedX01AverageMode);
+    if (savedX01AverageMode === 'per-dart' || savedX01AverageMode === 'per-turn') {
+      setX01AverageModeState(savedX01AverageMode);
+    }
 
     // Flush any match syncs that were queued while offline
     const handleOnline = () => { flushSyncQueue(); };
     window.addEventListener('online', handleOnline);
     if (navigator.onLine) flushSyncQueue();
 
-    // Cleanup subscription on unmount
     return () => {
-      subscription.unsubscribe();
       window.removeEventListener('online', handleOnline);
     };
   }, []);
@@ -364,24 +241,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const supabase = createClient();
     const prevProfile = userProfile;
 
-    console.log('AppContext: Starting profile update', { userId: prevProfile.id, updates });
-
     try {
       // 1. Update Supabase first if user is logged in
       if (prevProfile.id !== 'default-user') {
-        console.log('AppContext: Updating Supabase profile');
-
         const supabaseUpdates: any = {
           display_name: updates.displayName || prevProfile.displayName,
         };
 
-        // Handle avatar vs photo_url
         if ((updates as any).photoUrl !== undefined) {
           supabaseUpdates.photo_url = (updates as any).photoUrl;
           supabaseUpdates.avatar = (updates as any).avatar || null;
         } else if (updates.avatar !== undefined) {
           supabaseUpdates.avatar = updates.avatar;
-          // Only clear photo_url if explicitly set to null in updates
           if ((updates as any).photoUrl === null) {
             supabaseUpdates.photo_url = null;
           }
@@ -397,7 +268,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           throw error;
         }
 
-        console.log('AppContext: Supabase profile updated successfully');
+        // Keep AuthContext's profile in sync
+        await refreshProfile();
       }
 
       // 2. Update local player if display name, avatar, or photoUrl changed
@@ -409,46 +281,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         if (oldPlayer) {
           const playerUpdates: any = {};
-
-          if (updates.displayName) {
-            playerUpdates.name = updates.displayName;
-          }
-
-          if (updates.avatar) {
-            playerUpdates.avatar = updates.avatar;
-          }
-
-          if ((updates as any).photoUrl !== undefined) {
-            playerUpdates.photoUrl = (updates as any).photoUrl;
-          }
-
-          console.log('AppContext: Updating local player', {
-            oldName: oldPlayer.name,
-            updates: playerUpdates
-          });
-
+          if (updates.displayName) playerUpdates.name = updates.displayName;
+          if (updates.avatar) playerUpdates.avatar = updates.avatar;
+          if ((updates as any).photoUrl !== undefined) playerUpdates.photoUrl = (updates as any).photoUrl;
           playerStorage.updatePlayer(oldPlayer.id, playerUpdates);
-
-          console.log('AppContext: Local player updated successfully');
-        } else {
-          console.warn('AppContext: Could not find local player to update', prevProfile.displayName);
         }
       }
 
-      // 3. Update local state and storage last
+      // 3. Update local state and storage
       const updated = { ...prevProfile, ...updates };
       storage.setUserProfile(updated);
       setUserProfile(updated);
 
-      // 4. Dispatch event to refresh player list
+      // 4. Notify PlayerContext to refresh
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('playersChanged'));
       }
-
-      console.log('AppContext: Profile update complete', updated);
     } catch (error) {
       console.error('AppContext: Failed to update profile', error);
-      // Don't update local state if Supabase update failed
     }
   };
 

@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { GolfPlayerStats, GolfMatch } from '@/app/types/stats';
 import { loadGolfMatches, calculateGolfStats } from '@/app/lib/golfStats';
-import { loadGolfMatchesFromSupabase } from '@/app/lib/supabaseSync';
 import { createClient } from '@/app/lib/supabase/client';
+import { useAuth } from '@/app/contexts/AuthContext';
+import { useGolfMatchesQuery } from '@/app/lib/queries/useMatchesQuery';
+import { getQueryClient } from '@/app/lib/queries/queryClient';
 import StatsSummaryCards from './StatsSummaryCards';
 import HoleAverageChart from './HoleAverageChart';
 import ScoreProbabilityHeatmap from './ScoreProbabilityHeatmap';
@@ -14,8 +16,6 @@ import ShotAccuracyPieChart from './ShotAccuracyPieChart';
 import DualRangeSlider from './DualRangeSlider';
 import GameHistorySection from './GameHistorySection';
 
-const supabase = createClient();
-
 interface GolfStatsDisplayProps {
   playerFilter: string; // 'all' or playerId
   courseFilter?: string; // 'all' or course name
@@ -24,106 +24,64 @@ interface GolfStatsDisplayProps {
 }
 
 export default function GolfStatsDisplay({ playerFilter, courseFilter = 'all', playModeFilter = 'all', matches: providedMatches }: GolfStatsDisplayProps) {
+  const { user } = useAuth();
   const [stats, setStats] = useState<GolfPlayerStats[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [statsLoading, setStatsLoading] = useState(false);
   const [gameRange, setGameRange] = useState<{ start: number; end: number } | null>(null);
-  const [allMatches, setAllMatches] = useState<GolfMatch[]>([]);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [currentUserId, setCurrentUserId] = useState<string | undefined>();
 
-  // Listen for storage changes (e.g., when players are deleted)
+  // Logged-out fallback: load from localStorage (sync, no network)
+  const localMatches = useMemo(() => (!user && !providedMatches) ? loadGolfMatches() : [], [user, providedMatches]);
+
+  // For logged-in users: matches come from TanStack Query cache
+  const { data: queriedMatches, isLoading: matchesLoading } = useGolfMatchesQuery();
+
+  // Resolved match source — stable reference via useMemo
+  const allMatches: GolfMatch[] = useMemo(
+    () => providedMatches ?? queriedMatches ?? localMatches,
+    [providedMatches, queriedMatches, localMatches]
+  );
+
+  // Loading = waiting for Supabase matches (only when logged-in and no providedMatches)
+  const isLoading = !providedMatches && !!user && matchesLoading;
+
+  const currentUserId = user?.id;
+
+  // Invalidate golf matches query when a statsRefresh event fires (same-tab game saves)
   useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'golfMatches' || e.key === 'localPlayers') {
-        setRefreshTrigger(prev => prev + 1);
-      }
-    };
-
-    // Listen for custom event (for same-tab updates)
     const handleCustomRefresh = () => {
-      setRefreshTrigger(prev => prev + 1);
+      getQueryClient().invalidateQueries({ queryKey: ['golf-matches'] });
     };
-
-    window.addEventListener('storage', handleStorageChange);
     window.addEventListener('statsRefresh', handleCustomRefresh);
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('statsRefresh', handleCustomRefresh);
-    };
+    return () => window.removeEventListener('statsRefresh', handleCustomRefresh);
   }, []);
 
+  // Initialize game range when matches first load
   useEffect(() => {
-    const loadStatsData = async () => {
-      setLoading(true);
-      try {
-        // Use getSession() (local cache, no network call) instead of getUser() for fast display
-        const { data: { session } } = await supabase.auth.getSession();
-        const user = session?.user ?? null;
+    if (gameRange === null && allMatches.length > 0) {
+      setGameRange({ start: 0, end: allMatches.length - 1 });
+    }
+  }, [allMatches, gameRange]);
 
-        let matches: GolfMatch[] = [];
+  // Recalculate stats whenever matches or filters change
+  useEffect(() => {
+    if (isLoading) return;
 
-        // Use provided matches if available (from FriendStats/VenueStats)
-        if (providedMatches) {
-          console.log('Using provided matches:', providedMatches.length);
-          matches = providedMatches;
-          if (user) {
-            setCurrentUserId(user.id);
-          }
-        } else if (user) {
-          // For logged-in users, query Supabase directly by user_id
-          console.log('Loading golf matches from Supabase for user:', user.id);
-          setCurrentUserId(user.id); // Store userId for filtering playerMatches
-          const { data: supabaseMatches, error } = await supabase
-            .from('golf_matches')
-            .select('*')
-            .or(`user_id.eq.${user.id},participant_user_ids.cs.{${user.id}}`)
-            .order('created_at', { ascending: false });
-
-          if (error) {
-            console.error('Error loading golf matches:', error);
-          } else {
-            // Extract match_data from each row
-            matches = (supabaseMatches || []).map(m => m.match_data as GolfMatch);
-            console.log('Loaded matches from Supabase:', matches.length);
-          }
-        } else {
-          // Fallback to localStorage for non-logged-in users
-          console.log('Loading golf matches from localStorage');
-          matches = loadGolfMatches();
-        }
-
-        setAllMatches(matches);
-
-        // Initialize game range to all games
-        if (gameRange === null && matches.length > 0) {
-          setGameRange({ start: 0, end: matches.length - 1 });
-        }
-
-        // If filtering by specific player, only pass userId if viewing YOUR OWN stats (not friends)
-        // When provided matches from FriendStats/VenueStats, don't pass userId
-        const filters = {
-          playerId: playerFilter !== 'all' ? playerFilter : undefined,
-          courseName: courseFilter !== 'all' ? courseFilter : undefined,
-          playMode: playModeFilter !== 'all' ? playModeFilter : undefined,
-          gameRange: gameRange || undefined,
-          // Only pass userId when NOT using provided matches (i.e., viewing your own stats)
-          userId: (user && playerFilter !== 'all' && !providedMatches) ? user.id : undefined,
-        };
-
-        const calculatedStats = await calculateGolfStats(matches, filters);
-        setStats(calculatedStats);
-      } catch (err) {
-        console.error('GolfStatsDisplay: failed to load stats', err);
-      } finally {
-        setLoading(false);
-      }
+    const filters = {
+      playerId: playerFilter !== 'all' ? playerFilter : undefined,
+      courseName: courseFilter !== 'all' ? courseFilter : undefined,
+      playMode: playModeFilter !== 'all' ? playModeFilter : undefined,
+      gameRange: gameRange || undefined,
+      userId: (currentUserId && playerFilter !== 'all' && !providedMatches) ? currentUserId : undefined,
     };
 
-    loadStatsData();
-  }, [playerFilter, courseFilter, playModeFilter, gameRange, refreshTrigger, providedMatches]);
+    setStatsLoading(true);
+    calculateGolfStats(allMatches, filters)
+      .then(calculated => setStats(calculated))
+      .catch(err => console.error('GolfStatsDisplay: stats calculation failed', err))
+      .finally(() => setStatsLoading(false));
+  }, [allMatches, playerFilter, courseFilter, playModeFilter, gameRange, isLoading, providedMatches, currentUserId]);
 
-  if (loading) {
+  if (isLoading || statsLoading) {
     return (
       <div className="text-white text-center py-12">
         <div className="text-2xl font-bold">Loading stats...</div>
@@ -156,14 +114,6 @@ export default function GolfStatsDisplay({ playerFilter, courseFilter = 'all', p
       )
     );
 
-    console.log('[GolfStatsDisplay] Player matches filtered:', {
-      allMatchesCount: allMatches.length,
-      playerMatchesCount: playerMatches.length,
-      playerFilter,
-      currentUserId,
-      playerName: playerStats.playerName
-    });
-
     // Get last game (most recent - first in array since sorted descending)
     const lastGame = playerMatches.length > 0 ? playerMatches[0] : null;
 
@@ -173,7 +123,6 @@ export default function GolfStatsDisplay({ playerFilter, courseFilter = 'all', p
       let lowestScore = Infinity;
 
       for (const match of playerMatches) {
-        // Try to find player by playerId, userId, or name
         let playerData = match.players.find(p => p.playerId === playerFilter);
         if (!playerData && currentUserId) {
           playerData = match.players.find(p => (p as any).userId === currentUserId);

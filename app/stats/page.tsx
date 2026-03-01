@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Header from '../components/Header';
 import PageWrapper from '../components/PageWrapper';
 import ProfileEditModal from '../components/ProfileEditModal';
@@ -8,19 +8,19 @@ import StatsFilters from '../components/stats/StatsFilters';
 import GolfStatsDisplay from '../components/stats/GolfStatsDisplay';
 import CricketStatsDisplay from '../components/stats/CricketStatsDisplay';
 import { useAppContext } from '../contexts/AppContext';
+import { useAuth } from '../contexts/AuthContext';
 import { STOCK_AVATARS } from '../lib/avatars';
 import { loadCricketMatches, calculateCricketStats } from '../lib/cricketStats';
-import { loadCricketMatchesFromSupabase } from '../lib/supabaseSync';
-import { createClient } from '../lib/supabase/client';
 import { CricketPlayerStats } from '../types/stats';
 import { playerStorage } from '../lib/playerStorage';
-
-const supabase = createClient();
+import { useCricketMatchesQuery } from '../lib/queries/useMatchesQuery';
+import { getQueryClient } from '../lib/queries/queryClient';
 
 type GameType = 'golf' | 'cricket';
 
 export default function ProfilePage() {
   const { userProfile, updateUserProfile } = useAppContext();
+  const { user } = useAuth();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   // Always show only the current user's stats (no venue mode)
@@ -37,7 +37,11 @@ export default function ProfilePage() {
 
   // Cricket stats state
   const [cricketStats, setCricketStats] = useState<CricketPlayerStats[]>([]);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // Cricket matches from TanStack Query cache; fallback to localStorage for logged-out users
+  const { data: queriedCricketMatches } = useCricketMatchesQuery();
+  const localCricketMatches = useMemo(() => !user ? loadCricketMatches() : [], [user]);
+  const allCricketMatches = queriedCricketMatches ?? localCricketMatches;
 
   // Find and set the user's player ID
   useEffect(() => {
@@ -49,7 +53,6 @@ export default function ProfilePage() {
 
       // If no local player exists, create one for the logged-in user
       if (!currentPlayer && userProfile.id !== 'default-user') {
-        console.log('Creating local player for logged-in user:', userProfile.displayName);
         currentPlayer = {
           id: `user-${userProfile.id}`,
           name: userProfile.displayName,
@@ -60,8 +63,6 @@ export default function ProfilePage() {
         };
         playerStorage.getAllPlayers().push(currentPlayer);
         localStorage.setItem('localPlayers', JSON.stringify(playerStorage.getAllPlayers()));
-
-        // Dispatch event to notify other components
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new Event('playersChanged'));
         }
@@ -69,7 +70,6 @@ export default function ProfilePage() {
 
       if (currentPlayer) {
         setUserPlayerId(currentPlayer.id);
-        // In player mode (not venue mode), automatically set the filter to their player ID
         if (hidePlayerFilter) {
           setPlayerFilter(currentPlayer.id);
         }
@@ -77,62 +77,26 @@ export default function ProfilePage() {
     }
   }, [userProfile, hidePlayerFilter]);
 
-  // Listen for stats refresh events (when players are deleted)
+  // Invalidate cricket matches query on statsRefresh events (same-tab game saves)
   useEffect(() => {
     const handleRefresh = () => {
-      setRefreshTrigger(prev => prev + 1);
+      getQueryClient().invalidateQueries({ queryKey: ['cricket-matches'] });
     };
-
     window.addEventListener('statsRefresh', handleRefresh);
     return () => window.removeEventListener('statsRefresh', handleRefresh);
   }, []);
 
-  // Load and calculate cricket stats when filters change
+  // Calculate cricket stats whenever matches or filters change
   useEffect(() => {
-    const loadCricketStatsData = async () => {
-      if (selectedGame === 'cricket') {
-        try {
-          // Use getSession() (local cache, no network call) instead of getUser() for fast display
-          const { data: { session } } = await supabase.auth.getSession();
-          const user = session?.user ?? null;
+    if (selectedGame !== 'cricket') return;
 
-          let matches: any[] = [];
-
-          if (user) {
-            // For logged-in users, query Supabase directly by user_id
-            console.log('Loading cricket matches from Supabase for user:', user.id);
-            const { data: supabaseMatches, error } = await supabase
-              .from('cricket_matches')
-              .select('*')
-              .or(`user_id.eq.${user.id},participant_user_ids.cs.{${user.id}}`)
-              .order('created_at', { ascending: false });
-
-            if (error) {
-              console.error('Error loading cricket matches:', error);
-            } else {
-              // Extract match_data from each row
-              matches = (supabaseMatches || []).map(m => m.match_data);
-              console.log('Loaded cricket matches from Supabase:', matches.length);
-            }
-          } else {
-            // Fallback to localStorage for non-logged-in users
-            console.log('Loading cricket matches from localStorage');
-            matches = loadCricketMatches();
-          }
-
-          const stats = await calculateCricketStats(matches, {
-            playerId: playerFilter !== 'all' ? playerFilter : undefined,
-            userId: (user && playerFilter !== 'all') ? user.id : undefined,
-          });
-          setCricketStats(stats);
-        } catch (err) {
-          console.error('stats/page: failed to load cricket stats', err);
-        }
-      }
-    };
-
-    loadCricketStatsData();
-  }, [selectedGame, playerFilter, refreshTrigger]);
+    calculateCricketStats(allCricketMatches, {
+      playerId: playerFilter !== 'all' ? playerFilter : undefined,
+      userId: (user && playerFilter !== 'all') ? user.id : undefined,
+    })
+      .then(stats => setCricketStats(stats))
+      .catch(err => console.error('stats/page: failed to calculate cricket stats', err));
+  }, [selectedGame, playerFilter, allCricketMatches, user]);
 
   // Get avatar data
   const currentAvatar = STOCK_AVATARS.find(a => a.id === userProfile?.avatar) || STOCK_AVATARS[0];

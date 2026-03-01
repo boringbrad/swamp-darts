@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Header from '../components/Header';
 import PageWrapper from '../components/PageWrapper';
 import AddGuestPlayerModal from '../components/AddGuestPlayerModal';
 import { useAppContext } from '../contexts/AppContext';
 import { usePlayerContext } from '../contexts/PlayerContext';
-import { getMyRoomCode, removeRoomMember } from '../lib/roomMembers';
+import { removeRoomMember } from '../lib/roomMembers';
+import { useRoomCodeQuery } from '../lib/queries/useRoomMembersQuery';
 import { STOCK_AVATARS } from '../lib/avatars';
 import { StoredPlayer } from '../types/storage';
 
@@ -46,8 +47,8 @@ export default function ManagePlayersPage() {
     refreshRoomMembers,
   } = usePlayerContext();
 
-  // Room code
-  const [roomCode, setRoomCode] = useState<string | null>(null);
+  // Room code — from TanStack Query cache (no useEffect needed)
+  const { data: roomCode } = useRoomCodeQuery();
   const [codeCopied, setCodeCopied] = useState(false);
 
   // Guest management
@@ -59,10 +60,6 @@ export default function ManagePlayersPage() {
   const [removingUserId, setRemovingUserId] = useState<string | null>(null);
 
   const persistentGuests = localPlayers.filter(p => !p.isVerified);
-
-  useEffect(() => {
-    getMyRoomCode().then(code => setRoomCode(code));
-  }, []);
 
   const handleCopyCode = () => {
     if (!roomCode) return;
