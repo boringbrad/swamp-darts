@@ -56,64 +56,68 @@ export default function GolfStatsDisplay({ playerFilter, courseFilter = 'all', p
   useEffect(() => {
     const loadStatsData = async () => {
       setLoading(true);
+      try {
+        // Use getSession() (local cache, no network call) instead of getUser() for fast display
+        const { data: { session } } = await supabase.auth.getSession();
+        const user = session?.user ?? null;
 
-      // Use getSession() (local cache, no network call) instead of getUser() for fast display
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user ?? null;
+        let matches: GolfMatch[] = [];
 
-      let matches: GolfMatch[] = [];
+        // Use provided matches if available (from FriendStats/VenueStats)
+        if (providedMatches) {
+          console.log('Using provided matches:', providedMatches.length);
+          matches = providedMatches;
+          if (user) {
+            setCurrentUserId(user.id);
+          }
+        } else if (user) {
+          // For logged-in users, query Supabase directly by user_id
+          console.log('Loading golf matches from Supabase for user:', user.id);
+          setCurrentUserId(user.id); // Store userId for filtering playerMatches
+          const { data: supabaseMatches, error } = await supabase
+            .from('golf_matches')
+            .select('*')
+            .or(`user_id.eq.${user.id},participant_user_ids.cs.{${user.id}}`)
+            .order('created_at', { ascending: false });
 
-      // Use provided matches if available (from FriendStats/VenueStats)
-      if (providedMatches) {
-        console.log('Using provided matches:', providedMatches.length);
-        matches = providedMatches;
-        if (user) {
-          setCurrentUserId(user.id);
-        }
-      } else if (user) {
-        // For logged-in users, query Supabase directly by user_id
-        console.log('Loading golf matches from Supabase for user:', user.id);
-        setCurrentUserId(user.id); // Store userId for filtering playerMatches
-        const { data: supabaseMatches, error } = await supabase
-          .from('golf_matches')
-          .select('*')
-          .or(`user_id.eq.${user.id},participant_user_ids.cs.{${user.id}}`)
-          .order('created_at', { ascending: false });
-
-        if (error) {
-          console.error('Error loading golf matches:', error);
+          if (error) {
+            console.error('Error loading golf matches:', error);
+          } else {
+            // Extract match_data from each row
+            matches = (supabaseMatches || []).map(m => m.match_data as GolfMatch);
+            console.log('Loaded matches from Supabase:', matches.length);
+          }
         } else {
-          // Extract match_data from each row
-          matches = (supabaseMatches || []).map(m => m.match_data as GolfMatch);
-          console.log('Loaded matches from Supabase:', matches.length);
+          // Fallback to localStorage for non-logged-in users
+          console.log('Loading golf matches from localStorage');
+          matches = loadGolfMatches();
         }
-      } else {
-        // Fallback to localStorage for non-logged-in users
-        console.log('Loading golf matches from localStorage');
-        matches = loadGolfMatches();
+
+        setAllMatches(matches);
+
+        // Initialize game range to all games
+        if (gameRange === null && matches.length > 0) {
+          setGameRange({ start: 0, end: matches.length - 1 });
+        }
+
+        // If filtering by specific player, only pass userId if viewing YOUR OWN stats (not friends)
+        // When provided matches from FriendStats/VenueStats, don't pass userId
+        const filters = {
+          playerId: playerFilter !== 'all' ? playerFilter : undefined,
+          courseName: courseFilter !== 'all' ? courseFilter : undefined,
+          playMode: playModeFilter !== 'all' ? playModeFilter : undefined,
+          gameRange: gameRange || undefined,
+          // Only pass userId when NOT using provided matches (i.e., viewing your own stats)
+          userId: (user && playerFilter !== 'all' && !providedMatches) ? user.id : undefined,
+        };
+
+        const calculatedStats = await calculateGolfStats(matches, filters);
+        setStats(calculatedStats);
+      } catch (err) {
+        console.error('GolfStatsDisplay: failed to load stats', err);
+      } finally {
+        setLoading(false);
       }
-
-      setAllMatches(matches);
-
-      // Initialize game range to all games
-      if (gameRange === null && matches.length > 0) {
-        setGameRange({ start: 0, end: matches.length - 1 });
-      }
-
-      // If filtering by specific player, only pass userId if viewing YOUR OWN stats (not friends)
-      // When provided matches from FriendStats/VenueStats, don't pass userId
-      const filters = {
-        playerId: playerFilter !== 'all' ? playerFilter : undefined,
-        courseName: courseFilter !== 'all' ? courseFilter : undefined,
-        playMode: playModeFilter !== 'all' ? playModeFilter : undefined,
-        gameRange: gameRange || undefined,
-        // Only pass userId when NOT using provided matches (i.e., viewing your own stats)
-        userId: (user && playerFilter !== 'all' && !providedMatches) ? user.id : undefined,
-      };
-
-      const calculatedStats = await calculateGolfStats(matches, filters);
-      setStats(calculatedStats);
-      setLoading(false);
     };
 
     loadStatsData();

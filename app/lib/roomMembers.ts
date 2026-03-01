@@ -44,7 +44,8 @@ function rowToMember(row: any): RoomMember {
  * Get my permanent room code (displayed on Manage Players).
  */
 export async function getMyRoomCode(): Promise<string | null> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
   if (!user) return null;
 
   const { data } = await supabase
@@ -60,7 +61,8 @@ export async function getMyRoomCode(): Promise<string | null> {
  * Get all members who have joined MY room (I am the host/owner).
  */
 export async function getMyRoomMembers(): Promise<RoomMember[]> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
   if (!user) return [];
 
   const { data, error } = await supabase
@@ -81,7 +83,8 @@ export async function getMyRoomMembers(): Promise<RoomMember[]> {
  * Remove a member from my room (host action).
  */
 export async function removeRoomMember(memberUserId: string): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
   if (!user) return;
 
   await supabase
@@ -99,7 +102,8 @@ export async function joinRoomByCode(
   code: string,
   memberProfile: { displayName: string; avatar?: string; photoUrl?: string }
 ): Promise<{ success: boolean; ownerDisplayName?: string; error?: string }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { session: authSession } } = await supabase.auth.getSession();
+  const user = authSession?.user;
   if (!user) return { success: false, error: 'You must be logged in to join a room.' };
 
   // Look up the profile with that room code
@@ -146,7 +150,8 @@ export async function joinRoomByCode(
  * so we fetch owner IDs first, then look up profiles separately.
  */
 export async function getMyJoinedRooms(): Promise<JoinedRoom[]> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
   if (!user) return [];
 
   // Step 1: get the room owner IDs and join timestamps
@@ -191,7 +196,8 @@ export async function getMyJoinedRooms(): Promise<JoinedRoom[]> {
  * Leave a room (member removes themselves from someone else's pool).
  */
 export async function leaveRoom(roomOwnerId: string): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
   if (!user) return;
 
   await supabase

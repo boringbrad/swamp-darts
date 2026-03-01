@@ -91,39 +91,43 @@ export default function ProfilePage() {
   useEffect(() => {
     const loadCricketStatsData = async () => {
       if (selectedGame === 'cricket') {
-        // Use getSession() (local cache, no network call) instead of getUser() for fast display
-        const { data: { session } } = await supabase.auth.getSession();
-        const user = session?.user ?? null;
+        try {
+          // Use getSession() (local cache, no network call) instead of getUser() for fast display
+          const { data: { session } } = await supabase.auth.getSession();
+          const user = session?.user ?? null;
 
-        let matches: any[] = [];
+          let matches: any[] = [];
 
-        if (user) {
-          // For logged-in users, query Supabase directly by user_id
-          console.log('Loading cricket matches from Supabase for user:', user.id);
-          const { data: supabaseMatches, error } = await supabase
-            .from('cricket_matches')
-            .select('*')
-            .or(`user_id.eq.${user.id},participant_user_ids.cs.{${user.id}}`)
-            .order('created_at', { ascending: false });
+          if (user) {
+            // For logged-in users, query Supabase directly by user_id
+            console.log('Loading cricket matches from Supabase for user:', user.id);
+            const { data: supabaseMatches, error } = await supabase
+              .from('cricket_matches')
+              .select('*')
+              .or(`user_id.eq.${user.id},participant_user_ids.cs.{${user.id}}`)
+              .order('created_at', { ascending: false });
 
-          if (error) {
-            console.error('Error loading cricket matches:', error);
+            if (error) {
+              console.error('Error loading cricket matches:', error);
+            } else {
+              // Extract match_data from each row
+              matches = (supabaseMatches || []).map(m => m.match_data);
+              console.log('Loaded cricket matches from Supabase:', matches.length);
+            }
           } else {
-            // Extract match_data from each row
-            matches = (supabaseMatches || []).map(m => m.match_data);
-            console.log('Loaded cricket matches from Supabase:', matches.length);
+            // Fallback to localStorage for non-logged-in users
+            console.log('Loading cricket matches from localStorage');
+            matches = loadCricketMatches();
           }
-        } else {
-          // Fallback to localStorage for non-logged-in users
-          console.log('Loading cricket matches from localStorage');
-          matches = loadCricketMatches();
-        }
 
-        const stats = await calculateCricketStats(matches, {
-          playerId: playerFilter !== 'all' ? playerFilter : undefined,
-          userId: (user && playerFilter !== 'all') ? user.id : undefined,
-        });
-        setCricketStats(stats);
+          const stats = await calculateCricketStats(matches, {
+            playerId: playerFilter !== 'all' ? playerFilter : undefined,
+            userId: (user && playerFilter !== 'all') ? user.id : undefined,
+          });
+          setCricketStats(stats);
+        } catch (err) {
+          console.error('stats/page: failed to load cricket stats', err);
+        }
       }
     };
 
