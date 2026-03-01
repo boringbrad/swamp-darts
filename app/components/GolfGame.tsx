@@ -21,6 +21,7 @@ interface GolfGameProps {
   initialPlayers?: Player[];
   onlineConfig?: OnlineConfig;
   onRematch?: () => void;
+  onGameEnd?: () => void;
 }
 
 interface PlayerScore {
@@ -31,7 +32,7 @@ interface PlayerScore {
 const PAR_PER_HOLE = 4;
 const TOTAL_HOLES = 18;
 
-export default function GolfGame({ variant, initialPlayers, onlineConfig, onRematch }: GolfGameProps) {
+export default function GolfGame({ variant, initialPlayers, onlineConfig, onRematch, onGameEnd }: GolfGameProps) {
   const router = useRouter();
   const { localPlayers, updateLocalPlayer } = usePlayerContext();
   const { selectedPlayers, tieBreakerEnabled, golfCourseName, playMode, courseBannerImage, courseBannerOpacity, cameraEnabled, setCameraEnabled, showCourseRecord, showCourseName, userProfile } = useAppContext();
@@ -96,6 +97,13 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
   const opponentName = onlineConfig
     ? (players.find(p => p.id !== onlineConfig.myUserId)?.name ?? 'Opponent')
     : 'Opponent';
+
+  // Notify parent when game ends so the online page doesn't misread a post-game
+  // Return Home click as a mid-game disconnect.
+  useEffect(() => {
+    if (gameComplete) onGameEnd?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameComplete]);
 
   // When both players vote for a rematch, trigger remount
   useEffect(() => {

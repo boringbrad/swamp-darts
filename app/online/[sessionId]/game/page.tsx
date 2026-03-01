@@ -49,6 +49,13 @@ export default function OnlineGamePage() {
   // batched and may not be visible to an effect that fires in the same tick.
   const exitingRef = useRef(false);
 
+  // Set by game component when the game finishes normally so we don't misread a
+  // post-game Return Home click as a mid-game disconnect.
+  const gameFinishedRef = useRef(false);
+
+  // Shown when the opponent exits mid-game — detected via useSession status change.
+  const [opponentExited, setOpponentExited] = useState(false);
+
   // Snapshot players at game-start so the game keeps rendering even after one player
   // sets left_at (which drops them from activeParticipants and would otherwise cause
   // the render to show "Missing player data").
@@ -58,6 +65,7 @@ export default function OnlineGamePage() {
 
   const myId = userProfile?.id;
   const handleRematch = () => setRematchKey(k => k + 1);
+  const handleGameEnd = () => { gameFinishedRef.current = true; };
 
   const handleExitGame = () => {
     if (!confirm('Exit game? This will end the session for both players.')) return;
@@ -132,15 +140,22 @@ export default function OnlineGamePage() {
     setReady(true);
   }, [sessionLoading, participantsLoading, session, activeParticipants, myId]);
 
-  // If the session ends before the game starts (e.g. host leaves lobby), boot to lobbies.
-  // Once the game is active (ready=true) the game component handles disconnect via
-  // opponentLeft modal — don't redirect here or we race past the "X has left" screen.
-  // Uses exitingRef so we don't redirect ourselves when we're the one exiting.
+  // Primary disconnect detection — useSession already has a confirmed-working
+  // Realtime subscription on game_sessions. When the opponent exits (calling
+  // completeOnlineSession), status becomes 'completed' here reliably.
+  //   • Not in game yet (ready=false): redirect to lobby list
+  //   • In game, game finished normally: do nothing (gameFinishedRef prevents false alarm)
+  //   • In game, mid-game disconnect: show overlay
   useEffect(() => {
     if (exitingRef.current) return;
-    if (ready) return;
-    if (session?.status === 'completed' || session?.status === 'expired') {
+    if (!(session?.status === 'completed' || session?.status === 'expired')) return;
+
+    if (!ready) {
+      // Session ended before game started — boot to lobbies
       window.location.href = '/online';
+    } else if (!gameFinishedRef.current) {
+      // Session ended mid-game — opponent left
+      setOpponentExited(true);
     }
   }, [session?.status, ready]);
 
@@ -181,6 +196,31 @@ export default function OnlineGamePage() {
   const onlineConfig = gameOnlineConfig;
   const hostPlayer = gameHostPlayer;
   const guestPlayer = gameGuestPlayer;
+  const opponentName = myId === hostPlayer.id ? guestPlayer.name : hostPlayer.name;
+
+  // Full-screen overlay shown when the opponent exits mid-game.
+  // Rendered at the page level (above the game) so it's independent of
+  // in-game subscription state.
+  const disconnectOverlay = opponentExited ? (
+    <div className="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center">
+      <div className="bg-gray-900 border border-red-500/60 rounded-xl p-8 mx-6 max-w-sm w-full text-center shadow-2xl">
+        <div className="text-5xl mb-4">🚪</div>
+        <h2 className="text-white text-2xl font-bold mb-2">Match Ended</h2>
+        <p className="text-gray-300 text-lg mb-6">
+          <span className="text-red-400 font-semibold">{opponentName}</span> has left the match
+        </p>
+        <button
+          onClick={() => {
+            leaveSession(sessionId).catch(console.error);
+            window.location.href = '/';
+          }}
+          className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-colors text-lg"
+        >
+          Return Home
+        </button>
+      </div>
+    </div>
+  ) : null;
 
   // Thin fixed header shown above all game content
   const onlineHeader = (
@@ -206,6 +246,7 @@ export default function OnlineGamePage() {
     };
     return (
       <>
+        {disconnectOverlay}
         {onlineHeader}
         <div className="pt-10">
           <CricketGame
@@ -215,6 +256,7 @@ export default function OnlineGamePage() {
             rules={rules}
             onlineConfig={onlineConfig}
             onRematch={handleRematch}
+            onGameEnd={handleGameEnd}
           />
         </div>
       </>
@@ -224,6 +266,7 @@ export default function OnlineGamePage() {
   if (settings.gameType === 'golf') {
     return (
       <>
+        {disconnectOverlay}
         {onlineHeader}
         <div className="pt-10">
           <GolfGame
@@ -232,6 +275,7 @@ export default function OnlineGamePage() {
             initialPlayers={[hostPlayer, guestPlayer]}
             onlineConfig={onlineConfig}
             onRematch={handleRematch}
+            onGameEnd={handleGameEnd}
           />
         </div>
       </>

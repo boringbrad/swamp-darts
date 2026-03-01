@@ -17,6 +17,7 @@ interface CricketGameProps {
   rules: CricketRules;
   onlineConfig?: OnlineConfig;
   onRematch?: () => void;
+  onGameEnd?: () => void;
 }
 
 interface PlayerScore {
@@ -70,7 +71,7 @@ interface HistoryEntry {
   lastSkippedPlayerSnapshot?: string | null;
 }
 
-export default function CricketGame({ variant, players: initialPlayers, rules, onlineConfig, onRematch }: CricketGameProps) {
+export default function CricketGame({ variant, players: initialPlayers, rules, onlineConfig, onRematch, onGameEnd }: CricketGameProps) {
   const router = useRouter();
   const { user } = useAuth();
   const { cameraEnabled, selectedPlayers } = useAppContext();
@@ -160,6 +161,13 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
   const opponentName = onlineConfig
     ? (players.find(p => p.id !== onlineConfig.myUserId)?.name ?? 'Opponent')
     : 'Opponent';
+
+  // Notify parent when game ends so the online page doesn't misread a post-game
+  // Return Home click as a mid-game disconnect.
+  useEffect(() => {
+    if (gameWinner) onGameEnd?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameWinner]);
 
   // When both players vote for a rematch, trigger remount
   useEffect(() => {
