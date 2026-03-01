@@ -1,11 +1,25 @@
 import { createBrowserClient } from '@supabase/ssr'
 
 /**
- * Create a Supabase client for use in Client Components
- * This client automatically handles session management
+ * Singleton browser Supabase client.
+ *
+ * Multiple createBrowserClient() instances cause a token-refresh race condition:
+ * each instance detects an expired access token and tries to refresh it
+ * simultaneously, causing the others' refresh tokens to be invalidated.
+ * Sharing one instance ensures only one refresh ever happens at a time.
+ *
+ * The module-level variable is reset on hard page navigations (the module is
+ * re-evaluated), which is the correct behaviour — client-side navigations reuse
+ * the same instance throughout the session.
  */
-export function createClient() {
-  // Use NEXT_PUBLIC_ prefixed env vars for client-side access
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SupabaseBrowserClient = ReturnType<typeof createBrowserClient<any>>;
+let _client: SupabaseBrowserClient | undefined;
+
+export function createClient(): SupabaseBrowserClient {
+  if (_client) return _client;
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
@@ -15,7 +29,7 @@ export function createClient() {
     )
   }
 
-  return createBrowserClient(supabaseUrl, supabaseAnonKey, {
+  _client = createBrowserClient(supabaseUrl, supabaseAnonKey, {
     global: {
       fetch: (url, options = {}) => {
         return fetch(url, {
@@ -25,4 +39,6 @@ export function createClient() {
       },
     },
   })
+
+  return _client;
 }
