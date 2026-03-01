@@ -349,8 +349,8 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
 
     // Get ghost player's best game history (async)
     const loadAndScoreGhost = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      const userId = user?.id;
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
 
       const history = await getGhostPlayerHistory(
         currentPlayer.id,

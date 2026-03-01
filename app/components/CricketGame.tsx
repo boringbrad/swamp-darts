@@ -365,8 +365,8 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
   const saveGameToDatabase = async () => {
     try {
       // Get current user ID to link their player data
-      const { data: { user } } = await supabase.auth.getUser();
-      const currentUserId = user?.id;
+      const { data: { session } } = await supabase.auth.getSession();
+      const currentUserId = session?.user?.id;
 
       // Calculate detailed stats from history and playerScores
       const matchData = {

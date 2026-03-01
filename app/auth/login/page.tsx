@@ -45,7 +45,6 @@ export default function LoginPage() {
 
         // Successful login - redirect to home
         router.push('/')
-        router.refresh()
       }
     } catch (err: any) {
       if (err.message.includes('Email not confirmed')) {

@@ -32,10 +32,20 @@ export function createClient(): SupabaseBrowserClient {
   _client = createBrowserClient(supabaseUrl, supabaseAnonKey, {
     global: {
       fetch: (url, options = {}) => {
+        // Never apply our timeout to auth endpoints.
+        // Aborting a token-refresh request prevents @supabase/auth-js from
+        // releasing its internal auth lock, causing ALL subsequent Supabase
+        // calls to hang indefinitely until a hard page refresh.
+        const urlStr = typeof url === 'string' ? url
+          : url instanceof URL ? url.toString()
+          : (url as Request).url;
+        if (urlStr.includes('/auth/v1/')) {
+          return fetch(url, options);
+        }
         return fetch(url, {
           ...options,
-          signal: options.signal || AbortSignal.timeout(10000), // 10 second timeout
-        })
+          signal: options.signal || AbortSignal.timeout(10000),
+        });
       },
     },
   })
