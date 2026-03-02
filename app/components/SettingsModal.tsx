@@ -662,6 +662,25 @@ export default function SettingsModal({ isOpen, onClose, pathname = '' }: Settin
                     When disabled, players do not get their darts back if they score with all 3 darts. Bonus turns are disabled.
                   </p>
                 </div>
+
+                {/* Auto-Advance Turn Toggle */}
+                <div className="bg-[#333333] rounded-lg p-4">
+                  <div className="flex items-center gap-3 mb-2">
+                    <input
+                      type="checkbox"
+                      id="autoAdvanceTurn"
+                      checked={cricketRules.autoAdvanceTurn === true}
+                      onChange={(e) => setCricketRules({ autoAdvanceTurn: e.target.checked })}
+                      className="w-6 h-6 cursor-pointer"
+                    />
+                    <label htmlFor="autoAdvanceTurn" className="text-white text-lg font-bold cursor-pointer">
+                      Auto-Advance Turn
+                    </label>
+                  </div>
+                  <p className="text-gray-400 text-sm pl-9">
+                    After at least 1 dart is thrown, automatically fills remaining darts as MISS and advances to the next player after 7 seconds of inactivity. Local games only.
+                  </p>
+                </div>
               </div>
 
               <div className="mt-6 p-4 bg-yellow-900/30 rounded-lg border border-yellow-600/50">
