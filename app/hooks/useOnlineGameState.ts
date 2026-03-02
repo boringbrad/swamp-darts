@@ -37,6 +37,10 @@ interface UseOnlineGameStateReturn {
   requestRematch: () => Promise<void>;
   /** Host resets the DB row so the next game starts fresh */
   resetForRematch: () => Promise<void>;
+  /** Live dart state broadcast by the opponent mid-turn (cleared when turn ends) */
+  opponentLiveDarts: any | null;
+  /** Broadcast your current dart state to the opponent in real-time */
+  broadcastLiveDarts: (state: any | null) => void;
 }
 
 /**
@@ -50,7 +54,9 @@ export function useOnlineGameState(config: OnlineConfig | null): UseOnlineGameSt
   const [opponentState, setOpponentState] = useState<any | null>(null);
   const [opponentLeft, setOpponentLeft] = useState(false);
   const [rematchVotes, setRematchVotes] = useState<Record<string, boolean>>({});
+  const [opponentLiveDarts, setOpponentLiveDarts] = useState<any | null>(null);
   const initializedRef = useRef(false);
+  const channelRef = useRef<any>(null);
   const supabase = createClient();
 
   const myId = config?.myUserId ?? null;
@@ -100,6 +106,7 @@ export function useOnlineGameState(config: OnlineConfig | null): UseOnlineGameSt
             setCurrentPlayerId(null);
             setOpponentState(null);
             setRematchVotes({});
+            setOpponentLiveDarts(null);
             return;
           }
           const row = payload.new as OnlineGameRow;
@@ -114,10 +121,19 @@ export function useOnlineGameState(config: OnlineConfig | null): UseOnlineGameSt
           // Only expose as opponentState when it's now our turn (not a rematch signal)
           if (row.current_player_id === myId && row.current_player_id !== 'rematch') {
             setOpponentState(row.game_state);
+            // Turn just passed to us — clear opponent's live dart preview
+            setOpponentLiveDarts(null);
           }
         }
       )
+      .on('broadcast', { event: 'live-darts' }, (payload: any) => {
+        // Ignore our own echoed broadcasts
+        if (payload.payload?.senderId === myId) return;
+        setOpponentLiveDarts(payload.payload?.state ?? null);
+      })
       .subscribe();
+
+    channelRef.current = channel;
 
     // Subscribe to session_participants to detect if opponent leaves
     const participantChannel = supabase
@@ -236,6 +252,16 @@ export function useOnlineGameState(config: OnlineConfig | null): UseOnlineGameSt
       .eq('session_id', sessionId);
   }, [sessionId]);
 
+  /** Send live dart state to opponent via ephemeral broadcast (no DB write) */
+  const broadcastLiveDarts = useCallback((state: any | null) => {
+    if (!channelRef.current || !myId) return;
+    channelRef.current.send({
+      type: 'broadcast',
+      event: 'live-darts',
+      payload: { senderId: myId, state },
+    });
+  }, [myId]);
+
   const opponentId = config
     ? (config.myUserId === config.hostUserId ? config.guestUserId : config.hostUserId)
     : null;
@@ -250,5 +276,5 @@ export function useOnlineGameState(config: OnlineConfig | null): UseOnlineGameSt
       : currentPlayerId === config.myUserId
   );
 
-  return { isMyTurn, opponentState, submitTurn, opponentLeft, iWantRematch, opponentWantsRematch, bothWantRematch, requestRematch, resetForRematch };
+  return { isMyTurn, opponentState, submitTurn, opponentLeft, iWantRematch, opponentWantsRematch, bothWantRematch, requestRematch, resetForRematch, opponentLiveDarts, broadcastLiveDarts };
 }

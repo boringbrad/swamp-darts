@@ -141,7 +141,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
   const [pendingTurnAdvance, setPendingTurnAdvance] = useState(false); // Online: waiting for "Next Player" click
 
   // ── Online 1v1 ──────────────────────────────────────────────────────────────
-  const { isMyTurn, opponentState, submitTurn, opponentLeft, iWantRematch, opponentWantsRematch, bothWantRematch, requestRematch, resetForRematch } = useOnlineGameState(onlineConfig ?? null);
+  const { isMyTurn, opponentState, submitTurn, opponentLeft, iWantRematch, opponentWantsRematch, bothWantRematch, requestRematch, resetForRematch, opponentLiveDarts, broadcastLiveDarts } = useOnlineGameState(onlineConfig ?? null);
   const inputDisabled = (!!onlineConfig && !isMyTurn) || opponentLeft;
 
   // Suppress leaveSession on unmount for intentional exits (rematch, Return Home)
@@ -724,6 +724,21 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
       return () => clearTimeout(timer);
     }
   }, [currentDartIndex, dartScores]);
+
+  // Broadcast live dart state to opponent after each dart action (online mode, my turn only)
+  useEffect(() => {
+    if (!onlineConfig || !isMyTurn || currentDartIndex === 0) return;
+    broadcastLiveDarts({
+      dartScores,
+      dartMultipliers,
+      dartPinHits,
+      dartSkips,
+      dartKOs,
+      currentDartIndex,
+      playerScores,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentDartIndex, dartScores, dartPinHits, dartSkips, dartKOs]);
 
   const handleTargetClick = (target: CricketNumber) => {
     if (currentDartIndex >= 3) return;
@@ -1513,6 +1528,17 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
     return colors[color];
   };
 
+  // When it's the opponent's turn and they're broadcasting live dart state, show their
+  // data on the board and in "DARTS THIS TURN" instead of our local (stale) state.
+  const isShowingOpponentLive = !isMyTurn && !!onlineConfig && opponentLiveDarts !== null;
+  const displayPlayerScores: PlayerScore[] = isShowingOpponentLive ? opponentLiveDarts.playerScores : playerScores;
+  const displayDartScores: (CricketNumber | null)[] = isShowingOpponentLive ? opponentLiveDarts.dartScores : dartScores;
+  const displayDartMultipliers: (1 | 2 | 3)[] = isShowingOpponentLive ? opponentLiveDarts.dartMultipliers : dartMultipliers;
+  const displayDartPinHits: (number | null)[] = isShowingOpponentLive ? opponentLiveDarts.dartPinHits : dartPinHits;
+  const displayDartSkips: (string | null)[] = isShowingOpponentLive ? opponentLiveDarts.dartSkips : dartSkips;
+  const displayDartKOs: (string | null)[] = isShowingOpponentLive ? opponentLiveDarts.dartKOs : dartKOs;
+  const displayDartIndex: number = isShowingOpponentLive ? opponentLiveDarts.currentDartIndex : currentDartIndex;
+
   return (
     <div ref={containerRef} className="min-h-screen bg-[#333333] flex flex-col select-none">
       {/* Online: opponent left — full-screen modal */}
@@ -1680,13 +1706,15 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
 
           {/* Dart Scores */}
           <div className="w-full mb-3 xl:mb-6">
-            <div className="text-white text-2xl xl:text-4xl font-bold mb-3 xl:mb-6 text-center">DARTS THIS TURN</div>
+            <div className="text-white text-2xl xl:text-4xl font-bold mb-3 xl:mb-6 text-center">
+              {isShowingOpponentLive ? 'OPPONENT THROWING' : 'DARTS THIS TURN'}
+            </div>
             <div className="space-y-2 xl:space-y-3">
-              {dartScores.map((score, index) => {
-                const mult = dartMultipliers[index];
-                const pinHit = dartPinHits[index];
-                const skipName = dartSkips[index];
-                const koAction = dartKOs[index];
+              {displayDartScores.map((score, index) => {
+                const mult = displayDartMultipliers[index];
+                const pinHit = displayDartPinHits[index];
+                const skipName = displayDartSkips[index];
+                const koAction = displayDartKOs[index];
 
                 let displayText = '';
                 if (pinHit !== null) {
@@ -1701,7 +1729,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
                 } else if (score) {
                   // Regular dart score
                   displayText = mult > 1 ? `${score}(${mult})` : `${score}`;
-                } else if (score === null && index < currentDartIndex) {
+                } else if (score === null && index < displayDartIndex) {
                   // Miss
                   displayText = 'MISS';
                 } else {
@@ -1713,7 +1741,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
                   <div
                     key={index}
                     className={`h-24 xl:h-40 bg-[#333333] rounded flex items-center justify-center ${
-                      index === currentDartIndex ? 'ring-2 ring-white' : ''
+                      index === displayDartIndex ? 'ring-2 ring-white' : ''
                     }`}
                   >
                     <span className="text-white text-3xl xl:text-6xl font-bold">
@@ -2017,7 +2045,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
                 )}
 
                 {/* For triple-threat and fatal-4-way: All players in order */}
-                {(variant === 'triple-threat' || variant === 'fatal-4-way') && playerScores.map((score, scoreIndex) => {
+                {(variant === 'triple-threat' || variant === 'fatal-4-way') && displayPlayerScores.map((score, scoreIndex) => {
                   const isDisabled = inputDisabled || currentDartIndex >= 3 || scoreIndex !== currentPlayerIndex;
                   const isEliminated = score.isEliminated || false;
 
@@ -2035,7 +2063,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
                 })}
 
                 {/* For singles and tag-team: Original layout - Team 0 / First half of players */}
-                {!(variant === 'triple-threat' || variant === 'fatal-4-way') && (variant === 'tag-team' ? playerScores.slice(0, 1) : playerScores.slice(0, Math.ceil(players.length / 2))).map((score, scoreIndex) => {
+                {!(variant === 'triple-threat' || variant === 'fatal-4-way') && (variant === 'tag-team' ? displayPlayerScores.slice(0, 1) : displayPlayerScores.slice(0, Math.ceil(players.length / 2))).map((score, scoreIndex) => {
                   // For tag-team, always enabled (any team member can click)
                   const isDisabled = inputDisabled || (variant === 'tag-team'
                     ? currentDartIndex >= 3 || getTeamIndex(currentPlayerIndex) !== 0
@@ -2067,7 +2095,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
                 )}
 
                 {/* For singles and tag-team: Team 1 / Second half of players */}
-                {!(variant === 'triple-threat' || variant === 'fatal-4-way') && (variant === 'tag-team' ? playerScores.slice(1, 2) : playerScores.slice(Math.ceil(players.length / 2))).map((score, scoreIndex) => {
+                {!(variant === 'triple-threat' || variant === 'fatal-4-way') && (variant === 'tag-team' ? displayPlayerScores.slice(1, 2) : displayPlayerScores.slice(Math.ceil(players.length / 2))).map((score, scoreIndex) => {
                   // For tag-team, check if current team, for regular check player index
                   const isDisabled = inputDisabled || (variant === 'tag-team'
                     ? currentDartIndex >= 3 || getTeamIndex(currentPlayerIndex) !== 1
@@ -2138,6 +2166,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
           {onlineConfig && pendingTurnAdvance && isMyTurn && (
             <button
               onClick={() => {
+                broadcastLiveDarts(null); // Clear opponent's live dart preview
                 setPendingTurnAdvance(false);
                 handleNextPlayer();
               }}
