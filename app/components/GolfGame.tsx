@@ -1557,28 +1557,34 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
             onlineConfig ? (
               /* Online end-game buttons */
               <div className="flex flex-col items-center gap-3 mt-4">
-                {opponentWantsRematch && !iWantRematch && (
+                {opponentLeft && (
+                  <p className="text-red-400 text-lg font-bold">{opponentName} has returned home</p>
+                )}
+                {!opponentLeft && opponentWantsRematch && !iWantRematch && (
                   <p className="text-yellow-400 text-lg font-bold animate-pulse">
                     Opponent wants a rematch!
                   </p>
                 )}
-                {iWantRematch && !opponentWantsRematch && (
+                {!opponentLeft && iWantRematch && !opponentWantsRematch && (
                   <p className="text-gray-400 text-base">Waiting for opponent...</p>
                 )}
                 <div className="grid grid-cols-2 gap-4 w-full">
                   <button
                     onClick={requestRematch}
-                    disabled={iWantRematch}
+                    disabled={iWantRematch || opponentLeft}
                     className={`bg-[#2d5016] text-white text-xl sm:text-2xl font-bold rounded transition-colors h-[80px] flex items-center justify-center px-2 ${
-                      iWantRematch ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#3d6026]'
+                      iWantRematch || opponentLeft ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#3d6026]'
                     }`}
                   >
                     {iWantRematch ? 'WAITING...' : 'PLAY AGAIN'}
                   </button>
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       suppressLeaveRef.current = true;
-                      completeOnlineSession(onlineConfig.sessionId).catch(console.error);
+                      await Promise.race([
+                        completeOnlineSession(onlineConfig.sessionId),
+                        new Promise<void>(r => setTimeout(r, 2000)),
+                      ]);
                       window.location.href = '/';
                     }}
                     className="bg-[#666666] text-white text-xl sm:text-2xl font-bold rounded hover:bg-[#777777] transition-colors h-[80px] flex items-center justify-center px-2"

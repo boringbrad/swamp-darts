@@ -2142,27 +2142,33 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
             {onlineConfig ? (
               /* Online end-game buttons */
               <div className="flex flex-col items-center gap-4">
-                {opponentWantsRematch && !iWantRematch && (
+                {opponentLeft && (
+                  <p className="text-red-400 text-xl font-bold">{opponentName} has returned home</p>
+                )}
+                {!opponentLeft && opponentWantsRematch && !iWantRematch && (
                   <p className="text-yellow-400 text-xl font-bold animate-pulse">
                     Opponent wants a rematch!
                   </p>
                 )}
-                {iWantRematch && !opponentWantsRematch && (
+                {!opponentLeft && iWantRematch && !opponentWantsRematch && (
                   <p className="text-gray-400 text-lg">Waiting for opponent...</p>
                 )}
                 <button
                   onClick={requestRematch}
-                  disabled={iWantRematch || isSavingGame}
+                  disabled={iWantRematch || isSavingGame || opponentLeft}
                   className={`bg-[#2d5016] text-white px-10 py-5 rounded text-3xl font-bold transition-colors ${
-                    iWantRematch ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#3d6026]'
+                    iWantRematch || opponentLeft ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#3d6026]'
                   }`}
                 >
                   {iWantRematch ? 'Waiting...' : 'Play Again'}
                 </button>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     suppressLeaveRef.current = true;
-                    completeOnlineSession(onlineConfig.sessionId).catch(console.error);
+                    await Promise.race([
+                      completeOnlineSession(onlineConfig.sessionId),
+                      new Promise<void>(r => setTimeout(r, 2000)),
+                    ]);
                     window.location.href = '/';
                   }}
                   disabled={isSavingGame}
