@@ -748,8 +748,34 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
     if (currentDartIndex === 0 || currentDartIndex >= 3) return;
 
     const timer = setTimeout(() => {
-      // Jump to dart index 3 — remaining slots stay null (shown as MISS in the display).
-      // The existing auto-advance useEffect fires next and calls handleNextPlayer().
+      // Push individual 'miss' history entries for each remaining dart slot so that
+      // Undo can walk back one dart at a time through the auto-filled MISSes.
+      const missEntries: HistoryEntry[] = [];
+      const tempDartScores = [...dartScores];
+      const tempDartMultipliers = [...dartMultipliers];
+      for (let i = currentDartIndex; i < 3; i++) {
+        missEntries.push({
+          playerIndex: currentPlayerIndex,
+          dartIndex: i,
+          action: 'miss',
+          playerScoresSnapshot: JSON.parse(JSON.stringify(playerScores)) as PlayerScore[],
+          dartScoresSnapshot: [...tempDartScores],
+          dartMultipliersSnapshot: [...tempDartMultipliers],
+          dartPinHitsSnapshot: [...dartPinHits],
+          dartSkipsSnapshot: [...dartSkips],
+          skippedPlayersSnapshot: Array.from(skippedPlayers),
+          wasSkippedPlayersSnapshot: Array.from(wasSkippedPlayers),
+          lastSkippedPlayerSnapshot: lastSkippedPlayer,
+        });
+        // null slots are already null — advance the temp pointer for snapshot accuracy
+        tempDartScores[i] = null;
+        tempDartMultipliers[i] = 1;
+      }
+      // Functional update avoids stale history reference
+      setHistory(prev => [...prev, ...missEntries]);
+      setDartScores(tempDartScores);
+      setDartMultipliers(tempDartMultipliers);
+      // Setting index to 3 triggers the existing 500ms turn-advance useEffect
       setCurrentDartIndex(3);
     }, autoAdvanceTurnDelay);
 
