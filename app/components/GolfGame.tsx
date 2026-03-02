@@ -1582,7 +1582,10 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
                     onClick={async () => {
                       suppressLeaveRef.current = true;
                       await Promise.race([
-                        completeOnlineSession(onlineConfig.sessionId),
+                        Promise.allSettled([
+                          completeOnlineSession(onlineConfig.sessionId),
+                          leaveSession(onlineConfig.sessionId),
+                        ]),
                         new Promise<void>(r => setTimeout(r, 2000)),
                       ]);
                       window.location.href = '/';
