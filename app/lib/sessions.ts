@@ -692,14 +692,21 @@ export async function getOpenOnlineLobbies(): Promise<(GameSession & {
     const profileMap: Record<string, any> = {};
     for (const p of profileRows || []) profileMap[p.id] = p;
 
-    // Step 3: count active participants per session
+    // Step 3: fetch active participants per session and verify host is still present
     const withCounts = await Promise.all(
       sessions.map(async (s: any) => {
-        const { count } = await supabase
+        const { data: activeRows } = await supabase
           .from('session_participants')
-          .select('*', { count: 'exact', head: true })
+          .select('user_id')
           .eq('session_id', s.id)
           .is('left_at', null);
+
+        const count = activeRows?.length ?? 0;
+        const hostIsActive = activeRows?.some(p => p.user_id === s.host_user_id) ?? false;
+
+        // Skip dead lobbies — host already left (happens when host navigates away
+        // without cancelling, or the previous leaveSession bug left status='lobby').
+        if (!hostIsActive) return null;
 
         const hostProfile = profileMap[s.host_user_id];
         return {
@@ -707,13 +714,13 @@ export async function getOpenOnlineLobbies(): Promise<(GameSession & {
           hostDisplayName: hostProfile?.display_name || 'Unknown',
           hostAvatar: hostProfile?.avatar || 'avatar-1',
           hostPhotoUrl: hostProfile?.photo_url || null,
-          currentParticipants: count || 0,
+          currentParticipants: count,
         };
       })
     );
 
-    // Only show lobbies that aren't full yet
-    return withCounts.filter((l: any) => l.currentParticipants < 2);
+    // Only show lobbies that aren't full yet (and aren't dead — nulls already filtered)
+    return (withCounts.filter(Boolean) as any[]).filter((l) => l.currentParticipants < 2);
   } catch (err) {
     console.error('[getOpenOnlineLobbies] error:', err);
     return [];
