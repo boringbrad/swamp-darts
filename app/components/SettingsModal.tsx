@@ -677,9 +677,32 @@ export default function SettingsModal({ isOpen, onClose, pathname = '' }: Settin
                       Auto-Advance Turn
                     </label>
                   </div>
-                  <p className="text-gray-400 text-sm pl-9">
-                    After at least 1 dart is thrown, automatically fills remaining darts as MISS and advances to the next player after 7 seconds of inactivity. Local games only.
+                  <p className="text-gray-400 text-sm pl-9 mb-3">
+                    After at least 1 dart is thrown, automatically fills remaining darts as MISS and advances to the next player after a period of inactivity. Local games only.
                   </p>
+                  {cricketRules.autoAdvanceTurn && (
+                    <div className="pl-9">
+                      <p className="text-gray-300 text-sm font-semibold mb-2">Timeout duration</p>
+                      <div className="flex flex-wrap gap-2">
+                        {[3, 5, 7, 10, 15, 20, 30].map((s) => {
+                          const current = cricketRules.autoAdvanceTurnDelay ?? 7;
+                          return (
+                            <button
+                              key={s}
+                              onClick={() => setCricketRules({ autoAdvanceTurnDelay: s })}
+                              className={`px-3 py-1.5 rounded text-sm font-bold transition-colors ${
+                                current === s
+                                  ? 'bg-[#a855f7] text-white'
+                                  : 'bg-[#555555] text-gray-300 hover:bg-[#666666]'
+                              }`}
+                            >
+                              {s}s
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 

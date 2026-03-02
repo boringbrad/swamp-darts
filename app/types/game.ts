@@ -25,7 +25,8 @@ export interface CricketRules {
   enablePIN?: boolean; // Enable PIN mechanic (default win condition)
   enable3Darts3Marks?: boolean; // Enable 3 Darts/3 Marks bonus turn mechanic
   enableLadder?: boolean; // Enable Ladder Match (2 marks on all targets before clearing in order)
-  autoAdvanceTurn?: boolean; // Auto-fill remaining darts as MISS and advance after 7s inactivity (local only)
+  autoAdvanceTurn?: boolean; // Auto-fill remaining darts as MISS and advance after inactivity (local only)
+  autoAdvanceTurnDelay?: number; // Seconds before auto-advance fires (default 7)
 }
 
 // Cricket scoring

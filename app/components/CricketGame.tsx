@@ -740,8 +740,9 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentDartIndex, dartScores, dartPinHits, dartSkips, dartKOs]);
 
-  // Auto-advance turn after 7 s of inactivity (local games only, requires ≥ 1 dart thrown)
+  // Auto-advance turn after configurable inactivity (local games only, requires ≥ 1 dart thrown)
   const autoAdvanceTurnEnabled = rules.autoAdvanceTurn === true;
+  const autoAdvanceTurnDelay = (rules.autoAdvanceTurnDelay ?? 7) * 1000;
   useEffect(() => {
     if (!autoAdvanceTurnEnabled || !!onlineConfig || !!gameWinner) return;
     if (currentDartIndex === 0 || currentDartIndex >= 3) return;
@@ -750,11 +751,11 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
       // Jump to dart index 3 — remaining slots stay null (shown as MISS in the display).
       // The existing auto-advance useEffect fires next and calls handleNextPlayer().
       setCurrentDartIndex(3);
-    }, 7000);
+    }, autoAdvanceTurnDelay);
 
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentDartIndex, autoAdvanceTurnEnabled, gameWinner]);
+  }, [currentDartIndex, autoAdvanceTurnEnabled, autoAdvanceTurnDelay, gameWinner]);
 
   const handleTargetClick = (target: CricketNumber) => {
     if (currentDartIndex >= 3) return;
