@@ -40,6 +40,7 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
   const [scores, setScores] = useState<PlayerScore[]>([]);
   const [currentHole, setCurrentHole] = useState(0); // 0-17 for holes 1-18, 18+ for tie breaker
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0);
+  const [pendingTurnAdvance, setPendingTurnAdvance] = useState(false); // Online: waiting for "Next Player" click
   const [courseRecord, setCourseRecord] = useState('Loading...');
   const [dividerPosition, setDividerPosition] = useState(() => {
     // Load saved divider position from localStorage
@@ -460,6 +461,60 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
     return stillTied.length === 1 ? tieBreakerTotals[0].playerIndex : null;
   };
 
+  // Advance to the next player / hole after a score has been recorded.
+  // Called immediately in offline mode, or on "Next Player" click in online mode.
+  const advanceGolfTurn = () => {
+    if (inTieBreaker) {
+      const holeInRound = (currentHole - TOTAL_HOLES) % 2;
+      const tiedPlayers = checkForTie()!;
+      const currentTiedIndex = tiedPlayers.indexOf(currentPlayerIndex);
+
+      if (holeInRound === 0) {
+        if (currentTiedIndex < tiedPlayers.length - 1) {
+          setCurrentPlayerIndex(tiedPlayers[currentTiedIndex + 1]);
+        } else {
+          setCurrentHole(currentHole + 1);
+          setCurrentPlayerIndex(tiedPlayers[tiedPlayers.length - 1]);
+        }
+      } else {
+        if (currentTiedIndex > 0) {
+          setCurrentPlayerIndex(tiedPlayers[currentTiedIndex - 1]);
+        } else {
+          const winner = checkTieBreakerWinner(tiedPlayers);
+          if (winner !== null) {
+            handleGameComplete();
+          } else {
+            setTieBreakerRound(prev => prev + 1);
+            setCurrentHole(TOTAL_HOLES);
+            setCurrentPlayerIndex(tiedPlayers[0]);
+          }
+        }
+      }
+    } else {
+      if (currentPlayerIndex < players.length - 1) {
+        setCurrentPlayerIndex(currentPlayerIndex + 1);
+      } else {
+        if (currentHole < TOTAL_HOLES - 1) {
+          setCurrentHole(currentHole + 1);
+          setCurrentPlayerIndex(0);
+        } else {
+          if (tieBreakerEnabled) {
+            const tiedPlayers = checkForTie();
+            if (tiedPlayers && tiedPlayers.length > 1) {
+              setInTieBreaker(true);
+              setTieBreakerHoles(players.map(() => []));
+              setCurrentHole(TOTAL_HOLES);
+              setCurrentPlayerIndex(tiedPlayers[0]);
+              setTieBreakerRound(0);
+              return;
+            }
+          }
+          handleGameComplete();
+        }
+      }
+    }
+  };
+
   const handleScoreInput = (score: number) => {
     if (inTieBreaker) {
       // Handle tie breaker scoring
@@ -475,73 +530,47 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
       newTieBreakerHoles[currentPlayerIndex][absoluteTieBreakerIndex] = score;
       setTieBreakerHoles(newTieBreakerHoles);
 
-      // Get tied players from the main game
-      const tiedPlayers = checkForTie()!;
-      const currentTiedIndex = tiedPlayers.indexOf(currentPlayerIndex);
-
-      // Determine next player based on alternating order
-      // Hole 19 (holeInRound 0): normal order
-      // Hole 20 (holeInRound 1): reverse order
-      if (holeInRound === 0) {
-        // Hole 19: normal order
-        if (currentTiedIndex < tiedPlayers.length - 1) {
-          setCurrentPlayerIndex(tiedPlayers[currentTiedIndex + 1]);
-        } else {
-          // Move to hole 20
-          setCurrentHole(currentHole + 1);
-          setCurrentPlayerIndex(tiedPlayers[tiedPlayers.length - 1]); // Start from last player
-        }
-      } else {
-        // Hole 20: reverse order
-        if (currentTiedIndex > 0) {
-          setCurrentPlayerIndex(tiedPlayers[currentTiedIndex - 1]);
-        } else {
-          // Round complete, check for winner
-          const winner = checkTieBreakerWinner(tiedPlayers);
-          if (winner !== null) {
-            // We have a winner!
-            handleGameComplete();
-          } else {
-            // Still tied, continue to next round
-            setTieBreakerRound(prev => prev + 1);
-            setCurrentHole(TOTAL_HOLES); // Reset to hole 19 (display-wise)
-            setCurrentPlayerIndex(tiedPlayers[0]); // Start from first tied player
-          }
-        }
+      // Online mode: record score and wait for "Next Player" click
+      if (onlineConfig) {
+        setPendingTurnAdvance(true);
+        return;
       }
+      advanceGolfTurn();
     } else {
       // Handle regular game scoring
       const newScores = [...scores];
       newScores[currentPlayerIndex].holes[currentHole] = score;
       setScores(newScores);
 
-      if (currentPlayerIndex < players.length - 1) {
-        setCurrentPlayerIndex(currentPlayerIndex + 1);
-      } else {
-        if (currentHole < TOTAL_HOLES - 1) {
-          setCurrentHole(currentHole + 1);
-          setCurrentPlayerIndex(0);
-        } else {
-          // Game complete, check for tie
-          if (tieBreakerEnabled) {
-            const tiedPlayers = checkForTie();
-            if (tiedPlayers && tiedPlayers.length > 1) {
-              // Start tie breaker
-              setInTieBreaker(true);
-              setTieBreakerHoles(players.map(() => []));
-              setCurrentHole(TOTAL_HOLES); // Hole 19
-              setCurrentPlayerIndex(tiedPlayers[0]);
-              setTieBreakerRound(0);
-              return;
-            }
-          }
-          handleGameComplete();
-        }
+      // Online mode: record score and wait for "Next Player" click
+      if (onlineConfig) {
+        setPendingTurnAdvance(true);
+        return;
       }
+      advanceGolfTurn();
     }
   };
 
   const handleUndo = () => {
+    // Online mode: only undo the pending (unconfirmed) score before "Next Player" is clicked
+    if (onlineConfig && pendingTurnAdvance) {
+      if (inTieBreaker) {
+        const holeInRound = (currentHole - TOTAL_HOLES) % 2;
+        const absoluteTieBreakerIndex = tieBreakerRound * 2 + holeInRound;
+        const newTieBreakerHoles = [...tieBreakerHoles];
+        if (newTieBreakerHoles[currentPlayerIndex]) {
+          newTieBreakerHoles[currentPlayerIndex][absoluteTieBreakerIndex] = null;
+        }
+        setTieBreakerHoles(newTieBreakerHoles);
+      } else {
+        const newScores = [...scores];
+        newScores[currentPlayerIndex].holes[currentHole] = null;
+        setScores(newScores);
+      }
+      setPendingTurnAdvance(false);
+      return;
+    }
+
     if (inTieBreaker) {
       // Handle undo in tie breaker mode
       const tiedPlayers = checkForTie()!;
@@ -1537,7 +1566,7 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
               <button
                 key={score}
                 onClick={() => handleScoreInput(score)}
-                disabled={gameComplete || inputDisabled}
+                disabled={gameComplete || inputDisabled || (!!onlineConfig && pendingTurnAdvance)}
                 className="golf-button bg-[#FFD700] text-black font-bold rounded hover:bg-[#FFC700] transition-colors opacity-50 hover:opacity-60 active:opacity-80 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center"
               >
                 <span className="golf-number-text">{score}</span>
@@ -1545,12 +1574,27 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
             ))}
             <button
               onClick={handleUndo}
-              disabled={currentHole === 0 && currentPlayerIndex === 0}
+              disabled={
+                (!!onlineConfig && !pendingTurnAdvance) ||
+                (!onlineConfig && currentHole === 0 && currentPlayerIndex === 0)
+              }
               className="golf-button bg-[#FFD700] text-black font-bold rounded hover:bg-[#FFC700] transition-colors opacity-50 hover:opacity-60 active:opacity-80 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center px-1"
             >
               <span className="golf-undo-text">UNDO</span>
             </button>
           </div>
+          {/* Online mode: confirm turn handoff */}
+          {onlineConfig && pendingTurnAdvance && isMyTurn && (
+            <button
+              onClick={() => {
+                setPendingTurnAdvance(false);
+                advanceGolfTurn();
+              }}
+              className="mt-2 w-full bg-[#6b1a8b] hover:bg-[#8b2aab] text-white font-black text-xl rounded-xl py-3 uppercase tracking-wider transition-colors"
+            >
+              Next Player →
+            </button>
+          )}
 
           {/* End-of-game buttons */}
           {gameComplete && (

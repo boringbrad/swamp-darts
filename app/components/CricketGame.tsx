@@ -138,6 +138,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
   const [gameWinner, setGameWinner] = useState<string | null>(null);
   const [isSavingGame, setIsSavingGame] = useState(false); // Track game save progress
   const [history, setHistory] = useState<HistoryEntry[]>([]); // Complete action history for undo
+  const [pendingTurnAdvance, setPendingTurnAdvance] = useState(false); // Online: waiting for "Next Player" click
 
   // ── Online 1v1 ──────────────────────────────────────────────────────────────
   const { isMyTurn, opponentState, submitTurn, opponentLeft, iWantRematch, opponentWantsRematch, bothWantRematch, requestRematch, resetForRematch } = useOnlineGameState(onlineConfig ?? null);
@@ -687,6 +688,23 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
     if (currentDartIndex === 3) {
       // Check if all 3 darts scored (3 darts 3 marks bonus rule)
       const allDartsScored = dartScores.every(score => score !== null);
+
+      // Online mode: defer turn advance until player clicks "Next Player"
+      if (onlineConfig) {
+        if (enable3Darts3Marks && allDartsScored) {
+          // Bonus turn still auto-resets (player index doesn't change, nothing to sync)
+          setDartScores([null, null, null]);
+          setDartMultipliers([1, 1, 1]);
+          setDartPinHits([null, null, null]);
+          setDartSkips([null, null, null]);
+          setCurrentDartIndex(0);
+          setMultiplier(1);
+        } else {
+          // Wait for player to confirm with "Next Player" button
+          setPendingTurnAdvance(true);
+        }
+        return;
+      }
 
       // Add a small delay so the user can see the third dart before advancing
       const timer = setTimeout(() => {
@@ -1324,6 +1342,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
   };
 
   const handleUndo = () => {
+    if (pendingTurnAdvance) setPendingTurnAdvance(false);
     if (history.length === 0) return;
 
     // Pop the last history entry
@@ -2109,12 +2128,24 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
             </button>
             <button
               onClick={handleUndo}
-              disabled={history.length === 0}
+              disabled={history.length === 0 || (!!onlineConfig && !isMyTurn)}
               className="bg-[#666666] text-white rounded font-bold text-lg xl:text-5xl hover:bg-[#777777] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               UNDO
             </button>
           </div>
+          {/* Online mode: confirm turn handoff */}
+          {onlineConfig && pendingTurnAdvance && isMyTurn && (
+            <button
+              onClick={() => {
+                setPendingTurnAdvance(false);
+                handleNextPlayer();
+              }}
+              className="mt-2 w-full bg-[#6b1a8b] hover:bg-[#8b2aab] text-white font-black text-xl xl:text-3xl rounded-xl py-3 xl:py-5 uppercase tracking-wider transition-colors"
+            >
+              Next Player →
+            </button>
+          )}
         </div>
       </div>
 
