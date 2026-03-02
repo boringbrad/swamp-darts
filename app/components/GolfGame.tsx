@@ -1078,7 +1078,7 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
         )}
 
         {/* Course Header - fills available space with max limit */}
-        <div className="bg-[#5a7a4a] text-center px-4 relative flex-grow py-4 landscape:max-lg:py-1 min-h-[120px] landscape:max-lg:min-h-[40px] max-h-[35vh] landscape:max-lg:max-h-[15vh] flex flex-col">
+        <div className="bg-[#5a7a4a] text-center px-4 relative flex-grow py-4 landscape:max-lg:py-1 min-h-[120px] landscape:max-lg:min-h-[40px] max-h-[35vh] landscape:max-lg:max-h-[15vh] flex flex-col justify-center">
           {/* Background image with opacity */}
           <div
             className="absolute inset-0 bg-cover bg-center"

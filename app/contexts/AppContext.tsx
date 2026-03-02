@@ -57,6 +57,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (authLoading) return; // wait for AuthContext to resolve
 
+    if (profile && user) {
+      // Restore golf course name from Supabase user_metadata (persists across devices/localStorage clears)
+      const savedCourseName = (user.user_metadata as any)?.golf_course_name as string | undefined;
+      if (savedCourseName) {
+        setGolfCourseNameState(savedCourseName);
+        localStorage.setItem('golfCourseName', savedCourseName);
+      }
+    }
+
     if (profile) {
       // Logged in: map raw Supabase profile → app UserProfile type
       const mappedProfile: UserProfile = {
@@ -360,6 +369,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setGolfCourseName = (name: string) => {
     setGolfCourseNameState(name);
     localStorage.setItem('golfCourseName', name);
+    // Persist to Supabase user_metadata for logged-in users so it survives localStorage clears
+    if (user) {
+      const supabase = createClient();
+      supabase.auth.updateUser({ data: { golf_course_name: name } }).catch(() => {
+        // Non-critical — localStorage is the fallback
+      });
+    }
   };
 
   const setCourseBannerImage = (imageUrl: string) => {
