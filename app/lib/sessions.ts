@@ -221,7 +221,7 @@ export async function leaveSession(sessionId: string): Promise<{
     // Find ALL participant records for this user in this session (handles duplicates)
     const { data: participants } = await supabase
       .from('session_participants')
-      .select('*, session:game_sessions(host_user_id, status)')
+      .select('*')
       .eq('session_id', sessionId)
       .eq('user_id', user.id)
       .is('left_at', null);
@@ -245,8 +245,7 @@ export async function leaveSession(sessionId: string): Promise<{
     if (error) return { success: false, error: error.message };
 
     // If host leaves, expire the session and kick all other participants
-    const session = Array.isArray(participants[0].session) ? participants[0].session[0] : participants[0].session;
-    if (isHost && session?.status === 'lobby') {
+    if (isHost) {
       // Mark all OTHER users' participants as left
       await supabase
         .from('session_participants')
@@ -255,11 +254,12 @@ export async function leaveSession(sessionId: string): Promise<{
         .neq('user_id', user.id)
         .is('left_at', null);
 
-      // Expire the session
+      // Expire the session — .eq('status','lobby') prevents overwriting an in_game session
       await supabase
         .from('game_sessions')
         .update({ status: 'expired' })
-        .eq('id', sessionId);
+        .eq('id', sessionId)
+        .eq('status', 'lobby');
     }
 
     return { success: true };

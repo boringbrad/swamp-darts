@@ -166,7 +166,11 @@ export default function OnlineGamePage() {
     }
   }, [session?.status, ready]);
 
-  if (sessionLoading || participantsLoading || !ready) {
+  // Only block rendering until the game is initially set up (ready=true).
+  // Do NOT re-enter loading state on subsequent sessionLoading/participantsLoading
+  // changes — those happen when the opponent leaves and would unmount the game
+  // component, resetting all scores and losing the disconnect overlay.
+  if (!ready) {
     return (
       <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center">
         <p className="text-gray-400">Loading game...</p>
