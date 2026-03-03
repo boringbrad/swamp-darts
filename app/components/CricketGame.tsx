@@ -192,7 +192,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
     if (!currentId) return;
     // If it's now the opponent's turn, we just finished ours → sync
     if (currentId !== onlineConfig.myUserId) {
-      const snapshot = { playerScores, currentPlayerIndex, gameWinner };
+      const snapshot = { playerScores, currentPlayerIndex, gameWinner, pinCount };
       submitTurn(snapshot, currentId);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -204,6 +204,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
     setPlayerScores(opponentState.playerScores);
     setCurrentPlayerIndex(opponentState.currentPlayerIndex);
     if (opponentState.gameWinner) setGameWinner(opponentState.gameWinner);
+    if (opponentState.pinCount !== undefined) setPinCount(opponentState.pinCount);
   }, [opponentState]);
   // ────────────────────────────────────────────────────────────────────────────
 
@@ -1795,8 +1796,8 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
               })}
             </div>
 
-            {/* PIN Counter Display */}
-            {isPinEnabled && pinCount !== 0 && (
+            {/* PIN Counter Display — hidden in online (shown in scoreboard header instead) */}
+            {!onlineConfig && isPinEnabled && pinCount !== 0 && (
               <div className="mt-3 xl:mt-6 bg-[#1a1a1a] rounded-lg p-3 xl:p-6 flex flex-col items-center justify-center">
                 <div className="text-white text-xl xl:text-3xl font-bold mb-2 xl:mb-3">PIN</div>
                 {(() => {
@@ -2024,7 +2025,7 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
             <div className="flex items-center justify-center">
               {isPinEnabled && pinCount !== 0 && (
                 <span
-                  className="text-4xl xl:text-8xl font-bold"
+                  className="text-6xl xl:text-8xl font-bold"
                   style={{ color: pinCount > 0 ? getPlayerColor(playerScores[0].color) : getPlayerColor(playerScores[1].color) }}
                 >
                   {Math.abs(pinCount)}
