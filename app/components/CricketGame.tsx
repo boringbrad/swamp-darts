@@ -1821,6 +1821,21 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
               </div>
             )}
           </div>
+
+          {/* Online mode: Next Player button — always visible, greyed out until ready */}
+          {!!onlineConfig && (
+            <button
+              onClick={() => {
+                broadcastLiveDarts(null);
+                setPendingTurnAdvance(false);
+                handleNextPlayer();
+              }}
+              disabled={!isMyTurn || !pendingTurnAdvance}
+              className="mt-3 xl:mt-6 w-full bg-[#6b1a8b] hover:bg-[#8b2aab] disabled:bg-[#444444] disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-xl xl:text-3xl rounded-xl py-3 xl:py-5 uppercase tracking-wider transition-colors"
+            >
+              Next Player →
+            </button>
+          )}
         </div>
 
         {/* Right Side - Scoreboard */}
@@ -2205,19 +2220,6 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
               UNDO
             </button>
           </div>
-          {/* Online mode: confirm turn handoff */}
-          {onlineConfig && pendingTurnAdvance && isMyTurn && (
-            <button
-              onClick={() => {
-                broadcastLiveDarts(null); // Clear opponent's live dart preview
-                setPendingTurnAdvance(false);
-                handleNextPlayer();
-              }}
-              className="mt-2 w-full bg-[#6b1a8b] hover:bg-[#8b2aab] text-white font-black text-xl xl:text-3xl rounded-xl py-3 xl:py-5 uppercase tracking-wider transition-colors"
-            >
-              Next Player →
-            </button>
-          )}
         </div>
       </div>
 
