@@ -198,6 +198,20 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPlayerIndex]);
 
+  // When game ends on our turn → immediately push final state so opponent sees the result.
+  // The winner modal covers the "Next Player" button, so currentPlayerIndex never changes
+  // and the normal sync effect never fires without this.
+  useEffect(() => {
+    if (!onlineConfig || !gameWinner || !players.length) return;
+    const currentId = players[currentPlayerIndex]?.id;
+    if (currentId !== onlineConfig.myUserId) return; // opponent won, they'll push it
+    const opponentId = players.find(p => p.id !== onlineConfig.myUserId)?.id;
+    if (!opponentId) return;
+    const snapshot = { playerScores, currentPlayerIndex, gameWinner, pinCount };
+    submitTurn(snapshot, opponentId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameWinner]);
+
   // When opponent submits their turn → apply their state snapshot
   useEffect(() => {
     if (!opponentState || !onlineConfig) return;
@@ -2231,7 +2245,9 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
           <div className="bg-[#1a1a1a] p-12 rounded-lg border-4 border-white text-center">
             <h2 className="text-white text-8xl font-bold mb-8">
-              {enablePIN ? 'PINNED!' : 'WINNER!'}
+              {onlineConfig && gameWinner !== onlineConfig.myUserId
+                ? 'GAME OVER'
+                : enablePIN ? 'PINNED!' : 'WINNER!'}
             </h2>
             <p className="text-white text-6xl mb-8">
               {variant === 'tag-team' && gameWinner.startsWith('team-')
