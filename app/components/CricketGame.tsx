@@ -1617,8 +1617,8 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
           Waiting for opponent…
         </div>
       )}
-      {/* Empty container matching header height to prevent accidental clicks */}
-      <div className="h-20 bg-[#333333]"></div>
+      {/* Empty container matching header height to prevent accidental clicks (hidden in online mode) */}
+      {!onlineConfig && <div className="h-20 bg-[#333333]"></div>}
 
       <div className="flex-1 flex">
         {/* Left Side - Camera/Dartboard */}
@@ -1686,8 +1686,8 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
 
         {/* Middle Section - Turn Order and Dart Scores */}
         <div className={`${cameraEnabled ? 'w-1/6' : 'w-[30%] xl:w-1/4'} bg-[#1a1a1a] flex flex-col items-center justify-start px-2 xl:px-6 border-l-2 border-r-2 border-white`}>
-          {/* Empty container above Turn Order */}
-          <div className="w-full h-8 xl:h-16"></div>
+          {/* Empty container above Turn Order (hidden in online mode) */}
+          {!onlineConfig && <div className="w-full h-8 xl:h-16"></div>}
 
           {/* Turn Order */}
           <div className="w-full mb-3 xl:mb-6">
@@ -1822,19 +1822,21 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
             )}
           </div>
 
-          {/* Online mode: Next Player button — always visible, greyed out until ready */}
+          {/* Online mode: Next Player button — always visible, fills remaining space, greyed out until ready */}
           {!!onlineConfig && (
-            <button
-              onClick={() => {
-                broadcastLiveDarts(null);
-                setPendingTurnAdvance(false);
-                handleNextPlayer();
-              }}
-              disabled={!isMyTurn || !pendingTurnAdvance}
-              className="mt-3 xl:mt-6 w-full bg-[#6b1a8b] hover:bg-[#8b2aab] disabled:bg-[#444444] disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-xl xl:text-3xl rounded-xl py-3 xl:py-5 uppercase tracking-wider transition-colors"
-            >
-              Next Player →
-            </button>
+            <div className="flex-1 w-full flex flex-col pt-3 xl:pt-4 min-h-0">
+              <button
+                onClick={() => {
+                  broadcastLiveDarts(null);
+                  setPendingTurnAdvance(false);
+                  handleNextPlayer();
+                }}
+                disabled={!isMyTurn || !pendingTurnAdvance}
+                className="flex-1 w-full bg-[#6b1a8b] hover:bg-[#8b2aab] disabled:bg-[#444444] disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-xl xl:text-3xl rounded-xl uppercase tracking-wider transition-colors"
+              >
+                Next Player →
+              </button>
+            </div>
           )}
         </div>
 
