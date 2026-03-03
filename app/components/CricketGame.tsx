@@ -1617,8 +1617,8 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
           Waiting for opponent…
         </div>
       )}
-      {/* Empty container matching header height to prevent accidental clicks (hidden in online mode) */}
-      {!onlineConfig && <div className="h-20 bg-[#333333]"></div>}
+      {/* Spacer matching fixed header height — h-20 for local (app header), h-10 for online (room code banner) */}
+      <div className={`${onlineConfig ? 'h-10' : 'h-20'} bg-[#333333]`}></div>
 
       <div className="flex-1 flex">
         {/* Left Side - Camera/Dartboard */}
