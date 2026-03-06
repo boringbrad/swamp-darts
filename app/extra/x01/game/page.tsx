@@ -594,7 +594,19 @@ export default function X01GamePage() {
 
         {/* ── Keypad — fills ALL remaining screen space ── */}
         {winner === null && (
-          <div className="flex-1 flex flex-col px-2 pb-2 gap-0.5 min-h-0">
+          <div className="flex-1 flex flex-col px-2 pb-2 gap-0.5 min-h-0 relative">
+            {/* Waiting overlay — sits over keypad when it's opponent's turn */}
+            {onlineConfig && !isMyTurn && !pendingCommit && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/50 rounded-lg pointer-events-none">
+                <div className="flex items-center gap-2 text-white font-bold text-lg">
+                  <svg className="animate-spin w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Waiting for opponent…
+                </div>
+              </div>
+            )}
 
             {/* Bust message */}
             {bustMsg && (
