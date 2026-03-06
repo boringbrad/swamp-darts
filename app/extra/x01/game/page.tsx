@@ -104,6 +104,7 @@ export default function X01GamePage() {
   // For online mode, players are passed via sessionStorage because the React context
   // state update from the routing page may not commit before navigation unmounts it.
   const [players] = useState<StoredPlayer[]>(() => {
+    if (typeof window === 'undefined') return gameData?.players ?? [];
     try {
       const raw = sessionStorage.getItem('onlineX01Players');
       if (raw) { sessionStorage.removeItem('onlineX01Players'); return JSON.parse(raw); }
@@ -124,6 +125,7 @@ export default function X01GamePage() {
   // ── Online 1v1 ─────────────────────────────────────────────────────────────
   // The game router stores onlineConfig in sessionStorage before navigating here
   const [onlineConfig] = useState<OnlineConfig | null>(() => {
+    if (typeof window === 'undefined') return null;
     try {
       const raw = sessionStorage.getItem('onlineConfig');
       if (raw) { sessionStorage.removeItem('onlineConfig'); return JSON.parse(raw); }

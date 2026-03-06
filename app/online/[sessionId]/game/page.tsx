@@ -116,11 +116,10 @@ export default function OnlineGamePage() {
       guestUserId: guestP.userId,
     };
 
-    // For x01: stash onlineConfig + players in sessionStorage then hard-navigate.
-    // setX01StartingScore writes localStorage synchronously so AppContext reinitialises
-    // with the correct values after the reload. Hard navigation (window.location.href)
-    // is used instead of router.replace to avoid App Router soft-nav getting stuck —
-    // cricket/golf render inline so they never hit this issue, but x01 navigates away.
+    // For x01: stash onlineConfig + players in sessionStorage then soft-navigate.
+    // Soft nav (router.replace) is required — hard nav (window.location.href) triggers
+    // Next.js SSR which can't access sessionStorage, so both keys read as null and the
+    // x01 page bounces back to player-select. Soft nav is purely client-side.
     if (settings.gameType === 'x01') {
       setX01StartingScore(settings.x01StartingScore || 501);
       setX01DoubleIn(settings.x01DoubleIn ?? false);
@@ -129,7 +128,7 @@ export default function OnlineGamePage() {
         sessionStorage.setItem('onlineConfig', JSON.stringify(onlineConfig));
         sessionStorage.setItem('onlineX01Players', JSON.stringify([hostPlayer, guestPlayer]));
       } catch (_) {}
-      window.location.href = '/extra/x01/game?online=1';
+      router.replace('/extra/x01/game?online=1');
       return;
     }
 
