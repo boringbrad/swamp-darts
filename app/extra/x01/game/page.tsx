@@ -101,7 +101,15 @@ export default function X01GamePage() {
   const { selectedPlayers: selectedPlayersCtx, x01StartingScore, x01DoubleIn, x01DoubleOut, x01AverageMode } = useAppContext();
 
   const gameData = selectedPlayersCtx.x01?.default;
-  const players = gameData?.players ?? [];
+  // For online mode, players are passed via sessionStorage because the React context
+  // state update from the routing page may not commit before navigation unmounts it.
+  const [players] = useState<StoredPlayer[]>(() => {
+    try {
+      const raw = sessionStorage.getItem('onlineX01Players');
+      if (raw) { sessionStorage.removeItem('onlineX01Players'); return JSON.parse(raw); }
+    } catch (_) {}
+    return gameData?.players ?? [];
+  });
   const isTeams = gameData?.isTeams ?? false;
 
   const [playerStates, setPlayerStates] = useState<PlayerState[]>(() =>
@@ -191,7 +199,7 @@ export default function X01GamePage() {
   const numPlayers = playerStates.length;
 
   useEffect(() => {
-    if (players.length === 0) router.replace('/extra/x01');
+    if (players.length === 0 && !onlineConfig) router.replace('/extra/x01');
   }, []);
 
   const getCurrentIdx = (step: number) =>

@@ -116,16 +116,20 @@ export default function OnlineGamePage() {
       guestUserId: guestP.userId,
     };
 
-    // For x01: stash onlineConfig in sessionStorage then navigate to the x01 game page
+    // For x01: stash onlineConfig + players in sessionStorage then hard-navigate.
+    // setX01StartingScore writes localStorage synchronously so AppContext reinitialises
+    // with the correct values after the reload. Hard navigation (window.location.href)
+    // is used instead of router.replace to avoid App Router soft-nav getting stuck —
+    // cricket/golf render inline so they never hit this issue, but x01 navigates away.
     if (settings.gameType === 'x01') {
       setX01StartingScore(settings.x01StartingScore || 501);
       setX01DoubleIn(settings.x01DoubleIn ?? false);
       setX01DoubleOut(settings.x01DoubleOut ?? true);
-      setSelectedPlayers('x01', 'default', { players: [hostPlayer, guestPlayer], isTeams: false });
       try {
         sessionStorage.setItem('onlineConfig', JSON.stringify(onlineConfig));
+        sessionStorage.setItem('onlineX01Players', JSON.stringify([hostPlayer, guestPlayer]));
       } catch (_) {}
-      router.replace('/extra/x01/game?online=1');
+      window.location.href = '/extra/x01/game?online=1';
       return;
     }
 
@@ -171,9 +175,17 @@ export default function OnlineGamePage() {
   // changes — those happen when the opponent leaves and would unmount the game
   // component, resetting all scores and losing the disconnect overlay.
   if (!ready) {
+    const debugReason =
+      sessionLoading ? 'session loading' :
+      participantsLoading ? 'participants loading' :
+      !session ? 'no session' :
+      !myId ? 'no user id' :
+      activeParticipants.length < 2 ? `waiting for players (${activeParticipants.length}/2)` :
+      !session.gameSettings ? 'no game settings' :
+      `starting ${session.gameSettings.gameType}...`;
     return (
       <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center">
-        <p className="text-gray-400">Loading game...</p>
+        <p className="text-gray-400">Loading game… ({debugReason})</p>
       </div>
     );
   }
