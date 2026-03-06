@@ -7,7 +7,7 @@ import PageWrapper from '../../components/PageWrapper';
 import { useAppContext } from '../../contexts/AppContext';
 import { useSession } from '../../hooks/useSession';
 import { useSessionParticipants } from '../../hooks/useSessionParticipants';
-import { startOnlineGame, kickParticipant, leaveSession, OnlineGameSettings } from '../../lib/sessions';
+import { startOnlineGame, kickParticipant, leaveSession, completeOnlineSession, OnlineGameSettings } from '../../lib/sessions';
 import { getAvatarById } from '../../lib/avatars';
 
 function AvatarBubble({ avatar, photoUrl, name, size = 56 }: {
@@ -57,17 +57,44 @@ export default function WaitingRoomPage() {
   // When true the cleanup effect skips calling leaveSession (intentional navigation)
   const suppressLeaveRef = useRef(false);
   const prevGuestIdRef = useRef<string | null>(null);
+  const audioUnlockedRef = useRef(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const myId = userProfile?.id;
   const isHost = session?.hostUserId === myId;
   const guest = activeParticipants.find(p => p.userId !== session?.hostUserId && !p.isHost);
   const hostParticipant = activeParticipants.find(p => p.isHost);
 
+  // Unlock audio on iOS PWA — iOS blocks programmatic audio until first user gesture
+  useEffect(() => {
+    const audio = new Audio('/sounds/mixkit-bell-notification-933.wav');
+    audio.preload = 'auto';
+    audioRef.current = audio;
+
+    const unlock = () => {
+      if (audioUnlockedRef.current) return;
+      audioUnlockedRef.current = true;
+      audio.volume = 0;
+      audio.play()
+        .then(() => { audio.pause(); audio.currentTime = 0; audio.volume = 1; })
+        .catch(() => {});
+    };
+
+    document.addEventListener('touchstart', unlock, { once: true });
+    document.addEventListener('click', unlock, { once: true });
+    return () => {
+      document.removeEventListener('touchstart', unlock);
+      document.removeEventListener('click', unlock);
+    };
+  }, []);
+
   // If the host navigates away without clicking "Cancel Lobby", clean up the session
   // so it doesn't stay as a ghost in the lobby list.
   useEffect(() => {
     return () => {
       if (!suppressLeaveRef.current && sessionId) {
+        // Complete the session so the guest sees the status change and gets redirected
+        completeOnlineSession(sessionId).catch(() => {});
         leaveSession(sessionId); // fire-and-forget; Next.js client nav keeps JS context alive
       }
     };
@@ -104,7 +131,9 @@ export default function WaitingRoomPage() {
     if (!isHost) return;
     const guestId = guest?.userId ?? null;
     if (guestId && !prevGuestIdRef.current) {
-      new Audio('/sounds/mixkit-bell-notification-933.wav').play().catch(() => {});
+      const audio = audioRef.current ?? new Audio('/sounds/mixkit-bell-notification-933.wav');
+      audio.currentTime = 0;
+      audio.play().catch(() => {});
     }
     prevGuestIdRef.current = guestId;
   }, [isHost, guest?.userId]);
@@ -113,7 +142,9 @@ export default function WaitingRoomPage() {
   useEffect(() => {
     if (!isHost || !guest) return;
     const interval = setInterval(() => {
-      new Audio('/sounds/mixkit-bell-notification-933.wav').play().catch(() => {});
+      const audio = audioRef.current ?? new Audio('/sounds/mixkit-bell-notification-933.wav');
+      audio.currentTime = 0;
+      audio.play().catch(() => {});
     }, 5000);
     return () => clearInterval(interval);
   }, [isHost, !!guest]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -141,7 +172,15 @@ export default function WaitingRoomPage() {
     if (!session) return;
     setLeaving(true);
     suppressLeaveRef.current = true; // leaveSession called explicitly below
-    await leaveSession(session.id);
+    // If host cancels, complete the session so the guest gets redirected
+    if (isHost) {
+      await Promise.allSettled([
+        completeOnlineSession(session.id),
+        leaveSession(session.id),
+      ]);
+    } else {
+      await leaveSession(session.id);
+    }
     router.push('/online');
   };
 
