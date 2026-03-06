@@ -104,7 +104,7 @@ export default function WaitingRoomPage() {
     if (!isHost) return;
     const guestId = guest?.userId ?? null;
     if (guestId && !prevGuestIdRef.current) {
-      new Audio('/sounds/mixkit-bell-notification-933.mp3').play().catch(() => {});
+      new Audio('/sounds/mixkit-bell-notification-933.wav').play().catch(() => {});
     }
     prevGuestIdRef.current = guestId;
   }, [isHost, guest?.userId]);
@@ -113,7 +113,7 @@ export default function WaitingRoomPage() {
   useEffect(() => {
     if (!isHost || !guest) return;
     const interval = setInterval(() => {
-      new Audio('/sounds/mixkit-bell-notification-933.mp3').play().catch(() => {});
+      new Audio('/sounds/mixkit-bell-notification-933.wav').play().catch(() => {});
     }, 5000);
     return () => clearInterval(interval);
   }, [isHost, !!guest]); // eslint-disable-line react-hooks/exhaustive-deps
