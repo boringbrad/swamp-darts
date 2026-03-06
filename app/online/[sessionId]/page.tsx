@@ -57,34 +57,56 @@ export default function WaitingRoomPage() {
   // When true the cleanup effect skips calling leaveSession (intentional navigation)
   const suppressLeaveRef = useRef(false);
   const prevGuestIdRef = useRef<string | null>(null);
-  const audioUnlockedRef = useRef(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const hostWasSeenRef = useRef(false);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const audioBufferRef = useRef<AudioBuffer | null>(null);
 
   const myId = userProfile?.id;
   const isHost = session?.hostUserId === myId;
   const guest = activeParticipants.find(p => p.userId !== session?.hostUserId && !p.isHost);
   const hostParticipant = activeParticipants.find(p => p.isHost);
 
-  // Unlock audio on iOS PWA — iOS blocks programmatic audio until first user gesture
-  useEffect(() => {
-    const audio = new Audio('/sounds/mixkit-bell-notification-933.wav');
-    audio.preload = 'auto';
-    audioRef.current = audio;
+  // iOS-compatible audio using Web Audio API
+  // AudioContext must be created/resumed inside a user gesture on iOS.
+  const playBell = () => {
+    const ctx = audioCtxRef.current;
+    const buf = audioBufferRef.current;
+    if (!ctx || !buf) return;
+    if (ctx.state === 'suspended') ctx.resume();
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+  };
 
-    const unlock = () => {
-      if (audioUnlockedRef.current) return;
-      audioUnlockedRef.current = true;
-      audio.volume = 0;
-      audio.play()
-        .then(() => { audio.pause(); audio.currentTime = 0; audio.volume = 1; })
-        .catch(() => {});
+  useEffect(() => {
+    const AudioCtx: typeof AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+
+    const setup = async (fromGesture = false) => {
+      if (audioCtxRef.current) return;
+      const ctx = new AudioCtx();
+      audioCtxRef.current = ctx;
+      // Pre-fetch & decode the sound file
+      try {
+        const res = await fetch('/sounds/mixkit-bell-notification-933.wav');
+        const buf = await res.arrayBuffer();
+        audioBufferRef.current = await ctx.decodeAudioData(buf);
+      } catch { /* ignore */ }
+      // If created in a user gesture, resume immediately to unlock
+      if (fromGesture && ctx.state === 'suspended') ctx.resume();
     };
 
-    document.addEventListener('touchstart', unlock, { once: true });
-    document.addEventListener('click', unlock, { once: true });
+    // Try immediately (may succeed if page was reached via recent user gesture)
+    setup(false);
+
+    // Also set up on first user touch/click as a reliable fallback
+    const onGesture = () => setup(true);
+    document.addEventListener('touchstart', onGesture, { once: true });
+    document.addEventListener('click', onGesture, { once: true });
     return () => {
-      document.removeEventListener('touchstart', unlock);
-      document.removeEventListener('click', unlock);
+      document.removeEventListener('touchstart', onGesture);
+      document.removeEventListener('click', onGesture);
     };
   }, []);
 
@@ -126,26 +148,31 @@ export default function WaitingRoomPage() {
     }
   }, [activeParticipants, myId, isHost, sessionLoading]);
 
+  // Guest: detect when host has left the lobby (more reliable than watching session status)
+  useEffect(() => {
+    if (hostParticipant) { hostWasSeenRef.current = true; return; }
+    // If we've seen the host before and now they're gone, host cancelled
+    if (!myId || sessionLoading || isHost || session?.status !== 'lobby') return;
+    if (hostWasSeenRef.current && activeParticipants.length >= 0) {
+      suppressLeaveRef.current = true;
+      router.push('/online');
+    }
+  }, [hostParticipant, myId, sessionLoading, isHost, session?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Play notification sound for host when guest first joins
   useEffect(() => {
     if (!isHost) return;
     const guestId = guest?.userId ?? null;
     if (guestId && !prevGuestIdRef.current) {
-      const audio = audioRef.current ?? new Audio('/sounds/mixkit-bell-notification-933.wav');
-      audio.currentTime = 0;
-      audio.play().catch(() => {});
+      playBell();
     }
     prevGuestIdRef.current = guestId;
-  }, [isHost, guest?.userId]);
+  }, [isHost, guest?.userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Repeat every 5 seconds while guest is present
   useEffect(() => {
     if (!isHost || !guest) return;
-    const interval = setInterval(() => {
-      const audio = audioRef.current ?? new Audio('/sounds/mixkit-bell-notification-933.wav');
-      audio.currentTime = 0;
-      audio.play().catch(() => {});
-    }, 5000);
+    const interval = setInterval(playBell, 5000);
     return () => clearInterval(interval);
   }, [isHost, !!guest]); // eslint-disable-line react-hooks/exhaustive-deps
 
