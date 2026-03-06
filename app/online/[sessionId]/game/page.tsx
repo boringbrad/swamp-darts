@@ -114,6 +114,7 @@ export default function OnlineGamePage() {
       myUserId: myId,
       hostUserId: hostP.userId,
       guestUserId: guestP.userId,
+      roomCode: session.roomCode,
     };
 
     // For x01: stash onlineConfig + players in sessionStorage then soft-navigate.

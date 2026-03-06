@@ -8,6 +8,7 @@ export interface OnlineConfig {
   myUserId: string;
   hostUserId: string;   // player index 0
   guestUserId: string;  // player index 1
+  roomCode?: string;
 }
 
 interface OnlineGameRow {
