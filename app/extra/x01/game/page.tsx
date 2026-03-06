@@ -229,9 +229,13 @@ export default function X01GamePage() {
   const currentState = playerStates[currentIdx];
   const myPlayerIdx = onlineConfig ? players.findIndex(p => p.id === onlineConfig.myUserId) : -1;
 
-  // Live dart display — show opponent's darts mid-throw when it's their turn
+  // Live dart display — show opponent's darts mid-throw when it's their turn.
+  // Use pendingCommit.darts when pending so the 3rd dart appears in the slots
+  // (currentTurnDarts is never updated for the 3rd dart since commitTurn isn't called yet).
   const isShowingOpponentLive = !isMyTurn && !!onlineConfig && opponentLiveDarts !== null;
-  const displayDarts: DartThrow[] = isShowingOpponentLive ? (opponentLiveDarts.currentTurnDarts ?? []) : currentTurnDarts;
+  const displayDarts: DartThrow[] = isShowingOpponentLive
+    ? (opponentLiveDarts.currentTurnDarts ?? [])
+    : pendingCommit?.darts ?? currentTurnDarts;
 
   const getTeamForIdx = (idx: number) => (!isTeams ? null : idx < 2 ? 0 : 1);
   const getTeamMateIdx = (idx: number): number | undefined => {
@@ -598,90 +602,79 @@ export default function X01GamePage() {
               </div>
             )}
 
-            {/* Online: Next Player button after turn complete */}
-            {onlineConfig && pendingCommit ? (
+            {/* Single, Double, Triple — each takes equal share of space */}
+            {[...SECTIONS].reverse().map(sec => (
+              <div
+                key={sec.mult}
+                className={`flex-1 min-h-0 grid grid-cols-5 gap-0.5`}
+              >
+                {BOARD_NUMBERS.map(n => (
+                  <button
+                    key={n}
+                    onClick={() => handleDart(n, sec.mult)}
+                    disabled={inputDisabled || !!pendingCommit}
+                    className={`flex flex-col items-center justify-center rounded active:scale-95 transition-transform select-none disabled:opacity-40 ${sec.bgClass}`}
+                  >
+                    <span className={`font-black leading-none ${sec.numClass}`} style={{ fontSize: 'clamp(13px, 4vw, 24px)' }}>
+                      {n}
+                    </span>
+                    <span className={`leading-none mt-0.5 ${sec.dotClass}`} style={{ fontSize: 'clamp(7px, 1.8vw, 11px)' }}>
+                      {sec.dots}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ))}
+
+            {/* Bottom row: Bull · D-Bull · MISS · UNDO */}
+            <div className="flex gap-0.5 shrink-0 h-14">
+              <button
+                onClick={() => handleDart(25, 1)}
+                disabled={inputDisabled || !!pendingCommit}
+                className="flex-1 flex flex-col items-center justify-center bg-[#4a4010] hover:bg-[#5a5018] rounded active:scale-95 transition-all disabled:opacity-40"
+              >
+                <span className="text-yellow-400 font-bold text-sm leading-none">Bull</span>
+                <span className="text-yellow-600 text-xs">25</span>
+              </button>
+              <button
+                onClick={() => handleDart(25, 2)}
+                disabled={inputDisabled || !!pendingCommit}
+                className="flex-1 flex flex-col items-center justify-center bg-[#0a2a45] hover:bg-[#18405e] rounded active:scale-95 transition-all disabled:opacity-40"
+              >
+                <span className="text-[#74b9ff] font-bold text-sm leading-none">D-Bull</span>
+                <span className="text-[#4a7aaf] text-xs">50</span>
+              </button>
+              <button
+                onClick={() => handleDart(0, 1, true)}
+                disabled={inputDisabled || !!pendingCommit}
+                className="flex-1 flex items-center justify-center bg-[#3a2020] hover:bg-[#4a2a2a] rounded active:scale-95 transition-all disabled:opacity-40"
+              >
+                <span className="text-red-400 font-bold text-sm">MISS</span>
+              </button>
+              <button
+                onClick={handleUndo}
+                disabled={pendingCommit === null && turnHistory.length === 0 && currentTurnDarts.length === 0}
+                className="flex-1 flex items-center justify-center bg-[#333] hover:bg-[#444] rounded disabled:opacity-30 active:scale-95 transition-all"
+              >
+                <span className="text-white font-bold text-sm">UNDO</span>
+              </button>
+            </div>
+
+            {/* Online only: Next Player button — always visible, greyed out until turn done */}
+            {onlineConfig && (
               <button
                 onClick={() => {
+                  if (!pendingCommit) return;
                   commitTurn(pendingCommit.darts, pendingCommit.reduced, pendingCommit.entering);
                   if (pendingCommit.winnerIdx !== undefined) setWinner(pendingCommit.winnerIdx);
                   setPendingCommit(null);
                   broadcastLiveDarts(null);
                 }}
-                className="flex-1 w-full bg-[#6b1a8b] hover:bg-[#8b2aab] text-white font-black text-2xl rounded-xl uppercase tracking-wider transition-colors"
+                disabled={!pendingCommit}
+                className="shrink-0 h-12 w-full bg-[#6b1a8b] hover:bg-[#8b2aab] disabled:bg-[#444444] disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-lg rounded-xl uppercase tracking-wider transition-colors"
               >
                 Next Player →
               </button>
-            ) : onlineConfig && !isMyTurn ? (
-              /* Online: waiting for opponent — replace keypad */
-              <div className="flex-1 flex items-center justify-center">
-                <div className="flex flex-col items-center gap-3 text-gray-400">
-                  <svg className="animate-spin w-8 h-8" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  <span className="font-bold text-lg">Waiting for opponent…</span>
-                </div>
-              </div>
-            ) : (
-              <>
-                {/* Single, Double, Triple — each takes equal share of space */}
-                {[...SECTIONS].reverse().map(sec => (
-                  <div
-                    key={sec.mult}
-                    className={`flex-1 min-h-0 grid grid-cols-5 gap-0.5`}
-                  >
-                    {BOARD_NUMBERS.map(n => (
-                      <button
-                        key={n}
-                        onClick={() => handleDart(n, sec.mult)}
-                        disabled={inputDisabled}
-                        className={`flex flex-col items-center justify-center rounded active:scale-95 transition-transform select-none disabled:opacity-40 ${sec.bgClass}`}
-                      >
-                        <span className={`font-black leading-none ${sec.numClass}`} style={{ fontSize: 'clamp(13px, 4vw, 24px)' }}>
-                          {n}
-                        </span>
-                        <span className={`leading-none mt-0.5 ${sec.dotClass}`} style={{ fontSize: 'clamp(7px, 1.8vw, 11px)' }}>
-                          {sec.dots}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                ))}
-
-                {/* Bottom row: Bull · D-Bull · MISS · UNDO */}
-                <div className="flex gap-0.5 shrink-0 h-14">
-                  <button
-                    onClick={() => handleDart(25, 1)}
-                    disabled={inputDisabled}
-                    className="flex-1 flex flex-col items-center justify-center bg-[#4a4010] hover:bg-[#5a5018] rounded active:scale-95 transition-all disabled:opacity-40"
-                  >
-                    <span className="text-yellow-400 font-bold text-sm leading-none">Bull</span>
-                    <span className="text-yellow-600 text-xs">25</span>
-                  </button>
-                  <button
-                    onClick={() => handleDart(25, 2)}
-                    disabled={inputDisabled}
-                    className="flex-1 flex flex-col items-center justify-center bg-[#0a2a45] hover:bg-[#18405e] rounded active:scale-95 transition-all disabled:opacity-40"
-                  >
-                    <span className="text-[#74b9ff] font-bold text-sm leading-none">D-Bull</span>
-                    <span className="text-[#4a7aaf] text-xs">50</span>
-                  </button>
-                  <button
-                    onClick={() => handleDart(0, 1, true)}
-                    disabled={inputDisabled}
-                    className="flex-1 flex items-center justify-center bg-[#3a2020] hover:bg-[#4a2a2a] rounded active:scale-95 transition-all disabled:opacity-40"
-                  >
-                    <span className="text-red-400 font-bold text-sm">MISS</span>
-                  </button>
-                  <button
-                    onClick={handleUndo}
-                    disabled={pendingCommit === null && turnHistory.length === 0 && currentTurnDarts.length === 0}
-                    className="flex-1 flex items-center justify-center bg-[#333] hover:bg-[#444] rounded disabled:opacity-30 active:scale-95 transition-all"
-                  >
-                    <span className="text-white font-bold text-sm">UNDO</span>
-                  </button>
-                </div>
-              </>
             )}
 
           </div>
