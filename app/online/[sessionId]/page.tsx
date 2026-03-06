@@ -55,73 +55,41 @@ export default function WaitingRoomPage() {
   const [starting, setStarting] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
+  const [lobbyCancelled, setLobbyCancelled] = useState(false);
   // When true the cleanup effect skips calling leaveSession (intentional navigation)
   const suppressLeaveRef = useRef(false);
   const prevGuestIdRef = useRef<string | null>(null);
   const hostWasSeenRef = useRef(false);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const audioBufferRef = useRef<AudioBuffer | null>(null);
+  // Simple HTMLAudio element — play() called synchronously in a click handler
+  // to satisfy iOS autoplay policy (async calls lose the user-gesture context).
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const myId = userProfile?.id;
   const isHost = session?.hostUserId === myId;
   const guest = activeParticipants.find(p => p.userId !== session?.hostUserId && !p.isHost);
   const hostParticipant = activeParticipants.find(p => p.isHost);
 
-  // Pre-fetch the audio buffer so it's ready when needed.
-  // The AudioContext itself is created + resumed inside handleToggleSound (user gesture)
-  // to satisfy iOS autoplay policy.
   const playBell = () => {
-    const ctx = audioCtxRef.current;
-    const buf = audioBufferRef.current;
-    if (!ctx || !buf) return;
-    if (ctx.state === 'suspended') ctx.resume();
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.connect(ctx.destination);
-    src.start(0);
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.currentTime = 0;
+    audio.play().catch(() => {});
   };
 
-  useEffect(() => {
-    // Pre-fetch & decode the audio file so it's ready when the context is unlocked
-    fetch('/sounds/mixkit-bell-notification-933.wav')
-      .then(r => r.arrayBuffer())
-      .then(buf => {
-        // Decode using existing context if already created, otherwise store raw buffer
-        // and decode when context is created in handleToggleSound
-        (audioBufferRef as any)._raw = buf;
-        const ctx = audioCtxRef.current;
-        if (ctx) ctx.decodeAudioData(buf).then(d => { audioBufferRef.current = d; }).catch(() => {});
-      })
-      .catch(() => {});
-  }, []);
-
-  // Called from a button click (user gesture) to unlock audio on iOS
-  const handleToggleSound = async () => {
+  // Toggle sound — MUST stay synchronous so iOS sees it as a user gesture.
+  // Calling audio.play() synchronously inside a click handler unlocks the element
+  // for all future programmatic plays (even from timers/effects).
+  const handleToggleSound = () => {
     const next = !soundEnabled;
     setSoundEnabled(next);
     if (!next) return;
-
-    const AudioCtx: typeof AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioCtx) return;
-
-    // Create or resume context inside the user gesture
-    let ctx = audioCtxRef.current;
-    if (!ctx) {
-      ctx = new AudioCtx();
-      audioCtxRef.current = ctx;
+    let audio = audioRef.current;
+    if (!audio) {
+      audio = new Audio('/sounds/mixkit-bell-notification-933.wav');
+      audioRef.current = audio;
     }
-    if (ctx.state === 'suspended') await ctx.resume();
-
-    // Decode the pre-fetched raw buffer now that we have a running context
-    const raw = (audioBufferRef as any)._raw as ArrayBuffer | undefined;
-    if (raw && !audioBufferRef.current) {
-      try {
-        audioBufferRef.current = await ctx.decodeAudioData(raw.slice(0));
-      } catch { /* ignore */ }
-    }
-
-    // Play immediately so the user knows it worked
-    playBell();
+    // Play synchronously within the gesture to unlock on iOS
+    audio.play().catch(() => {});
   };
 
   // If the host navigates away without clicking "Cancel Lobby", clean up the session
@@ -143,10 +111,10 @@ export default function WaitingRoomPage() {
       suppressLeaveRef.current = true;
       router.push(`/online/${sessionId}/game`);
     }
-    // If session expired or completed, go back to lobby list
+    // If session expired or completed, go back to lobby list (replace so back button skips this)
     if (session?.status === 'expired' || session?.status === 'completed') {
       suppressLeaveRef.current = true;
-      router.push('/online');
+      router.replace('/online');
     }
   }, [session?.status]);
 
@@ -156,8 +124,8 @@ export default function WaitingRoomPage() {
     if (!isHost && session?.status === 'lobby') {
       const iAmParticipant = activeParticipants.some(p => p.userId === myId);
       if (activeParticipants.length > 0 && !iAmParticipant) {
-        // We've been kicked
-        router.push('/online');
+        // We've been removed — replace so back button doesn't return here
+        router.replace('/online');
       }
     }
   }, [activeParticipants, myId, isHost, sessionLoading]);
@@ -167,9 +135,11 @@ export default function WaitingRoomPage() {
     if (hostParticipant) { hostWasSeenRef.current = true; return; }
     // If we've seen the host before and now they're gone, host cancelled
     if (!myId || sessionLoading || isHost || session?.status !== 'lobby') return;
-    if (hostWasSeenRef.current && activeParticipants.length >= 0) {
+    if (hostWasSeenRef.current) {
       suppressLeaveRef.current = true;
-      router.push('/online');
+      setLobbyCancelled(true);
+      // Brief notification before redirecting
+      setTimeout(() => router.replace('/online'), 2500);
     }
   }, [hostParticipant, myId, sessionLoading, isHost, session?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -222,7 +192,7 @@ export default function WaitingRoomPage() {
     } else {
       await leaveSession(session.id);
     }
-    router.push('/online');
+    router.replace('/online');
   };
 
   if (sessionLoading) {
@@ -378,6 +348,17 @@ export default function WaitingRoomPage() {
         </div>
         </div>
       </PageWrapper>
+
+      {/* Lobby cancelled overlay */}
+      {lobbyCancelled && (
+        <div className="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center">
+          <div className="bg-gray-900 border border-red-500/60 rounded-xl p-8 mx-6 max-w-sm w-full text-center shadow-2xl">
+            <div className="text-5xl mb-4">🚫</div>
+            <h2 className="text-white text-2xl font-bold mb-2">Lobby Cancelled</h2>
+            <p className="text-gray-400 text-sm">The host has cancelled this lobby. Returning to lobbies...</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

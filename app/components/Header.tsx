@@ -30,16 +30,32 @@ export default function Header({ title, showBackButton, onBack, gameInfo }: Head
   // Determine if we should show the back button
   const shouldShowBack = showBackButton !== undefined ? showBackButton : pathname !== '/';
 
+  // Returns the logical parent of a path based on app hierarchy,
+  // so back never lands on a stale/cancelled page.
+  const getParentPath = (path: string): string => {
+    // Explicit overrides for pages that should skip intermediate steps
+    if (path.startsWith('/online/')) return '/online';
+    if (path.startsWith('/cricket/')) return '/cricket';
+    if (path.startsWith('/golf/')) return '/golf';
+    if (path.startsWith('/extra/')) return '/extra';
+    if (path.startsWith('/auth/')) return '/welcome';
+    // Generic: strip the last path segment
+    const parent = path.replace(/\/[^/]+\/?$/, '') || '/';
+    return parent;
+  };
+
   const handleBack = () => {
     if (onBack) {
       onBack();
+      return;
+    }
+    const previousRoute = popRoute();
+    if (previousRoute) {
+      router.push(previousRoute);
     } else {
-      const previousRoute = popRoute();
-      if (previousRoute) {
-        router.push(previousRoute);
-      } else {
-        router.back();
-      }
+      // Use hierarchy-based navigation instead of browser history
+      // so stale/cancelled pages are never revisited via back.
+      router.push(getParentPath(pathname));
     }
   };
 
