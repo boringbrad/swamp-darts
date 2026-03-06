@@ -426,7 +426,11 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
           // Check if this player belongs to the logged-in user or is a verified session friend
           const storedPlayer = localPlayers.find(p => p.id === player.playerId);
           const isCurrentUser = currentUserId && storedPlayer && storedPlayer.createdBy === currentUserId;
-          const playerUserId = isCurrentUser ? currentUserId : (storedPlayer?.userId ?? undefined);
+          // For online matches the player ID IS the Supabase user ID — use it directly
+          const onlineUserId = onlineConfig && (
+            player.playerId === onlineConfig.hostUserId || player.playerId === onlineConfig.guestUserId
+          ) ? player.playerId : undefined;
+          const playerUserId = onlineUserId ?? (isCurrentUser ? currentUserId : storedPlayer?.userId);
           const playerAvatar = storedPlayer?.avatar;
           const playerPhotoUrl = storedPlayer?.photoUrl;
 

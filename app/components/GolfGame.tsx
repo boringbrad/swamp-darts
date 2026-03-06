@@ -729,7 +729,11 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
         // Check if this player belongs to the logged-in user
         const storedPlayer = localPlayers.find(p => p.id === player.id);
         const isCurrentUser = currentUserId && storedPlayer && storedPlayer.createdBy === currentUserId;
-        const playerUserId = isCurrentUser ? currentUserId : (storedPlayer?.userId ?? undefined);
+        // For online matches the player ID IS the Supabase user ID — use it directly
+        const onlineUserId = onlineConfig && (
+          player.id === onlineConfig.hostUserId || player.id === onlineConfig.guestUserId
+        ) ? player.id : undefined;
+        const playerUserId = onlineUserId ?? (isCurrentUser ? currentUserId : storedPlayer?.userId);
 
         return {
           playerId: player.id,
