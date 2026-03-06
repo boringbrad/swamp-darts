@@ -54,6 +54,7 @@ export default function WaitingRoomPage() {
 
   const [starting, setStarting] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(false);
   // When true the cleanup effect skips calling leaveSession (intentional navigation)
   const suppressLeaveRef = useRef(false);
   const prevGuestIdRef = useRef<string | null>(null);
@@ -66,8 +67,9 @@ export default function WaitingRoomPage() {
   const guest = activeParticipants.find(p => p.userId !== session?.hostUserId && !p.isHost);
   const hostParticipant = activeParticipants.find(p => p.isHost);
 
-  // iOS-compatible audio using Web Audio API
-  // AudioContext must be created/resumed inside a user gesture on iOS.
+  // Pre-fetch the audio buffer so it's ready when needed.
+  // The AudioContext itself is created + resumed inside handleToggleSound (user gesture)
+  // to satisfy iOS autoplay policy.
   const playBell = () => {
     const ctx = audioCtxRef.current;
     const buf = audioBufferRef.current;
@@ -80,35 +82,47 @@ export default function WaitingRoomPage() {
   };
 
   useEffect(() => {
+    // Pre-fetch & decode the audio file so it's ready when the context is unlocked
+    fetch('/sounds/mixkit-bell-notification-933.wav')
+      .then(r => r.arrayBuffer())
+      .then(buf => {
+        // Decode using existing context if already created, otherwise store raw buffer
+        // and decode when context is created in handleToggleSound
+        (audioBufferRef as any)._raw = buf;
+        const ctx = audioCtxRef.current;
+        if (ctx) ctx.decodeAudioData(buf).then(d => { audioBufferRef.current = d; }).catch(() => {});
+      })
+      .catch(() => {});
+  }, []);
+
+  // Called from a button click (user gesture) to unlock audio on iOS
+  const handleToggleSound = async () => {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    if (!next) return;
+
     const AudioCtx: typeof AudioContext = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtx) return;
 
-    const setup = async (fromGesture = false) => {
-      if (audioCtxRef.current) return;
-      const ctx = new AudioCtx();
+    // Create or resume context inside the user gesture
+    let ctx = audioCtxRef.current;
+    if (!ctx) {
+      ctx = new AudioCtx();
       audioCtxRef.current = ctx;
-      // Pre-fetch & decode the sound file
+    }
+    if (ctx.state === 'suspended') await ctx.resume();
+
+    // Decode the pre-fetched raw buffer now that we have a running context
+    const raw = (audioBufferRef as any)._raw as ArrayBuffer | undefined;
+    if (raw && !audioBufferRef.current) {
       try {
-        const res = await fetch('/sounds/mixkit-bell-notification-933.wav');
-        const buf = await res.arrayBuffer();
-        audioBufferRef.current = await ctx.decodeAudioData(buf);
+        audioBufferRef.current = await ctx.decodeAudioData(raw.slice(0));
       } catch { /* ignore */ }
-      // If created in a user gesture, resume immediately to unlock
-      if (fromGesture && ctx.state === 'suspended') ctx.resume();
-    };
+    }
 
-    // Try immediately (may succeed if page was reached via recent user gesture)
-    setup(false);
-
-    // Also set up on first user touch/click as a reliable fallback
-    const onGesture = () => setup(true);
-    document.addEventListener('touchstart', onGesture, { once: true });
-    document.addEventListener('click', onGesture, { once: true });
-    return () => {
-      document.removeEventListener('touchstart', onGesture);
-      document.removeEventListener('click', onGesture);
-    };
-  }, []);
+    // Play immediately so the user knows it worked
+    playBell();
+  };
 
   // If the host navigates away without clicking "Cancel Lobby", clean up the session
   // so it doesn't stay as a ghost in the lobby list.
@@ -161,20 +175,20 @@ export default function WaitingRoomPage() {
 
   // Play notification sound for host when guest first joins
   useEffect(() => {
-    if (!isHost) return;
+    if (!isHost || !soundEnabled) return;
     const guestId = guest?.userId ?? null;
     if (guestId && !prevGuestIdRef.current) {
       playBell();
     }
     prevGuestIdRef.current = guestId;
-  }, [isHost, guest?.userId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isHost, soundEnabled, guest?.userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Repeat every 5 seconds while guest is present
   useEffect(() => {
-    if (!isHost || !guest) return;
+    if (!isHost || !guest || !soundEnabled) return;
     const interval = setInterval(playBell, 5000);
     return () => clearInterval(interval);
-  }, [isHost, !!guest]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isHost, !!guest, soundEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleStart = async () => {
     if (!session) return;
@@ -322,6 +336,16 @@ export default function WaitingRoomPage() {
                 className="w-full py-4 bg-[#6b1a8b] text-white font-black text-lg rounded-xl uppercase tracking-wider hover:bg-[#8b2aab] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {starting ? 'Starting...' : guest ? 'Start Game →' : 'Waiting for Opponent...'}
+              </button>
+              <button
+                onClick={handleToggleSound}
+                className={`w-full py-2 text-sm font-semibold rounded-xl border transition-colors ${
+                  soundEnabled
+                    ? 'bg-[#1a1a1a] border-green-500/60 text-green-400 hover:border-green-400'
+                    : 'bg-[#1a1a1a] border-[#3a3a3a] text-gray-500 hover:text-gray-300 hover:border-gray-500'
+                }`}
+              >
+                {soundEnabled ? '🔔 Sound On' : '🔕 Enable Sound Notifications'}
               </button>
               <button
                 onClick={handleLeave}
