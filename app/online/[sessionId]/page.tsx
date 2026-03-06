@@ -56,6 +56,7 @@ export default function WaitingRoomPage() {
   const [leaving, setLeaving] = useState(false);
   // When true the cleanup effect skips calling leaveSession (intentional navigation)
   const suppressLeaveRef = useRef(false);
+  const prevGuestIdRef = useRef<string | null>(null);
 
   const myId = userProfile?.id;
   const isHost = session?.hostUserId === myId;
@@ -97,6 +98,25 @@ export default function WaitingRoomPage() {
       }
     }
   }, [activeParticipants, myId, isHost, sessionLoading]);
+
+  // Play notification sound for host when guest first joins
+  useEffect(() => {
+    if (!isHost) return;
+    const guestId = guest?.userId ?? null;
+    if (guestId && !prevGuestIdRef.current) {
+      new Audio('/sounds/mixkit-bell-notification-933.mp3').play().catch(() => {});
+    }
+    prevGuestIdRef.current = guestId;
+  }, [isHost, guest?.userId]);
+
+  // Repeat every 5 seconds while guest is present
+  useEffect(() => {
+    if (!isHost || !guest) return;
+    const interval = setInterval(() => {
+      new Audio('/sounds/mixkit-bell-notification-933.mp3').play().catch(() => {});
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [isHost, !!guest]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleStart = async () => {
     if (!session) return;
