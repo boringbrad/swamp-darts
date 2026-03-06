@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppContext } from '@/app/contexts/AppContext';
 import Header from '@/app/components/Header';
 import { StoredPlayer } from '@/app/types/storage';
 import { useOnlineGameState, OnlineConfig } from '@/app/hooks/useOnlineGameState';
+import { completeOnlineSession, leaveSession } from '@/app/lib/sessions';
 
 const PLAYER_COLORS = ['blue', 'red', 'purple', 'green'] as const;
 const TEAM_ORDER = [0, 2, 1, 3];
@@ -121,7 +122,7 @@ export default function X01GamePage() {
     } catch (_) {}
     return null;
   });
-  const { isMyTurn, opponentState, submitTurn, opponentLeft } = useOnlineGameState(onlineConfig);
+  const { isMyTurn, opponentState, submitTurn, opponentLeft, iWantRematch, opponentWantsRematch, bothWantRematch, requestRematch, resetForRematch, opponentLiveDarts, broadcastLiveDarts } = useOnlineGameState(onlineConfig);
   const inputDisabled = !!onlineConfig && !isMyTurn;
 
   // After each turn commit, sync state if it's now the opponent's turn
@@ -142,6 +143,49 @@ export default function X01GamePage() {
     setTurnStep(opponentState.turnStep);
     if (opponentState.winner !== null) setWinner(opponentState.winner);
   }, [opponentState]);
+
+  // Suppress leaveSession on unmount for intentional exits (rematch, Return Home)
+  const suppressLeaveRef = useRef(false);
+  useEffect(() => {
+    if (!onlineConfig) return;
+    return () => {
+      if (!suppressLeaveRef.current) leaveSession(onlineConfig.sessionId);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Safety net: immediately sync final state when game ends on our turn
+  // (in case turnStep effect doesn't fire cleanly due to batching edge cases)
+  useEffect(() => {
+    if (!onlineConfig || winner === null || !players.length) return;
+    const myIdx = players.findIndex(p => p.id === onlineConfig.myUserId);
+    if (winner !== myIdx) return; // opponent won, they'll push it
+    const opponentId = players.find(p => p.id !== onlineConfig.myUserId)?.id;
+    if (!opponentId) return;
+    submitTurn({ playerStates, turnStep, winner }, opponentId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [winner]);
+
+  // Rematch: when both players agree, reset game state
+  useEffect(() => {
+    if (!bothWantRematch || !onlineConfig) return;
+    const doRematch = async () => {
+      suppressLeaveRef.current = true;
+      if (onlineConfig.myUserId === onlineConfig.hostUserId) await resetForRematch();
+      setPlayerStates(players.map(p => ({ player: p, score: x01StartingScore, hasEnteredGame: !x01DoubleIn, turnsPlayed: 0, totalReduced: 0 })));
+      setTurnStep(0); setTurnHistory([]); setCurrentTurnDarts([]); setWinner(null); setBustMsg('');
+      suppressLeaveRef.current = false;
+    };
+    doRematch();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bothWantRematch]);
+
+  // Broadcast live darts to opponent after each dart thrown
+  useEffect(() => {
+    if (!onlineConfig || !isMyTurn || currentTurnDarts.length === 0) return;
+    broadcastLiveDarts({ currentTurnDarts });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTurnDarts]);
   // ───────────────────────────────────────────────────────────────────────────
 
   const numPlayers = playerStates.length;
@@ -155,6 +199,11 @@ export default function X01GamePage() {
 
   const currentIdx = getCurrentIdx(turnStep);
   const currentState = playerStates[currentIdx];
+  const myPlayerIdx = onlineConfig ? players.findIndex(p => p.id === onlineConfig.myUserId) : -1;
+
+  // Live dart display — show opponent's darts mid-throw when it's their turn
+  const isShowingOpponentLive = !isMyTurn && !!onlineConfig && opponentLiveDarts !== null;
+  const displayDarts: DartThrow[] = isShowingOpponentLive ? (opponentLiveDarts.currentTurnDarts ?? []) : currentTurnDarts;
 
   const getTeamForIdx = (idx: number) => (!isTeams ? null : idx < 2 ? 0 : 1);
   const getTeamMateIdx = (idx: number): number | undefined => {
@@ -293,9 +342,32 @@ export default function X01GamePage() {
 
   return (
     <div className="h-screen bg-[#1a2a2a] flex flex-col overflow-hidden">
+      {/* Room code banner (online only) */}
+      {onlineConfig && (
+        <div className="fixed top-0 left-0 right-0 h-10 z-[60] bg-black/80 backdrop-blur-sm border-b border-white/10 flex items-center justify-between px-4">
+          <span className="text-gray-400 text-xs font-mono">
+            Room <span className="text-white font-bold tracking-widest">{onlineConfig.sessionId.slice(0, 6).toUpperCase()}</span>
+          </span>
+          <span className="text-gray-500 text-xs">{x01StartingScore}</span>
+        </div>
+      )}
+      {/* Opponent disconnected banner */}
       {opponentLeft && (
-        <div className="fixed top-0 left-0 right-0 z-50 bg-red-800 text-white text-center py-2 px-4 font-bold text-sm">
-          Opponent disconnected — game paused
+        <div className="fixed top-10 left-0 right-0 z-50 bg-red-900/90 text-white flex items-center justify-between px-4 py-2">
+          <span className="font-bold text-sm">Opponent disconnected</span>
+          <button
+            onClick={async () => {
+              suppressLeaveRef.current = true;
+              await Promise.race([
+                Promise.allSettled([completeOnlineSession(onlineConfig!.sessionId), leaveSession(onlineConfig!.sessionId)]),
+                new Promise<void>(r => setTimeout(r, 2000)),
+              ]);
+              window.location.href = '/';
+            }}
+            className="text-xs bg-white/20 hover:bg-white/30 px-3 py-1 rounded font-bold transition-colors"
+          >
+            Return Home
+          </button>
         </div>
       )}
       {inputDisabled && winner === null && (
@@ -309,7 +381,7 @@ export default function X01GamePage() {
       )}
       <Header title={`X01 — ${x01StartingScore}`} showBackButton={winner === null} />
 
-      <main className="flex-1 flex flex-col overflow-hidden" style={{ paddingTop: '64px' }}>
+      <main className="flex-1 flex flex-col overflow-hidden" style={{ paddingTop: onlineConfig ? '104px' : '64px' }}>
 
         {/* ── Top 28%: scores + dart slots ── */}
         <div className="shrink-0 px-2 pt-2 pb-1 flex flex-col gap-1.5 overflow-hidden" style={{ height: '28%' }}>
@@ -418,21 +490,26 @@ export default function X01GamePage() {
             </div>
           )}
 
-          {/* Dart Slots row — 2x taller than normal keypad buttons */}
+          {/* Dart Slots row — shows live opponent darts when it's their turn */}
+          {isShowingOpponentLive && (
+            <div className="shrink-0 text-center text-xs font-bold text-purple-400 uppercase tracking-wider pb-0.5">
+              Opponent throwing…
+            </div>
+          )}
           <div className="flex items-stretch gap-1 shrink-0 h-24">
             {[0, 1, 2].map(i => {
-              const d = currentTurnDarts[i];
+              const d = displayDarts[i];
               return (
                 <div
                   key={i}
-                  className={`flex-1 rounded flex flex-col items-center justify-center ${d ? (d.isBust || d.wasted ? 'bg-red-900/30' : 'bg-[#1a4a4a]') : 'bg-[#1a2a2a]'}`}
+                  className={`flex-1 rounded flex flex-col items-center justify-center ${d ? (d.isBust || d.wasted ? 'bg-red-900/30' : isShowingOpponentLive ? 'bg-[#2a1a4a]' : 'bg-[#1a4a4a]') : 'bg-[#1a2a2a]'}`}
                 >
                   {d ? (
                     <>
-                      <div className={`text-2xl font-bold leading-none ${d.isBust || d.wasted ? 'text-red-400' : 'text-white'}`}>
+                      <div className={`text-2xl font-bold leading-none ${d.isBust || d.wasted ? 'text-red-400' : isShowingOpponentLive ? 'text-purple-300' : 'text-white'}`}>
                         {dartLabel(d)}{d.wasted ? '*' : ''}
                       </div>
-                      <div className={`text-base mt-1 ${d.isBust ? 'text-red-500' : d.wasted ? 'text-gray-600' : 'text-[#00d1b2]'}`}>
+                      <div className={`text-base mt-1 ${d.isBust ? 'text-red-500' : d.wasted ? 'text-gray-600' : isShowingOpponentLive ? 'text-purple-400' : 'text-[#00d1b2]'}`}>
                         {d.isBust ? 'bust' : d.score}
                       </div>
                     </>
@@ -443,11 +520,15 @@ export default function X01GamePage() {
               );
             })}
             <div className="text-right pl-2 shrink-0 min-w-[64px] flex flex-col justify-center">
-              <div className="text-white font-bold text-3xl leading-none">{currentTurnTotal > 0 ? currentTurnTotal : ''}</div>
-              {currentTurnTotal > 0 && (
-                <div className={`text-base mt-1 ${previewRemaining < 0 || (previewRemaining === 1 && x01DoubleOut) ? 'text-red-400' : 'text-gray-400'}`}>
-                  → {previewRemaining}
-                </div>
+              {!isShowingOpponentLive && (
+                <>
+                  <div className="text-white font-bold text-3xl leading-none">{currentTurnTotal > 0 ? currentTurnTotal : ''}</div>
+                  {currentTurnTotal > 0 && (
+                    <div className={`text-base mt-1 ${previewRemaining < 0 || (previewRemaining === 1 && x01DoubleOut) ? 'text-red-400' : 'text-gray-400'}`}>
+                      → {previewRemaining}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -540,10 +621,12 @@ export default function X01GamePage() {
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="bg-[#1a3a3a] rounded-2xl p-8 text-center max-w-sm w-full">
             <div className="text-6xl mb-3">🎯</div>
-            <div className="text-[#00d1b2] text-2xl font-bold mb-1">
-              {isTeams ? `TEAM ${(winnerTeam ?? 0) + 1} WINS!` : 'WINNER!'}
+            <div className="text-2xl font-bold mb-1" style={{ color: onlineConfig && winner !== myPlayerIdx ? '#ef4444' : '#00d1b2' }}>
+              {onlineConfig && winner !== myPlayerIdx
+                ? 'GAME OVER'
+                : isTeams ? `TEAM ${(winnerTeam ?? 0) + 1} WINS!` : 'WINNER!'}
             </div>
-            <div className="text-white text-3xl font-bold mb-1">{winnerState.player.name}</div>
+            <div className="text-white text-3xl font-bold mb-1">{winnerState.player.name} WINS!</div>
             {isTeams && winnerTeam !== null && (
               <div className="text-gray-400 text-sm mb-4">
                 {playerStates.filter((_, i) => getTeamForIdx(i) === winnerTeam).map(s => s.player.name).join(' & ')}
@@ -560,14 +643,46 @@ export default function X01GamePage() {
                 </div>
               ))}
             </div>
-            <div className="flex gap-3">
-              <button onClick={() => router.push('/extra/x01')} className="flex-1 py-3 bg-[#444] text-white font-bold rounded-lg hover:bg-[#555] transition-colors">
-                PLAYER SELECT
-              </button>
-              <button onClick={handlePlayAgain} className="flex-1 py-3 bg-[#00d1b2] text-white font-bold rounded-lg hover:bg-[#00f5d4] transition-colors">
-                PLAY AGAIN
-              </button>
-            </div>
+            {onlineConfig ? (
+              <div className="flex flex-col gap-3">
+                {opponentLeft && <p className="text-red-400 text-sm font-bold">Opponent has returned home</p>}
+                {!opponentLeft && opponentWantsRematch && !iWantRematch && (
+                  <p className="text-yellow-400 text-sm font-bold animate-pulse">Opponent wants a rematch!</p>
+                )}
+                {!opponentLeft && iWantRematch && !opponentWantsRematch && (
+                  <p className="text-gray-400 text-sm">Waiting for opponent…</p>
+                )}
+                <button
+                  onClick={requestRematch}
+                  disabled={iWantRematch || opponentLeft}
+                  className={`py-3 bg-[#00d1b2] text-white font-bold rounded-lg transition-colors ${iWantRematch || opponentLeft ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#00f5d4]'}`}
+                >
+                  {iWantRematch ? 'Waiting…' : 'Play Again'}
+                </button>
+                <button
+                  onClick={async () => {
+                    suppressLeaveRef.current = true;
+                    await Promise.race([
+                      Promise.allSettled([completeOnlineSession(onlineConfig.sessionId), leaveSession(onlineConfig.sessionId)]),
+                      new Promise<void>(r => setTimeout(r, 2000)),
+                    ]);
+                    window.location.href = '/';
+                  }}
+                  className="py-3 bg-[#444] text-white font-bold rounded-lg hover:bg-[#555] transition-colors"
+                >
+                  Return Home
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-3">
+                <button onClick={() => router.push('/extra/x01')} className="flex-1 py-3 bg-[#444] text-white font-bold rounded-lg hover:bg-[#555] transition-colors">
+                  PLAYER SELECT
+                </button>
+                <button onClick={handlePlayAgain} className="flex-1 py-3 bg-[#00d1b2] text-white font-bold rounded-lg hover:bg-[#00f5d4] transition-colors">
+                  PLAY AGAIN
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
