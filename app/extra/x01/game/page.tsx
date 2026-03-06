@@ -193,12 +193,21 @@ export default function X01GamePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bothWantRematch]);
 
-  // Broadcast live darts to opponent after each dart thrown
+  // Broadcast live darts to opponent after each dart thrown (darts 1 & 2)
   useEffect(() => {
     if (!onlineConfig || !isMyTurn || currentTurnDarts.length === 0) return;
     broadcastLiveDarts({ currentTurnDarts });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTurnDarts]);
+
+  // Broadcast dart 3 — currentTurnDarts isn't updated for the 3rd dart (we go straight
+  // to pendingCommit), so broadcast it separately when pendingCommit is first set.
+  useEffect(() => {
+    if (!onlineConfig || !isMyTurn || !pendingCommit) return;
+    broadcastLiveDarts({ currentTurnDarts: pendingCommit.darts });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingCommit]);
+
   const opponentName = onlineConfig
     ? (players.find(p => p.id !== onlineConfig.myUserId)?.name ?? 'Opponent')
     : '';
