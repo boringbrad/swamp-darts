@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { STOCK_AVATARS } from '../lib/avatars';
 import PhotoEditor from './PhotoEditor';
 import { compressImage, uploadPhotoToSupabase } from '../lib/photoUpload';
+import { useAuth } from '../contexts/AuthContext';
 
 interface AddGuestPlayerModalProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ export default function AddGuestPlayerModal({
   initialPhotoUrl,
   title = 'ADD GUEST PLAYER',
 }: AddGuestPlayerModalProps) {
+  const { user } = useAuth();
   const [playerName, setPlayerName] = useState(initialName);
   const [selectedAvatar, setSelectedAvatar] = useState(initialAvatar);
   const [photoUrl, setPhotoUrl] = useState<string | undefined>(initialPhotoUrl);
@@ -181,11 +183,11 @@ export default function AddGuestPlayerModal({
     setUploadError(null);
 
     try {
-      // Generate a unique ID for this guest (will be replaced when actually saved)
-      const tempId = `guest-${Date.now()}`;
+      // Use the authenticated user's ID so storage path matches the bucket policy
+      const uploaderId = user?.id ?? `guest-${Date.now()}`;
 
       // Upload to Supabase Storage
-      const result = await uploadPhotoToSupabase(editedImageUrl, tempId, 'guest-photos');
+      const result = await uploadPhotoToSupabase(editedImageUrl, uploaderId, 'guest-photos');
 
       if (result.success && result.url) {
         setPhotoUrl(result.url);
