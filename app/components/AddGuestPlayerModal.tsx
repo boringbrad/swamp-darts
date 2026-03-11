@@ -187,7 +187,7 @@ export default function AddGuestPlayerModal({
       const uploaderId = user?.id ?? `guest-${Date.now()}`;
 
       // Upload to Supabase Storage
-      const result = await uploadPhotoToSupabase(editedImageUrl, uploaderId, 'guest-photos');
+      const result = await uploadPhotoToSupabase(editedImageUrl, uploaderId, 'profile-photos');
 
       if (result.success && result.url) {
         setPhotoUrl(result.url);
