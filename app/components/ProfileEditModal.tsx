@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { STOCK_AVATARS } from '../lib/avatars';
 import { UserProfile } from '../types/context';
 import { createClient } from '../lib/supabase/client';
@@ -33,7 +33,6 @@ export default function ProfileEditModal({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize state when modal opens or profile changes
   useEffect(() => {
@@ -526,22 +525,20 @@ export default function ProfileEditModal({
             </div>
           ) : (
             <div className="flex gap-3 mb-4">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handlePhotoUpload(file);
-                }}
-                className="hidden"
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="px-6 py-3 bg-[#4CAF50] text-white text-lg font-bold rounded hover:bg-[#45a049] transition-colors cursor-pointer"
-              >
-                📁 UPLOAD PHOTO
-              </button>
+              <div className="relative overflow-hidden rounded">
+                <button className="px-6 py-3 bg-[#4CAF50] text-white text-lg font-bold rounded hover:bg-[#45a049] transition-colors cursor-pointer">
+                  📁 UPLOAD PHOTO
+                </button>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handlePhotoUpload(file);
+                  }}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+              </div>
               <button
                 onClick={handleOpenCamera}
                 className="px-6 py-3 bg-[#2196F3] text-white text-lg font-bold rounded hover:bg-[#1976D2] transition-colors"

@@ -35,7 +35,6 @@ export default function AddGuestPlayerModal({
   const [showPhotoEditor, setShowPhotoEditor] = useState(false);
   const [photoToEdit, setPhotoToEdit] = useState<string>('');
   const abortControllerRef = useRef<AbortController | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Update state when initial values change (for edit mode)
   useEffect(() => {
@@ -294,22 +293,20 @@ export default function AddGuestPlayerModal({
             </div>
           ) : (
             <div className="flex gap-3">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handlePhotoUpload(file);
-                }}
-                className="hidden"
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="px-6 py-3 bg-[#4CAF50] text-white text-lg font-bold rounded hover:bg-[#45a049] transition-colors cursor-pointer"
-              >
-                📁 UPLOAD PHOTO
-              </button>
+              <div className="relative overflow-hidden rounded">
+                <button className="px-6 py-3 bg-[#4CAF50] text-white text-lg font-bold rounded hover:bg-[#45a049] transition-colors cursor-pointer">
+                  📁 UPLOAD PHOTO
+                </button>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handlePhotoUpload(file);
+                  }}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+              </div>
               <button
                 onClick={handleOpenCamera}
                 className="px-6 py-3 bg-[#2196F3] text-white text-lg font-bold rounded hover:bg-[#1976D2] transition-colors"
