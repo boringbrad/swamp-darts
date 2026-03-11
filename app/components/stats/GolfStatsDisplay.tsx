@@ -29,17 +29,22 @@ export default function GolfStatsDisplay({ playerFilter, courseFilter = 'all', p
   const [statsLoading, setStatsLoading] = useState(false);
   const [gameRange, setGameRange] = useState<{ start: number; end: number } | null>(null);
 
-  // Logged-out fallback: load from localStorage (sync, no network)
-  const localMatches = useMemo(() => (!user && !providedMatches) ? loadGolfMatches() : [], [user, providedMatches]);
+  // Always load from localStorage; merge with Supabase data so logged-in users see
+  // historical matches that were saved locally before sync was added.
+  const localMatches = useMemo(() => !providedMatches ? loadGolfMatches() : [], [providedMatches]);
 
   // For logged-in users: matches come from TanStack Query cache
   const { data: queriedMatches, isLoading: matchesLoading } = useGolfMatchesQuery();
 
   // Resolved match source — stable reference via useMemo
-  const allMatches: GolfMatch[] = useMemo(
-    () => providedMatches ?? queriedMatches ?? localMatches,
-    [providedMatches, queriedMatches, localMatches]
-  );
+  const allMatches: GolfMatch[] = useMemo(() => {
+    if (providedMatches) return providedMatches;
+    if (!queriedMatches) return localMatches;
+    // Supabase is authoritative; supplement with local matches not yet synced
+    const remoteIds = new Set(queriedMatches.map((m: any) => m.matchId));
+    const localOnly = localMatches.filter((m: any) => !remoteIds.has(m.matchId));
+    return [...queriedMatches, ...localOnly] as GolfMatch[];
+  }, [providedMatches, queriedMatches, localMatches]);
 
   // Loading = waiting for Supabase matches (only when logged-in and no providedMatches)
   const isLoading = !providedMatches && !!user && matchesLoading;

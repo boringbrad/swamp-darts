@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { STOCK_AVATARS } from '../lib/avatars';
 import { UserProfile } from '../types/context';
 import { createClient } from '../lib/supabase/client';
@@ -33,6 +33,7 @@ export default function ProfileEditModal({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize state when modal opens or profile changes
   useEffect(() => {
@@ -526,6 +527,7 @@ export default function ProfileEditModal({
           ) : (
             <div className="flex gap-3 mb-4">
               <input
+                ref={fileInputRef}
                 type="file"
                 accept="image/*"
                 onChange={(e) => {
@@ -533,14 +535,13 @@ export default function ProfileEditModal({
                   if (file) handlePhotoUpload(file);
                 }}
                 className="hidden"
-                id="photo-upload-profile"
               />
-              <label
-                htmlFor="photo-upload-profile"
+              <button
+                onClick={() => fileInputRef.current?.click()}
                 className="px-6 py-3 bg-[#4CAF50] text-white text-lg font-bold rounded hover:bg-[#45a049] transition-colors cursor-pointer"
               >
                 📁 UPLOAD PHOTO
-              </label>
+              </button>
               <button
                 onClick={handleOpenCamera}
                 className="px-6 py-3 bg-[#2196F3] text-white text-lg font-bold rounded hover:bg-[#1976D2] transition-colors"

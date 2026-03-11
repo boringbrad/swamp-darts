@@ -38,10 +38,16 @@ export default function ProfilePage() {
   // Cricket stats state
   const [cricketStats, setCricketStats] = useState<CricketPlayerStats[]>([]);
 
-  // Cricket matches from TanStack Query cache; fallback to localStorage for logged-out users
+  // Cricket matches: always load from localStorage, merge with Supabase data (deduplicated)
   const { data: queriedCricketMatches } = useCricketMatchesQuery();
-  const localCricketMatches = useMemo(() => !user ? loadCricketMatches() : [], [user]);
-  const allCricketMatches = queriedCricketMatches ?? localCricketMatches;
+  const localCricketMatches = useMemo(() => loadCricketMatches(), []);
+  const allCricketMatches = useMemo(() => {
+    if (!queriedCricketMatches) return localCricketMatches;
+    // Supabase is authoritative; supplement with any local matches not yet synced
+    const remoteIds = new Set(queriedCricketMatches.map((m: any) => m.matchId));
+    const localOnly = localCricketMatches.filter((m: any) => !remoteIds.has(m.matchId));
+    return [...queriedCricketMatches, ...localOnly];
+  }, [queriedCricketMatches, localCricketMatches]);
 
   // Find and set the user's player ID
   useEffect(() => {
