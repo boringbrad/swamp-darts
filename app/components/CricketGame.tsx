@@ -10,6 +10,7 @@ import { STOCK_AVATARS } from '../lib/avatars';
 import { syncCricketMatch, canSyncToSupabase } from '../lib/supabaseSync';
 import { useOnlineGameState, OnlineConfig } from '../hooks/useOnlineGameState';
 import { completeOnlineSession, leaveSession } from '../lib/sessions';
+import ChatPanel from './ChatPanel';
 
 interface CricketGameProps {
   variant: CricketVariant;
@@ -1637,6 +1638,15 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
           </div>
         </div>
       )}
+      {/* Chat — online games only */}
+      {onlineConfig && (
+        <ChatPanel
+          sessionId={onlineConfig.sessionId}
+          myUserId={onlineConfig.myUserId}
+          myDisplayName={players.find(p => p.id === onlineConfig.myUserId)?.name ?? 'Player'}
+        />
+      )}
+
       {/* Waiting for opponent overlay */}
       {inputDisabled && !gameWinner && (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 bg-black/80 text-white px-5 py-2 rounded-full text-sm font-bold flex items-center gap-2 pointer-events-none">

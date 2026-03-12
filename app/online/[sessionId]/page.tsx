@@ -9,6 +9,7 @@ import { useSession } from '../../hooks/useSession';
 import { useSessionParticipants } from '../../hooks/useSessionParticipants';
 import { startOnlineGame, kickParticipant, leaveSession, completeOnlineSession, OnlineGameSettings } from '../../lib/sessions';
 import { getAvatarById } from '../../lib/avatars';
+import ChatPanel from '../../components/ChatPanel';
 
 function AvatarBubble({ avatar, photoUrl, name, size = 56 }: {
   avatar: string;
@@ -348,6 +349,15 @@ export default function WaitingRoomPage() {
         </div>
         </div>
       </PageWrapper>
+
+      {/* Chat — only shown once both players are present */}
+      {guest && myId && (
+        <ChatPanel
+          sessionId={sessionId}
+          myUserId={myId}
+          myDisplayName={activeParticipants.find(p => p.userId === myId)?.displayName ?? 'Player'}
+        />
+      )}
 
       {/* Lobby cancelled overlay */}
       {lobbyCancelled && (

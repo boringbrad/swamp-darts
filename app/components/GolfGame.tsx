@@ -13,6 +13,7 @@ import { syncGolfMatch, canSyncToSupabase } from '../lib/supabaseSync';
 import { createClient } from '../lib/supabase/client';
 import { useOnlineGameState, OnlineConfig } from '../hooks/useOnlineGameState';
 import { completeOnlineSession, leaveSession } from '../lib/sessions';
+import ChatPanel from './ChatPanel';
 
 const supabase = createClient();
 
@@ -1078,6 +1079,15 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
               </button>
             </div>
           </div>
+        )}
+
+        {/* Chat — online games only */}
+        {onlineConfig && (
+          <ChatPanel
+            sessionId={onlineConfig.sessionId}
+            myUserId={onlineConfig.myUserId}
+            myDisplayName={players.find(p => p.id === onlineConfig.myUserId)?.name ?? 'Player'}
+          />
         )}
 
         {/* Online: waiting for opponent overlay */}
