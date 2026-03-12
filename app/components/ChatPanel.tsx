@@ -228,7 +228,7 @@ export default function ChatPanel({ sessionId, myUserId, myDisplayName }: ChatPa
               top: '50%',
               transform: 'translate(-50%, -50%)',
               width: 'min(440px, calc(100vw - 32px))',
-              height: 'min(580px, calc(100svh - 80px))',
+              height: 'min(300px, calc(100dvh - 80px))',
             }}
           >
             {/* Header */}
@@ -249,7 +249,7 @@ export default function ChatPanel({ sessionId, myUserId, myDisplayName }: ChatPa
             {/* Messages */}
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-0">
               {messages.length === 0 && (
-                <p className="text-gray-500 text-sm text-center mt-10">No messages yet. Say hi! 👋</p>
+                <p className="text-gray-500 text-base text-center mt-6">No messages yet. Say hi! 👋</p>
               )}
               {messages.map((msg) => {
                 const isMe = msg.userId === myUserId;
@@ -259,7 +259,7 @@ export default function ChatPanel({ sessionId, myUserId, myDisplayName }: ChatPa
                       <span className="text-xs text-gray-400 mb-1 ml-1">{msg.displayName}</span>
                     )}
                     <div
-                      className={`px-4 py-2 rounded-2xl max-w-[80%] break-words text-sm leading-relaxed ${
+                      className={`px-4 py-2 rounded-2xl max-w-[80%] break-words text-base leading-relaxed ${
                         isMe
                           ? 'bg-[#4CAF50] text-white rounded-br-sm'
                           : 'bg-gray-700 text-white rounded-bl-sm'
@@ -267,7 +267,7 @@ export default function ChatPanel({ sessionId, myUserId, myDisplayName }: ChatPa
                     >
                       {msg.message}
                     </div>
-                    <span className="text-[10px] text-gray-600 mt-1 mx-1">
+                    <span className="text-xs text-gray-600 mt-1 mx-1">
                       {formatTime(msg.createdAt)}
                     </span>
                   </div>
@@ -291,12 +291,12 @@ export default function ChatPanel({ sessionId, myUserId, myDisplayName }: ChatPa
                 }}
                 placeholder="Message..."
                 maxLength={500}
-                className="flex-1 bg-gray-800 text-white rounded-full px-4 py-2.5 outline-none border border-gray-600 focus:border-[#4CAF50] placeholder-gray-500 min-w-0 text-sm"
+                className="flex-1 bg-gray-800 text-white rounded-full px-4 py-2.5 outline-none border border-gray-600 focus:border-[#4CAF50] placeholder-gray-500 min-w-0 text-base"
               />
               <button
                 onClick={handleSend}
                 disabled={!inputValue.trim()}
-                className="bg-[#4CAF50] hover:bg-[#43a047] text-white font-bold px-4 py-2.5 rounded-full disabled:opacity-40 flex-shrink-0 text-sm transition-colors"
+                className="bg-[#4CAF50] hover:bg-[#43a047] text-white font-bold px-4 py-2.5 rounded-full disabled:opacity-40 flex-shrink-0 text-base transition-colors"
               >
                 Send
               </button>

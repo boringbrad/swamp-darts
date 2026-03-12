@@ -1926,8 +1926,8 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
                 const isCurrent = playerIndex === currentPlayerIndex && !willBeSkipped && !isEliminated;
                 const koPoints = playerScores[playerIndex]?.koPoints || 0;
                 const isGreyedOut = willBeSkipped || wasSkipped || isEliminated;
-                // Can't skip if: currently playing, was last skipped, eliminated, already in skip state, or KO disabled
-                const canSkip = enableKO && !isCurrent && lastSkippedPlayer !== player.id && !isEliminated && !willBeSkipped && !wasSkipped;
+                // Can't skip if: currently playing, was last skipped, eliminated, already in skip state, KO disabled, or it's not your turn online
+                const canSkip = enableKO && !inputDisabled && !isCurrent && lastSkippedPlayer !== player.id && !isEliminated && !willBeSkipped && !wasSkipped;
                 const teamColor = playerScores[playerIndex]?.color || 'blue';
 
                 return (
@@ -2027,8 +2027,8 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
               const teamIndex = getTeamIndex(playerIndex);
               const teamColor = playerScores[teamIndex]?.color || 'blue';
 
-              // For tag-team: can't skip current player, last skipped player, teammate, players in skip state, or if KO disabled
-              const canSkip = enableKO && (variant === 'tag-team'
+              // For tag-team: can't skip current player, last skipped player, teammate, players in skip state, KO disabled, or not your turn online
+              const canSkip = enableKO && !inputDisabled && (variant === 'tag-team'
                 ? !isCurrent && lastSkippedPlayer !== player.id && getTeamIndex(currentPlayerIndex) !== teamIndex && !willBeSkipped && !wasSkipped
                 : !isCurrent && lastSkippedPlayer !== player.id && !willBeSkipped && !wasSkipped);
 
@@ -2087,8 +2087,8 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
               const teamIndex = getTeamIndex(playerIndex);
               const teamColor = playerScores[teamIndex]?.color || 'blue';
 
-              // For tag-team: can't skip current player, last skipped player, teammate, players in skip state, or if KO disabled
-              const canSkip = enableKO && (variant === 'tag-team'
+              // For tag-team: can't skip current player, last skipped player, teammate, players in skip state, KO disabled, or not your turn online
+              const canSkip = enableKO && !inputDisabled && (variant === 'tag-team'
                 ? !isCurrent && lastSkippedPlayer !== player.id && getTeamIndex(currentPlayerIndex) !== teamIndex && !willBeSkipped && !wasSkipped
                 : !isCurrent && lastSkippedPlayer !== player.id && !willBeSkipped && !wasSkipped);
 
