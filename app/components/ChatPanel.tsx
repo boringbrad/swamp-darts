@@ -33,8 +33,10 @@ export default function ChatPanel({ sessionId, myUserId, myDisplayName }: ChatPa
   const [btnPos, setBtnPos] = useState<{ x: number; y: number } | null>(null);
   // Panel drag position (top-left corner of the panel)
   const [panelPos, setPanelPos] = useState<{ x: number; y: number } | null>(null);
-  // How many px the keyboard is obscuring from the bottom
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  // Visible viewport height — shrinks when the software keyboard opens on mobile
+  const [viewportHeight, setViewportHeight] = useState<number>(
+    typeof window !== 'undefined' ? (window.visualViewport?.height ?? window.innerHeight) : 600
+  );
 
   const toastTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastFadeRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -88,19 +90,15 @@ export default function ChatPanel({ sessionId, myUserId, myDisplayName }: ChatPa
     }
   }, []);
 
-  // ── Visual Viewport: track keyboard height ────────────────────────────────
+  // ── Visual Viewport: always track visible height (catches keyboard open/close) ──
   useEffect(() => {
-    if (!isOpen) { setKeyboardHeight(0); return; }
-    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    const vv = window.visualViewport;
     if (!vv) return;
-    const update = () => {
-      setKeyboardHeight(Math.max(0, window.innerHeight - vv.height - vv.offsetTop));
-    };
-    update();
+    const update = () => setViewportHeight(vv.height);
     vv.addEventListener('resize', update);
     vv.addEventListener('scroll', update);
     return () => { vv.removeEventListener('resize', update); vv.removeEventListener('scroll', update); };
-  }, [isOpen]);
+  }, []);
 
   // ── Toast ─────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -192,9 +190,9 @@ export default function ChatPanel({ sessionId, myUserId, myDisplayName }: ChatPa
     });
   }, []);
 
-  // ── Computed panel top (clamped above keyboard) ───────────────────────────
+  // ── Computed panel top (clamped within visible viewport, above keyboard) ────
   const effectivePanelTop = panelPos
-    ? Math.min(panelPos.y, window.innerHeight - keyboardHeight - PANEL_H - 8)
+    ? Math.min(panelPos.y, viewportHeight - PANEL_H - 8)
     : 8;
 
   // ── Open / close ──────────────────────────────────────────────────────────
@@ -228,14 +226,20 @@ export default function ChatPanel({ sessionId, myUserId, myDisplayName }: ChatPa
 
   return (
     <>
-      {/* ── Toast preview ──────────────────────────────────────────────────── */}
-      {toast && (
+      {/* ── Toast preview — floats directly above the chat button ─────────── */}
+      {toast && btnPos && (
         <div
-          className="fixed bottom-24 right-3 z-[200] bg-gray-900 border border-gray-600 text-white rounded-2xl px-5 py-4 shadow-2xl max-w-[300px] cursor-pointer select-none"
+          className="fixed z-[200] bg-gray-900 border border-gray-600 text-white rounded-2xl px-5 py-4 shadow-2xl max-w-[300px] cursor-pointer select-none"
           style={{
+            // Right-align to button's right edge, clamped to viewport
+            left: Math.max(8, Math.min(btnPos.x + BTN_SIZE - 300, window.innerWidth - 308)),
+            // Sit just above the button
+            top: btnPos.y,
             transition: 'opacity 0.3s ease, transform 0.3s ease',
             opacity: toastVisible ? 1 : 0,
-            transform: toastVisible ? 'translateX(0)' : 'translateX(20px)',
+            transform: toastVisible
+              ? 'translateY(calc(-100% - 10px))'
+              : 'translateY(calc(-100% - 10px)) translateX(16px)',
             pointerEvents: toastVisible ? 'auto' : 'none',
           }}
           onClick={handleOpen}
