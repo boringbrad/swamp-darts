@@ -261,49 +261,22 @@ export default function PartyLobbyPage() {
   const [showStartModal, setShowStartModal] = useState(false);
   const [leaving, setLeaving] = useState(false);
 
-  // Track when a game session is started — navigate to it
-  const prevSessionIdRef = useRef<string | null>(null);
-
+  // Navigate to the game when the host starts one.
+  // Runs whenever currentSessionId or myUserId changes — both may arrive at different times.
   useEffect(() => {
+    if (!room?.currentSessionId || !myUserId) return;
     const supabase = createClient();
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session?.user) { router.push('/auth/login'); return; }
-      setMyUserId(session.user.id);
-    });
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
-      supabase.from('profiles').select('display_name').eq('id', user.id).single()
-        .then(({ data }) => { if (data?.display_name) setMyDisplayName(data.display_name); });
-    });
-  }, []);
-
-  // Navigate to game when host starts one
-  useEffect(() => {
-    if (!room?.currentSessionId) {
-      prevSessionIdRef.current = null;
-      return;
-    }
-    if (room.currentSessionId === prevSessionIdRef.current) return;
-    prevSessionIdRef.current = room.currentSessionId;
-    // Navigate to the game (only the two players will actually play;
-    // sitting-out members stay here and see the "in progress" banner)
-    if (!myUserId) return;
-    const isPlaying = members.some(m => m.userId === myUserId && !m.isSittingOut);
-    if (isPlaying) {
-      // Check if this user is one of the two players in the session
-      const supabase = createClient();
-      supabase
-        .from('session_participants')
-        .select('user_id')
-        .eq('session_id', room.currentSessionId)
-        .then(({ data }) => {
-          const playerIds = (data || []).map((p: any) => p.user_id);
-          if (playerIds.includes(myUserId)) {
-            router.push(`/online/${room.currentSessionId}/game`);
-          }
-        });
-    }
-  }, [room?.currentSessionId, myUserId, members]);
+    supabase
+      .from('session_participants')
+      .select('user_id')
+      .eq('session_id', room.currentSessionId)
+      .then(({ data }) => {
+        const playerIds = (data || []).map((p) => p.user_id);
+        if (playerIds.includes(myUserId)) {
+          router.push(`/online/${room.currentSessionId}/game`);
+        }
+      });
+  }, [room?.currentSessionId, myUserId]);
 
   // Room closed → boot everyone to online page
   useEffect(() => {
