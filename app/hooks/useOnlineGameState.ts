@@ -90,6 +90,30 @@ export function useOnlineGameState(config: OnlineConfig | null): UseOnlineGameSt
 
     loadInitialState();
 
+    // Re-sync when the app comes back to the foreground.
+    // Supabase Realtime (WebSocket) can drop on iOS PWA when the app is backgrounded
+    // or the screen locks — missed events are NOT replayed on reconnect. If a turn was
+    // submitted while we were backgrounded, both players end up stuck on
+    // "Waiting for opponent". Polling on visibility-change catches that case.
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
+      supabase
+        .from('online_game_state')
+        .select('*')
+        .eq('session_id', sessionId)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (!data || data.current_player_id === 'rematch') return;
+          setCurrentPlayerId(data.current_player_id);
+          // If it's now our turn but we missed the Realtime event, apply the
+          // opponent's state so the board restores correctly.
+          if (data.current_player_id === myId) {
+            setOpponentState(data.game_state);
+          }
+        });
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     // Subscribe to realtime changes on this session's game state
     const channel = supabase
       .channel(`online-game-state:${sessionId}`)
@@ -185,6 +209,7 @@ export function useOnlineGameState(config: OnlineConfig | null): UseOnlineGameSt
       .subscribe();
 
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       supabase.removeChannel(channel);
       supabase.removeChannel(participantChannel);
       supabase.removeChannel(sessionStatusChannel);

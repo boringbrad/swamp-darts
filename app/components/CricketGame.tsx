@@ -146,6 +146,11 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
 
   // Suppress leaveSession on unmount for intentional exits (rematch, Return Home)
   const suppressLeaveRef = useRef(false);
+  // Prevent the submit effect from firing on initial mount before any turn has been played.
+  // On mount currentPlayerIndex = 0 (host's index), so the guest would immediately call
+  // submitTurn with empty state, creating a bogus DB row and potentially wiping the host's
+  // in-progress scores when the realtime event arrives.
+  const onlineTurnMountedRef = useRef(false);
 
   // Mark ourselves as left when we navigate away mid-game so the opponent is notified
   useEffect(() => {
@@ -187,6 +192,12 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
 
   // After our turn ends (currentPlayerIndex changed to opponent) → push state to Supabase
   useEffect(() => {
+    // Skip the initial mount — currentPlayerIndex starts at 0 (host's index) and the
+    // guest would otherwise fire submitTurn with empty state before any turn is played.
+    if (!onlineTurnMountedRef.current) {
+      onlineTurnMountedRef.current = true;
+      return;
+    }
     if (!onlineConfig || !players.length) return;
     const currentId = players[currentPlayerIndex]?.id;
     if (!currentId) return;
