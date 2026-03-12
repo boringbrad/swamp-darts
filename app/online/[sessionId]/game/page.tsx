@@ -10,6 +10,7 @@ import GolfGame from '../../../components/GolfGame';
 import { OnlineConfig } from '../../../hooks/useOnlineGameState';
 import { Player, CricketRules } from '../../../types/game';
 import { completeOnlineSession, leaveSession } from '../../../lib/sessions';
+import { clearPartyGameSession } from '../../../lib/partyRooms';
 
 /**
  * Generate deterministic KO numbers (1-20) for players using session ID as seed.
@@ -68,22 +69,20 @@ export default function OnlineGamePage() {
   const handleGameEnd = () => { gameFinishedRef.current = true; };
 
   const handleExitGame = async () => {
-    if (!confirm('Exit game? This will end the session for both players.')) return;
+    const partyRoomId = gameOnlineConfig?.partyRoomId;
+    const label = partyRoomId ? 'Return to party room?' : 'Exit game? This will end the session for both players.';
+    if (!confirm(label)) return;
     exitingRef.current = true;
     setExiting(true);
-    // Await the DB updates before navigating — if we fire-and-forget the browser
-    // cancels the pending fetch requests when the page unloads, so the opponent
-    // never receives the disconnect signal.
-    // Promise.race caps the wait at 2 s so a slow connection doesn't stall the exit.
     await Promise.race([
       Promise.allSettled([
         completeOnlineSession(sessionId),
         leaveSession(sessionId),
+        ...(partyRoomId ? [clearPartyGameSession(partyRoomId)] : []),
       ]),
       new Promise<void>(resolve => setTimeout(resolve, 2000)),
     ]);
-    // Hard navigate — bypasses RSC payload / auth middleware so it's instant.
-    window.location.href = '/';
+    window.location.href = partyRoomId ? `/room/${partyRoomId}` : '/';
   };
 
   useEffect(() => {
@@ -115,6 +114,7 @@ export default function OnlineGamePage() {
       hostUserId: hostP.userId,
       guestUserId: guestP.userId,
       roomCode: session.roomCode,
+      partyRoomId: (settings as any).partyRoomId ?? undefined,
     };
 
     // For x01: stash onlineConfig + players in sessionStorage then soft-navigate.
@@ -162,8 +162,8 @@ export default function OnlineGamePage() {
     if (!(session?.status === 'completed' || session?.status === 'expired')) return;
 
     if (!ready) {
-      // Session ended before game started — boot to lobbies
-      window.location.href = '/online';
+      const partyRoomId = (session?.gameSettings as any)?.partyRoomId;
+      window.location.href = partyRoomId ? `/room/${partyRoomId}` : '/online';
     } else if (!gameFinishedRef.current) {
       // Session ended mid-game — opponent left
       setOpponentExited(true);
@@ -234,12 +234,14 @@ export default function OnlineGamePage() {
         </p>
         <button
           onClick={() => {
+            const partyRoomId = gameOnlineConfig?.partyRoomId;
             leaveSession(sessionId).catch(console.error);
-            window.location.href = '/';
+            if (partyRoomId) clearPartyGameSession(partyRoomId).catch(console.error);
+            window.location.href = partyRoomId ? `/room/${partyRoomId}` : '/';
           }}
           className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-colors text-lg"
         >
-          Return Home
+          {gameOnlineConfig?.partyRoomId ? 'Back to Party Room' : 'Return Home'}
         </button>
       </div>
     </div>
@@ -256,7 +258,7 @@ export default function OnlineGamePage() {
         disabled={exiting}
         className="text-red-400 text-xs font-bold hover:text-red-300 transition-colors disabled:opacity-50"
       >
-        {exiting ? 'Exiting...' : '✕ Exit Game'}
+        {exiting ? 'Exiting...' : gameOnlineConfig?.partyRoomId ? '← Party Room' : '✕ Exit Game'}
       </button>
     </div>
   );

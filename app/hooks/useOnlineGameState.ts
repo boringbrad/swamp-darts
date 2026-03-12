@@ -9,6 +9,8 @@ export interface OnlineConfig {
   hostUserId: string;   // player index 0
   guestUserId: string;  // player index 1
   roomCode?: string;
+  /** If set, "Exit Game" navigates back to this party room instead of home */
+  partyRoomId?: string;
 }
 
 interface OnlineGameRow {

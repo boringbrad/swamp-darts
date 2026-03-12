@@ -134,13 +134,26 @@ export default function OnlineLobbyPage() {
           {/* Title + Create button */}
           <div className="flex flex-col items-center mb-6">
             <h1 className="text-2xl font-black text-white uppercase tracking-wider">Play Online</h1>
-            <p className="text-gray-400 text-sm mt-1">1v1 — challenge a friend</p>
-            <button
-              onClick={() => router.push('/online/create')}
-              className="mt-4 px-6 py-3 bg-[#6b1a8b] text-white font-bold rounded-xl hover:bg-[#8b2aab] transition-colors text-sm uppercase tracking-wide"
-            >
-              + Create Lobby
-            </button>
+            <p className="text-gray-400 text-sm mt-1">Challenge friends anywhere</p>
+            {/* Mode selector */}
+            <div className="grid grid-cols-2 gap-3 mt-5 w-full">
+              <button
+                onClick={() => router.push('/room')}
+                className="flex flex-col items-center gap-2 py-5 bg-[#6b1a8b] hover:bg-[#8b2aab] text-white font-bold rounded-2xl transition-colors shadow-lg"
+              >
+                <span className="text-3xl">🏠</span>
+                <span className="text-base uppercase tracking-wide">Party Room</span>
+                <span className="text-xs text-purple-300 font-normal">Up to 4 · multiple games</span>
+              </button>
+              <button
+                onClick={() => router.push('/online/create')}
+                className="flex flex-col items-center gap-2 py-5 bg-[#2a2a2a] hover:bg-[#3a3a3a] border border-[#4a4a4a] text-white font-bold rounded-2xl transition-colors"
+              >
+                <span className="text-3xl">⚡</span>
+                <span className="text-base uppercase tracking-wide">Quick Match</span>
+                <span className="text-xs text-gray-400 font-normal">1v1 · single game</span>
+              </button>
+            </div>
           </div>
 
           {/* Lobby list */}
