@@ -277,7 +277,6 @@ export async function startPartyGame(
       .insert({
         room_code: roomCode,
         host_user_id: user.id,
-        game_mode: settings.gameType,
         max_participants: 2,
         game_settings: gameSettings,
         status: 'in_game',
