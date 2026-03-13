@@ -2,9 +2,13 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSessionChat, ChatMessage } from '../hooks/useSessionChat';
+import { usePartyChat } from '../hooks/usePartyChat';
 
 interface ChatPanelProps {
-  sessionId: string;
+  /** Use for in-game session chat (DB-persisted) */
+  sessionId?: string;
+  /** Use for party room lobby chat (Realtime broadcast, ephemeral) */
+  partyRoomId?: string;
   myUserId: string;
   myDisplayName: string;
 }
@@ -19,11 +23,12 @@ const PANEL_H    = 320; // panel height (px)
  * Floating, draggable chat button + draggable panel.
  *
  * Button: drag anywhere on screen (Pointer Events, touch + mouse).
- * Panel:  drag by the header bar on any device.
- * Keyboard: Visual Viewport API clamps the panel's top so it never
- *   hides behind the software keyboard on mobile.
+ * Panel:  drag by the header bar on desktop.
+ *         On mobile, always snaps to just above the keyboard using
+ *         the Visual Viewport API (offsetTop + height).
+ * Toast:  centred above the chat button when a message arrives.
  */
-export default function ChatPanel({ sessionId, myUserId, myDisplayName }: ChatPanelProps) {
+export default function ChatPanel({ sessionId, partyRoomId, myUserId, myDisplayName }: ChatPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [toast, setToast] = useState<ChatMessage | null>(null);
@@ -31,29 +36,40 @@ export default function ChatPanel({ sessionId, myUserId, myDisplayName }: ChatPa
 
   // Button drag position (top-left corner of the 48×48 button)
   const [btnPos, setBtnPos] = useState<{ x: number; y: number } | null>(null);
-  // Panel drag position (top-left corner of the panel)
+  // Panel drag position (top-left corner, desktop only)
   const [panelPos, setPanelPos] = useState<{ x: number; y: number } | null>(null);
-  // Visible viewport height — shrinks when the software keyboard opens on mobile
-  const [viewportHeight, setViewportHeight] = useState<number>(
-    typeof window !== 'undefined' ? (window.visualViewport?.height ?? window.innerHeight) : 600
-  );
 
-  const toastTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const toastFadeRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const messagesEndRef  = useRef<HTMLDivElement>(null);
-  const inputRef        = useRef<HTMLInputElement>(null);
+  // Full visual viewport info — shrinks + shifts when keyboard opens on iOS
+  const [viewport, setViewport] = useState(() => ({
+    height: typeof window !== 'undefined' ? (window.visualViewport?.height ?? window.innerHeight) : 600,
+    width:  typeof window !== 'undefined' ? (window.visualViewport?.width  ?? window.innerWidth)  : 390,
+    offsetTop: 0,
+  }));
+
+  const toastTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastFadeRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const messagesEndRef   = useRef<HTMLDivElement>(null);
+  const inputRef         = useRef<HTMLInputElement>(null);
   const lastSeenCountRef = useRef(0);
 
-  const btnDragRef = useRef({ active: false, moved: false, startX: 0, startY: 0, startBtnX: 0, startBtnY: 0 });
+  const btnDragRef   = useRef({ active: false, moved: false, startX: 0, startY: 0, startBtnX: 0, startBtnY: 0 });
   const panelDragRef = useRef({ active: false, startX: 0, startY: 0, startPanelX: 0, startPanelY: 0 });
 
-  const { messages, sendMessage } = useSessionChat(sessionId);
+  // Pick the right chat source
+  const { messages: sessionMessages, sendMessage: sendSessionMessage } = useSessionChat(
+    partyRoomId ? null : (sessionId ?? null)
+  );
+  const { messages: partyMessages, sendMessage: sendPartyMessage } = usePartyChat(
+    partyRoomId ?? null
+  );
+  const messages    = partyRoomId ? partyMessages    : sessionMessages;
+  const sendMessage = partyRoomId ? sendPartyMessage : sendSessionMessage;
+
   const opponentMessages = messages.filter((m) => m.userId !== myUserId);
   const unreadCount = Math.max(0, opponentMessages.length - lastSeenCountRef.current);
 
   // ── Initialise positions from localStorage ────────────────────────────────
   useEffect(() => {
-    // Button
     try {
       const saved = localStorage.getItem(BTN_STORAGE_KEY);
       if (saved) {
@@ -69,7 +85,6 @@ export default function ChatPanel({ sessionId, myUserId, myDisplayName }: ChatPa
       setBtnPos({ x: window.innerWidth - BTN_SIZE - 16, y: window.innerHeight - 120 });
     }
 
-    // Panel
     try {
       const saved = localStorage.getItem(PANEL_STORAGE_KEY);
       if (saved) {
@@ -80,7 +95,6 @@ export default function ChatPanel({ sessionId, myUserId, myDisplayName }: ChatPa
           y: Math.max(8, Math.min(window.innerHeight - PANEL_H - 8, pos.y)),
         });
       } else {
-        // Default: horizontally centred, near the bottom
         const pw = Math.min(PANEL_W, window.innerWidth - 32);
         setPanelPos({ x: (window.innerWidth - pw) / 2, y: window.innerHeight - PANEL_H - 20 });
       }
@@ -90,11 +104,11 @@ export default function ChatPanel({ sessionId, myUserId, myDisplayName }: ChatPa
     }
   }, []);
 
-  // ── Visual Viewport: always track visible height (catches keyboard open/close) ──
+  // ── Visual Viewport: always track full info (keyboard open/close + scroll) ─
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
-    const update = () => setViewportHeight(vv.height);
+    const update = () => setViewport({ height: vv.height, width: vv.width, offsetTop: vv.offsetTop ?? 0 });
     vv.addEventListener('resize', update);
     vv.addEventListener('scroll', update);
     return () => { vv.removeEventListener('resize', update); vv.removeEventListener('scroll', update); };
@@ -147,11 +161,9 @@ export default function ChatPanel({ sessionId, myUserId, myDisplayName }: ChatPa
     if (!btnDragRef.current.active) return;
     btnDragRef.current.active = false;
     if (btnDragRef.current.moved) {
-      const dx = e.clientX - btnDragRef.current.startX;
-      const dy = e.clientY - btnDragRef.current.startY;
       const newPos = {
-        x: Math.max(8, Math.min(window.innerWidth  - BTN_SIZE - 8, btnDragRef.current.startBtnX + dx)),
-        y: Math.max(8, Math.min(window.innerHeight - BTN_SIZE - 8, btnDragRef.current.startBtnY + dy)),
+        x: Math.max(8, Math.min(window.innerWidth  - BTN_SIZE - 8, btnDragRef.current.startBtnX + (e.clientX - btnDragRef.current.startX))),
+        y: Math.max(8, Math.min(window.innerHeight - BTN_SIZE - 8, btnDragRef.current.startBtnY + (e.clientY - btnDragRef.current.startY))),
       };
       try { localStorage.setItem(BTN_STORAGE_KEY, JSON.stringify(newPos)); } catch {}
     } else {
@@ -160,9 +172,9 @@ export default function ChatPanel({ sessionId, myUserId, myDisplayName }: ChatPa
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Panel header drag ─────────────────────────────────────────────────────
+  // ── Panel header drag (desktop only — mobile is viewport-pinned) ──────────
   const handleHeaderPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!panelPos) return;
+    if (!panelPos || window.innerWidth < 640) return;
     e.preventDefault();
     panelDragRef.current = { active: true, startX: e.clientX, startY: e.clientY, startPanelX: panelPos.x, startPanelY: panelPos.y };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -174,8 +186,8 @@ export default function ChatPanel({ sessionId, myUserId, myDisplayName }: ChatPa
     const dy = e.clientY - panelDragRef.current.startY;
     const pw = Math.min(PANEL_W, window.innerWidth - 32);
     setPanelPos({
-      x: Math.max(8, Math.min(window.innerWidth  - pw       - 8, panelDragRef.current.startPanelX + dx)),
-      y: Math.max(8, Math.min(window.innerHeight - PANEL_H  - 8, panelDragRef.current.startPanelY + dy)),
+      x: Math.max(8, Math.min(window.innerWidth  - pw      - 8, panelDragRef.current.startPanelX + dx)),
+      y: Math.max(8, Math.min(window.innerHeight - PANEL_H - 8, panelDragRef.current.startPanelY + dy)),
     });
   }, []);
 
@@ -183,17 +195,10 @@ export default function ChatPanel({ sessionId, myUserId, myDisplayName }: ChatPa
     if (!panelDragRef.current.active) return;
     panelDragRef.current.active = false;
     setPanelPos((pos) => {
-      if (pos) {
-        try { localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(pos)); } catch {}
-      }
+      if (pos) try { localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(pos)); } catch {}
       return pos;
     });
   }, []);
-
-  // ── Computed panel top (clamped within visible viewport, above keyboard) ────
-  const effectivePanelTop = panelPos
-    ? Math.min(panelPos.y, viewportHeight - PANEL_H - 8)
-    : 8;
 
   // ── Open / close ──────────────────────────────────────────────────────────
   const handleOpen = useCallback(() => {
@@ -224,22 +229,48 @@ export default function ChatPanel({ sessionId, myUserId, myDisplayName }: ChatPa
 
   if (!btnPos || !panelPos) return null;
 
+  // ── Panel position ────────────────────────────────────────────────────────
+  // Mobile (< 640px): pin directly above the keyboard using visualViewport
+  // Desktop: respect drag position, clamped to visible area
+  const isMobile = window.innerWidth < 640;
+  const panelStyle = isMobile
+    ? {
+        left: viewport.offsetTop > 0 ? 0 : 8, // visual viewport left offset (usually 0)
+        top:  viewport.offsetTop + viewport.height - PANEL_H,
+        width: viewport.width,
+        borderRadius: '16px 16px 0 0',
+        height: PANEL_H,
+      }
+    : {
+        left: panelPos.x,
+        top:  Math.min(panelPos.y, viewport.height - PANEL_H - 8),
+        width: Math.min(PANEL_W, window.innerWidth - 32),
+        height: PANEL_H,
+        borderRadius: '16px',
+      };
+
+  // ── Toast position: centred above the chat button ─────────────────────────
+  const TOAST_W = 300;
+  const toastLeft = btnPos
+    ? Math.max(8, Math.min(btnPos.x + BTN_SIZE / 2 - TOAST_W / 2, window.innerWidth - TOAST_W - 8))
+    : 8;
+  const toastTop = btnPos ? btnPos.y : 0;
+
   return (
     <>
-      {/* ── Toast preview — floats directly above the chat button ─────────── */}
+      {/* ── Toast preview — centred above the chat button ──────────────────── */}
       {toast && btnPos && (
         <div
-          className="fixed z-[200] bg-gray-900 border border-gray-600 text-white rounded-2xl px-5 py-4 shadow-2xl max-w-[300px] cursor-pointer select-none"
+          className="fixed z-[200] bg-gray-900 border border-gray-600 text-white rounded-2xl px-5 py-4 shadow-2xl cursor-pointer select-none"
           style={{
-            // Right-align to button's right edge, clamped to viewport
-            left: Math.max(8, Math.min(btnPos.x + BTN_SIZE - 300, window.innerWidth - 308)),
-            // Sit just above the button
-            top: btnPos.y,
+            left: toastLeft,
+            top: toastTop,
+            width: TOAST_W,
             transition: 'opacity 0.3s ease, transform 0.3s ease',
             opacity: toastVisible ? 1 : 0,
             transform: toastVisible
               ? 'translateY(calc(-100% - 10px))'
-              : 'translateY(calc(-100% - 10px)) translateX(16px)',
+              : 'translateY(calc(-100% - 10px)) translateX(8px)',
             pointerEvents: toastVisible ? 'auto' : 'none',
           }}
           onClick={handleOpen}
@@ -274,19 +305,14 @@ export default function ChatPanel({ sessionId, myUserId, myDisplayName }: ChatPa
           {/* Backdrop (click to close) */}
           <div className="fixed inset-0 z-50 bg-black/50" onClick={handleClose} />
 
-          {/* Panel — left/top absolutely positioned, clamped above keyboard */}
           <div
-            className="fixed z-[55] flex flex-col bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl overflow-hidden"
-            style={{
-              left: panelPos.x,
-              top: effectivePanelTop,
-              width: Math.min(PANEL_W, window.innerWidth - 32),
-              height: PANEL_H,
-            }}
+            className="fixed z-[55] flex flex-col bg-gray-900 border border-gray-700 shadow-2xl overflow-hidden"
+            style={panelStyle}
           >
-            {/* Header — drag handle */}
+            {/* Header — drag handle (desktop only) */}
             <div
-              className="flex items-center justify-between px-5 py-3 border-b border-gray-700 flex-shrink-0 cursor-move select-none"
+              className="flex items-center justify-between px-5 py-3 border-b border-gray-700 flex-shrink-0 select-none"
+              style={{ cursor: isMobile ? 'default' : 'move' }}
               onPointerDown={handleHeaderPointerDown}
               onPointerMove={handleHeaderPointerMove}
               onPointerUp={handleHeaderPointerUp}
@@ -294,9 +320,8 @@ export default function ChatPanel({ sessionId, myUserId, myDisplayName }: ChatPa
               <div className="flex items-center gap-2 pointer-events-none">
                 <span className="text-xl">💬</span>
                 <span className="text-white font-bold text-lg">Chat</span>
-                <span className="text-gray-500 text-xs ml-1 hidden sm:inline">drag to move</span>
+                {!isMobile && <span className="text-gray-500 text-xs ml-1">drag to move</span>}
               </div>
-              {/* Close button needs pointer-events so it works despite cursor-move on parent */}
               <button
                 onClick={(e) => { e.stopPropagation(); handleClose(); }}
                 onPointerDown={(e) => e.stopPropagation()}

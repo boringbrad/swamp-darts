@@ -467,14 +467,6 @@ export default function PartyLobbyPage() {
           </div>
         </div>
 
-        {/* DEBUG — remove after fixing */}
-        <div className="bg-[#2a2a2a] rounded-xl p-3 text-xs text-gray-400 font-mono space-y-1">
-          <p>myUserId: <span className="text-yellow-400">{myUserId ?? 'null'}</span></p>
-          <p>hostUserId: <span className="text-yellow-400">{room.hostUserId}</span></p>
-          <p>isHost: <span className="text-yellow-400">{String(!!isHost)}</span></p>
-          <p>activeMembers: <span className="text-yellow-400">{activeMembers.length}</span></p>
-        </div>
-
         {/* Start game button — host only, not during a game */}
         {isHost && !gameInProgress && (
           <button
@@ -502,10 +494,10 @@ export default function PartyLobbyPage() {
         />
       )}
 
-      {/* Chat panel — always available in the party room */}
-      {myUserId && room.currentSessionId && (
+      {/* Party room chat — always available in the lobby */}
+      {myUserId && (
         <ChatPanel
-          sessionId={room.currentSessionId}
+          partyRoomId={roomId}
           myUserId={myUserId}
           myDisplayName={myDisplayName}
         />
