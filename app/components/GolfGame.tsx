@@ -13,6 +13,7 @@ import { syncGolfMatch, canSyncToSupabase } from '../lib/supabaseSync';
 import { createClient } from '../lib/supabase/client';
 import { useOnlineGameState, OnlineConfig } from '../hooks/useOnlineGameState';
 import { completeOnlineSession, leaveSession } from '../lib/sessions';
+import { clearPartyGameSession } from '../lib/partyRooms';
 import ChatPanel from './ChatPanel';
 
 const supabase = createClient();
@@ -1071,7 +1072,8 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
                   suppressLeaveRef.current = true;
                   leaveSession(onlineConfig!.sessionId).catch(console.error);
                   completeOnlineSession(onlineConfig!.sessionId).catch(console.error);
-                  window.location.href = '/';
+                  if (onlineConfig!.partyRoomId) clearPartyGameSession(onlineConfig!.partyRoomId).catch(console.error);
+                  window.location.href = onlineConfig!.partyRoomId ? `/room/${onlineConfig!.partyRoomId}` : '/';
                 }}
                 className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-colors text-lg"
               >
@@ -1084,7 +1086,8 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
         {/* Chat — online games only */}
         {onlineConfig && (
           <ChatPanel
-            sessionId={onlineConfig.sessionId}
+            sessionId={onlineConfig.partyRoomId ? undefined : onlineConfig.sessionId}
+            partyRoomId={onlineConfig.partyRoomId}
             myUserId={onlineConfig.myUserId}
             myDisplayName={players.find(p => p.id === onlineConfig.myUserId)?.name ?? 'Player'}
           />
@@ -1651,14 +1654,15 @@ export default function GolfGame({ variant, initialPlayers, onlineConfig, onRema
                         Promise.allSettled([
                           completeOnlineSession(onlineConfig.sessionId),
                           leaveSession(onlineConfig.sessionId),
+                          ...(onlineConfig.partyRoomId ? [clearPartyGameSession(onlineConfig.partyRoomId)] : []),
                         ]),
                         new Promise<void>(r => setTimeout(r, 2000)),
                       ]);
-                      window.location.href = '/';
+                      window.location.href = onlineConfig.partyRoomId ? `/room/${onlineConfig.partyRoomId}` : '/';
                     }}
                     className="bg-[#666666] text-white text-xl sm:text-2xl font-bold rounded hover:bg-[#777777] transition-colors h-[80px] flex items-center justify-center px-2"
                   >
-                    RETURN HOME
+                    {onlineConfig.partyRoomId ? 'PARTY ROOM' : 'RETURN HOME'}
                   </button>
                 </div>
               </div>

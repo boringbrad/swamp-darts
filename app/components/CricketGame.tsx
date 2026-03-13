@@ -10,6 +10,7 @@ import { STOCK_AVATARS } from '../lib/avatars';
 import { syncCricketMatch, canSyncToSupabase } from '../lib/supabaseSync';
 import { useOnlineGameState, OnlineConfig } from '../hooks/useOnlineGameState';
 import { completeOnlineSession, leaveSession } from '../lib/sessions';
+import { clearPartyGameSession } from '../lib/partyRooms';
 import ChatPanel from './ChatPanel';
 
 interface CricketGameProps {
@@ -1629,11 +1630,12 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
                 suppressLeaveRef.current = true;
                 leaveSession(onlineConfig!.sessionId).catch(console.error);
                 completeOnlineSession(onlineConfig!.sessionId).catch(console.error);
-                window.location.href = '/';
+                if (onlineConfig!.partyRoomId) clearPartyGameSession(onlineConfig!.partyRoomId).catch(console.error);
+                window.location.href = onlineConfig!.partyRoomId ? `/room/${onlineConfig!.partyRoomId}` : '/';
               }}
               className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-colors text-lg"
             >
-              Return Home
+              {onlineConfig!.partyRoomId ? 'Return to Party Room' : 'Return Home'}
             </button>
           </div>
         </div>
@@ -1641,7 +1643,8 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
       {/* Chat — online games only */}
       {onlineConfig && (
         <ChatPanel
-          sessionId={onlineConfig.sessionId}
+          sessionId={onlineConfig.partyRoomId ? undefined : onlineConfig.sessionId}
+          partyRoomId={onlineConfig.partyRoomId}
           myUserId={onlineConfig.myUserId}
           myDisplayName={players.find(p => p.id === onlineConfig.myUserId)?.name ?? 'Player'}
         />
@@ -2318,15 +2321,16 @@ export default function CricketGame({ variant, players: initialPlayers, rules, o
                       Promise.allSettled([
                         completeOnlineSession(onlineConfig.sessionId),
                         leaveSession(onlineConfig.sessionId),
+                        ...(onlineConfig.partyRoomId ? [clearPartyGameSession(onlineConfig.partyRoomId)] : []),
                       ]),
                       new Promise<void>(r => setTimeout(r, 2000)),
                     ]);
-                    window.location.href = '/';
+                    window.location.href = onlineConfig.partyRoomId ? `/room/${onlineConfig.partyRoomId}` : '/';
                   }}
                   disabled={isSavingGame}
                   className="bg-[#666666] text-white px-10 py-5 rounded text-3xl font-bold hover:bg-[#777777] transition-colors"
                 >
-                  Return Home
+                  {onlineConfig.partyRoomId ? 'Return to Party Room' : 'Return Home'}
                 </button>
               </div>
             ) : (
