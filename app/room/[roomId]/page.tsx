@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { usePartyRoom } from '../../hooks/usePartyRoom';
 import { usePartyMembers } from '../../hooks/usePartyMembers';
@@ -14,6 +14,7 @@ import {
 import { OnlineGameSettings } from '../../lib/sessions';
 import { getAvatarById } from '../../lib/avatars';
 import { createClient } from '../../lib/supabase/client';
+import { useAuth } from '../../contexts/AuthContext';
 import ChatPanel from '../../components/ChatPanel';
 
 // ── Shared avatar bubble ──────────────────────────────────────────────────────
@@ -254,10 +255,12 @@ export default function PartyLobbyPage() {
   const router = useRouter();
   const roomId = params.roomId as string;
 
+  const { user, profile, loading: authLoading } = useAuth();
+  const myUserId = user?.id ?? null;
+  const myDisplayName = profile?.display_name ?? 'Player';
+
   const { room, loading: roomLoading } = usePartyRoom(roomId);
   const { members } = usePartyMembers(roomId);
-  const [myUserId, setMyUserId] = useState<string | null>(null);
-  const [myDisplayName, setMyDisplayName] = useState('Player');
   const [showStartModal, setShowStartModal] = useState(false);
   const [leaving, setLeaving] = useState(false);
 
@@ -307,7 +310,7 @@ export default function PartyLobbyPage() {
     await setSittingOut(roomId, member.userId, !member.isSittingOut);
   };
 
-  if (roomLoading) {
+  if (authLoading || roomLoading) {
     return (
       <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center">
         <p className="text-gray-400">Loading room...</p>
@@ -457,6 +460,14 @@ export default function PartyLobbyPage() {
               </div>
             ))}
           </div>
+        </div>
+
+        {/* DEBUG — remove after fixing */}
+        <div className="bg-[#2a2a2a] rounded-xl p-3 text-xs text-gray-400 font-mono space-y-1">
+          <p>myUserId: <span className="text-yellow-400">{myUserId ?? 'null'}</span></p>
+          <p>hostUserId: <span className="text-yellow-400">{room.hostUserId}</span></p>
+          <p>isHost: <span className="text-yellow-400">{String(!!isHost)}</span></p>
+          <p>activeMembers: <span className="text-yellow-400">{activeMembers.length}</span></p>
         </div>
 
         {/* Start game button — host only, not during a game */}

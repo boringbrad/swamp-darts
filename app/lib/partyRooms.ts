@@ -270,11 +270,14 @@ export async function startPartyGame(
       partyRoomId: roomId,
     };
 
+    // host_user_id must always be auth.uid() to satisfy RLS INSERT policy.
+    // The actual "player 1" slot is tracked via session_participants.
     const { data: session, error } = await supabase
       .from('game_sessions')
       .insert({
         room_code: roomCode,
-        host_user_id: hostPlayerId,
+        host_user_id: user.id,
+        game_mode: settings.gameType,
         max_participants: 2,
         game_settings: gameSettings,
         status: 'in_game',
