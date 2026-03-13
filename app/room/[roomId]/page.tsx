@@ -302,8 +302,13 @@ export default function PartyLobbyPage() {
 
   const handleStartGame = async (settings: OnlineGameSettings, hostId: string, guestId: string) => {
     setShowStartModal(false);
-    await startPartyGame(roomId, settings, hostId, guestId);
-    // Navigation handled via room.currentSessionId effect above
+    const result = await startPartyGame(roomId, settings, hostId, guestId);
+    if (!result.success || !result.sessionId) {
+      alert(`Failed to start game: ${result.error ?? 'unknown error'}`);
+      return;
+    }
+    // Host navigates directly — don't wait for Realtime
+    router.push(`/online/${result.sessionId}/game`);
   };
 
   const handleToggleSitOut = async (member: PartyMember) => {
